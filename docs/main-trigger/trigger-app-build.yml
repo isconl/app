@@ -1,0 +1,24 @@
+# STAGED - not yet active.
+#
+# When ARCHITECT cues the main push, copy this file to .github/workflows/ on the
+# MAIN branch. From then on, every push to main also rebuilds the client on the
+# app branch (workflow_dispatch is exempt from GitHub's GITHUB_TOKEN
+# no-retrigger rule, so the default token is enough - no PAT needed).
+
+name: Trigger app build
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cue the app branch build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run "Build app" --repo "$GITHUB_REPOSITORY" --ref app
