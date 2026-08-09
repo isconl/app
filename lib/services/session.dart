@@ -54,7 +54,17 @@ class SessionService extends ChangeNotifier {
     await _storage.delete(key: 'ghPat');
     api.baseUrl = serverUrl;
     api.token = token;
-    authenticated = token.isNotEmpty;
+    // A token with nowhere to send it is not a working session. This used to
+    // read `token.isNotEmpty` alone: fine for a fresh install (nothing is
+    // stored, both are empty), but silent breakage for anyone who was
+    // already signed in the day `defaultServer` stopped being a real URL
+    // (see the comment above) - a stored token survived the upgrade, so
+    // `authenticated` stayed true and RootGate sent them straight into
+    // Shell, which can do nothing with an empty baseUrl. `needsServer`
+    // existed for exactly this (see its own doc comment) but nothing ever
+    // actually checked it. Falling through to LoginScreen instead - it
+    // already has the Server URL field this state needs filled in.
+    authenticated = token.isNotEmpty && !needsServer;
     ready = true;
     notifyListeners();
   }
