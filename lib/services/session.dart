@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
@@ -43,15 +45,53 @@ class SessionService extends ChangeNotifier {
   /// network failures, which is what "no server" used to look like.
   bool get needsServer => serverUrl.trim().isEmpty;
 
+  /* THE SPLASH THAT NEVER CLEARED (task #18, diagnosed on-device 10 Aug 2026)
+   *
+   * The Android Keystore key behind EncryptedSharedPreferences can go bad
+   * without Android ever telling Dart: a device logcat pull caught
+   * `KeyStoreException: Signature/MAC verification failed` from
+   * flutter_secure_storage's own Kotlin side, thrown inside a background
+   * HandlerThread callback that never calls back to the platform channel -
+   * so the plain `await _storage.read(...)` this used to be waited forever.
+   * Not an exception Dart could catch: a Future that simply never completes.
+   * runApp() never ran, so not even the Flutter spinner ever showed - only
+   * the native pre-Flutter splash, sitting there permanently. That is why
+   * the prior static read of this file found nothing: the bug isn't in this
+   * logic, it's a native plugin call this logic trusted to always return.
+   *
+   * A bounded read turns a hang into "no stored value", which this class
+   * already treats as a clean logged-out state.
+   */
+  Future<String?> _readSafe(String key) async {
+    try {
+      return await _storage.read(key: key).timeout(const Duration(seconds: 3));
+    } catch (_) {
+      _storageCorrupted = true;
+      return null;
+    }
+  }
+
+  bool _storageCorrupted = false;
+
   Future<void> load() async {
-    serverUrl = await _storage.read(key: 'serverUrl') ?? defaultServer;
-    final token = await _storage.read(key: 'token') ?? '';
-    biometricLock = (await _storage.read(key: 'bioLock')) == '1';
-    _bioChosen = (await _storage.read(key: 'bioChosen')) == '1';
-    // Updates come from the agent now, so the GitHub PAT this app used to keep
-    // has no remaining purpose. Delete it on sight rather than leave a live
-    // credential sitting on the phone after the upgrade that stopped using it.
-    await _storage.delete(key: 'ghPat');
+    serverUrl = await _readSafe('serverUrl') ?? defaultServer;
+    final token = await _readSafe('token') ?? '';
+    biometricLock = (await _readSafe('bioLock')) == '1';
+    _bioChosen = (await _readSafe('bioChosen')) == '1';
+    if (_storageCorrupted) {
+      // Whatever was in there is already unreadable - clearing it is
+      // recovery, not loss, and lets writes (and the next launch's reads)
+      // succeed again instead of hanging the same way forever.
+      unawaited(_storage
+          .deleteAll()
+          .timeout(const Duration(seconds: 3), onTimeout: () {}));
+    } else {
+      // Updates come from the agent now, so the GitHub PAT this app used to
+      // keep has no remaining purpose. Delete it on sight rather than leave
+      // a live credential sitting on the phone after the upgrade that
+      // stopped using it.
+      await _storage.delete(key: 'ghPat');
+    }
     api.baseUrl = serverUrl;
     api.token = token;
     // A token with nowhere to send it is not a working session. This used to
