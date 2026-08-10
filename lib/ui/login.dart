@@ -30,7 +30,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _waking = false;
   bool _submitting = false;
   bool? _totpAvailable;
-  bool _pinAvailable = false;
   bool _useToken = false;
   bool _usePin = false;
   bool _editServer = false;
@@ -79,7 +78,6 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() {
         _totpAvailable = methods['totp'] == true;
-        _pinAvailable = methods['pin'] == true;
         _useToken = methods['totp'] != true;
         _waking = false;
         _probing = false;
@@ -328,15 +326,16 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// Three taps on the wordmark opens the PIN door, and only if the server
-  /// actually offers one. A silent no-op otherwise: revealing a box that cannot
-  /// work would be worse than not having the gesture at all.
+  /// Three taps on the wordmark opens the PIN door. Reachable the same way
+  /// the token form already is even when the server probe never succeeded
+  /// (no server set yet, agent asleep, offline) - submitting still fails
+  /// cleanly with the usual "No connection" message in that case, same as
+  /// the token form does, rather than the gesture silently doing nothing.
   void _tapBrand() {
     if (_usePin) return;
     _brandTaps++;
     if (_brandTaps < 3) return;
     _brandTaps = 0;
-    if (!_pinAvailable) return;
     HapticFeedback.mediumImpact();
     setState(() {
       _usePin = true;
