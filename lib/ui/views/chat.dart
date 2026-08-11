@@ -46,6 +46,14 @@ class _Msg {
   String text;
   String via = '';
   bool pending;
+
+  // Set when this message is an /api/act response awaiting the user's word:
+  // [actionOptions] for an ambiguous-match disambiguation, [actionPlan] for
+  // a gated action's yes/no. Cleared (both set null) once resolved, so the
+  // card collapses to plain text the same way the legacy dashboard did.
+  List<Map<String, String>>? actionOptions;
+  Map<String, dynamic>? actionPlan;
+  String? actionDescribe;
 }
 
 class _ChatSheetState extends State<ChatSheet> {
@@ -105,10 +113,27 @@ class _ChatSheetState extends State<ChatSheet> {
     setState(() {
       _busy = true;
       _messages.add(_Msg('user', text));
-      _messages.add(_Msg('agent', '', pending: true));
     });
     _jumpToEnd();
     await services.db.addChat('user', text);
+
+    // Try to ACT before trying to talk: "mark the gap register done" should
+    // do the thing, not describe how one might go about doing the thing.
+    // Parsing is deterministic and instant, so this costs nothing when the
+    // sentence turns out to only be a question (ported from the legacy
+    // dashboard's tryAction()/sendRailChat(), dashboard/app.js:9399-9410).
+    try {
+      if (await _tryAction(text)) {
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
+    } catch (_) {
+      // /api/act unreachable or errored -- fall through to normal chat
+      // rather than surface a second error path for what the user just typed.
+    }
+
+    setState(() => _messages.add(_Msg('agent', '', pending: true)));
+    _jumpToEnd();
 
     final reply = _messages.last;
     try {
@@ -176,6 +201,110 @@ class _ChatSheetState extends State<ChatSheet> {
         _jumpToEnd();
       }
     }
+  }
+
+  /// Attempts [text] as a deterministic action via hub's /act (spark's NLU).
+  /// Returns true if /act understood it at all -- ambiguous, gated, or
+  /// executed -- meaning the normal streaming chat turn should NOT also run.
+  /// Ported from dashboard/app.js's tryAction() (~9524-9551).
+  Future<bool> _tryAction(String text) async {
+    final services = AppScope.of(context);
+    final res =
+        await services.api.postJson('/api/act', {'text': text});
+    final d = fmt.m(res);
+    if (!fmt.b(d['understood'])) return false;
+
+    if (fmt.b(d['needsClarification'])) {
+      final options = fmt.lm(d['options'])
+          .map((o) => {'id': fmt.s(o['id']), 'title': fmt.s(o['title'])})
+          .toList();
+      setState(() {
+        _messages.add(_Msg('agent', fmt.s(d['describe']))
+          ..actionOptions = options);
+      });
+      _jumpToEnd();
+      return true;
+    }
+
+    if (fmt.b(d['needsConfirmation'])) {
+      setState(() {
+        _messages.add(_Msg('agent', '')
+          ..actionDescribe = fmt.s(d['describe'])
+          ..actionPlan = fmt.m(d['plan']));
+      });
+      _jumpToEnd();
+      return true;
+    }
+
+    await _applyActionResult(d);
+    return true;
+  }
+
+  /// Renders the executed/failed result and nudges whichever Store
+  /// snapshots the backend flagged as stale (dashboard/app.js's
+  /// applyActionResult(), ~9585-9598). Navigation hints aren't wired yet --
+  /// the result message already tells the user what happened.
+  Future<void> _applyActionResult(Map<String, dynamic> d) async {
+    final services = AppScope.of(context);
+    final ok = d['ok'] == null ? true : fmt.b(d['ok']);
+    final message = fmt.s(d['message']).isEmpty
+        ? (ok ? 'Done.' : 'That did not work.')
+        : fmt.s(d['message']);
+    setState(() {
+      final m = _Msg(ok ? 'agent' : 'error', message);
+      if (!ok) m.via = 'error';
+      _messages.add(m);
+    });
+    _jumpToEnd();
+    await services.db.addChat('agent', message);
+
+    for (final key in fmt.l(d['refresh']).map(fmt.s)) {
+      switch (key) {
+        case 'tasks':
+          services.store.state.refresh();
+        case 'jira':
+          services.store.jira.refresh();
+        case 'ideas':
+          services.store.ideas.refresh();
+      }
+    }
+  }
+
+  Future<void> _confirmAction(_Msg msg) async {
+    if (msg.actionPlan == null) return;
+    final plan = msg.actionPlan!;
+    setState(() {
+      msg.actionPlan = null;
+      msg.actionDescribe = null;
+      msg.text = '';
+    });
+    final services = AppScope.of(context);
+    try {
+      final res = await services.api
+          .postJson('/api/act', {'plan': plan, 'confirm': true});
+      await _applyActionResult(fmt.m(res));
+    } catch (e) {
+      setState(() => _messages.add(_Msg('error', 'Could not complete that.')
+        ..via = 'error'));
+      _jumpToEnd();
+    }
+  }
+
+  void _declineAction(_Msg msg) {
+    setState(() {
+      msg.actionPlan = null;
+      msg.actionDescribe = null;
+      msg.text = 'Left alone.';
+    });
+  }
+
+  /// A disambiguation chip resends the request with the picked task's ID
+  /// spliced in, matching the legacy quickAsk()'s `mark <ID> done` shape
+  /// (dashboard/app.js:9604-9608) -- deliberately kept, not "improved",
+  /// since that is the real production behaviour being ported.
+  void _pickClarifyOption(_Msg msg, String id) {
+    setState(() => msg.actionOptions = null);
+    _send('mark $id done');
   }
 
   /// The agent keeps named conversations server-side, and the model's context
@@ -477,26 +606,84 @@ class _ChatSheetState extends State<ChatSheet> {
               ),
               child: msg.pending
                   ? const _Thinking()
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (isUser)
-                          Text(msg.text, style: T.body2)
-                        else
-                          Markdown(msg.text),
-                        if (!isUser && msg.via.isNotEmpty && !isError)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text('via ${msg.via}',
-                                style:
-                                    T.monoSmall.copyWith(fontSize: 9)),
-                          ),
-                      ],
-                    ),
+                  : msg.actionPlan != null
+                      ? _actionConfirmCard(msg)
+                      : msg.actionOptions != null
+                          ? _actionClarifyCard(msg)
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (isUser)
+                                  Text(msg.text, style: T.body2)
+                                else
+                                  Markdown(msg.text),
+                                if (!isUser &&
+                                    msg.via.isNotEmpty &&
+                                    !isError)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text('via ${msg.via}',
+                                        style: T.monoSmall
+                                            .copyWith(fontSize: 9)),
+                                  ),
+                              ],
+                            ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// A gated action awaiting yes/no (dashboard/app.js's renderActionConfirm(),
+  /// ~9553-9583) -- nothing destructive or outward-facing happens because a
+  /// regex felt confident.
+  Widget _actionConfirmCard(_Msg msg) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(fmt.s(msg.actionDescribe), style: T.body2),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FilledButton(
+              onPressed: () => _confirmAction(msg),
+              child: const Text('Do it'),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: () => _declineAction(msg),
+              child: const Text('Leave it'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// An ambiguous task match, disambiguated by picking a chip
+  /// (dashboard/app.js's clarification chips, ~9536-9541).
+  Widget _actionClarifyCard(_Msg msg) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(msg.text, style: T.body2),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final o in msg.actionOptions!)
+              Pill(
+                fmt.truncate(o['title'] ?? '', 40),
+                onTap: () => _pickClarifyOption(msg, o['id'] ?? ''),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

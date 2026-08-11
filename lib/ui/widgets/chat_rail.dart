@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme.dart';
 import '../views/chat.dart';
 import 'common.dart';
+import 'context_panel.dart';
 
 /// Persistent right-hand chat column for the desktop shell, matching
 /// dashboard/style.css's always-visible `.chat-rail` (mobile only ever gets
@@ -36,11 +37,7 @@ class _ChatRailState extends State<ChatRail> {
           ),
           Expanded(
             child: switch (_mode) {
-              0 => const EmptyState(
-                  'Context',
-                  "Not wired up yet in the web console.",
-                  icon: Icons.info_outline_rounded,
-                ),
+              0 => const ContextPanel(),
               2 => const EmptyState(
                   'Reader',
                   "Document preview isn't wired up yet in the web console.",
