@@ -64,7 +64,8 @@ final List<NavGroup> navGroups = [
     NavItem('jira', Icons.view_kanban_rounded, 'Kanban', () => const JiraView()),
     NavItem('teams', Icons.groups_rounded, 'Teams', () => const TeamsView()),
     NavItem('github', Icons.code_rounded, 'GitHub', () => const GithubView()),
-    NavItem('buffer', Icons.share_rounded, 'Buffer', () => const BufferView()),
+    NavItem('buffer', Icons.share_rounded, 'Buffer',
+        () => const BufferView(compose: true)),
   ]),
   NavGroup('Personal', [
     NavItem('finance', Icons.account_balance_wallet_rounded, 'Finance', () => const FinanceView()),

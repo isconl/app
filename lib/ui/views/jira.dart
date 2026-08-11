@@ -206,10 +206,191 @@ class _IssueCard extends StatelessWidget {
                   }
                 },
               ),
+            const Divider(height: 1),
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+              title: const Text('Assign...', style: T.body2),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAssignee(context, key);
+              },
+            ),
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.check_circle_outline_rounded,
+                  size: 18, color: C.text2),
+              title: const Text('Clear (move to Done)', style: T.body2),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final sure = await confirmDialog(
+                  context,
+                  'Clear $key?',
+                  'Moves the issue to Done without deleting it - the honest '
+                      'fallback when delete permission isn\'t granted.',
+                  action: 'Clear',
+                );
+                if (!sure || !context.mounted) return;
+                await _post(context, '/api/jira/clear', {'issueKey': key},
+                    successMsg: '$key cleared');
+              },
+            ),
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.delete_outline_rounded,
+                  size: 18, color: C.red),
+              title: const Text('Delete...', style: T.body2),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _deleteWithPermissionCheck(context, key);
+              },
+            ),
             const SizedBox(height: 8),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _deleteWithPermissionCheck(
+      BuildContext context, String key) async {
+    final services = AppScope.of(context);
+    Map<String, dynamic> perms;
+    try {
+      perms = fmt.m(await services.api.getJson('/api/jira/permissions'));
+    } catch (_) {
+      perms = const {};
+    }
+    if (!context.mounted) return;
+    final canDelete = perms['canDelete'] == true;
+    if (!canDelete) {
+      final useClear = await confirmDialog(
+        context,
+        'No delete permission',
+        'This Jira account can\'t delete issues on this project. Clear '
+            '$key to Done instead?',
+        action: 'Clear instead',
+      );
+      if (useClear && context.mounted) {
+        await _post(context, '/api/jira/clear', {'issueKey': key},
+            successMsg: '$key cleared');
+      }
+      return;
+    }
+    final sure = await confirmDialog(
+      context,
+      'Delete $key?',
+      'This permanently deletes the issue from the company Jira board. '
+          'This cannot be undone.',
+      action: 'Delete',
+      destructive: true,
+    );
+    if (!sure || !context.mounted) return;
+    await _post(context, '/api/jira/delete', {'issueKey': key},
+        successMsg: '$key deleted');
+  }
+
+  Future<void> _pickAssignee(BuildContext context, String key) async {
+    final services = AppScope.of(context);
+    List<Map<String, dynamic>> users;
+    try {
+      final res = fmt.m(await services.api.getJson('/api/jira/assignable'));
+      users = fmt.lm(res['users']);
+    } catch (e) {
+      if (context.mounted) {
+        toast(context, 'Could not load assignable users', error: true);
+      }
+      return;
+    }
+    if (!context.mounted) return;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: C.panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
+        side: BorderSide(color: C.border),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.55,
+        maxChildSize: 0.85,
+        builder: (ctx, scroll) => ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+          children: [
+            Text('Assign $key', style: T.title),
+            const SizedBox(height: 10),
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.person_off_outlined, size: 18),
+              title: const Text('Unassign', style: T.body2),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _post(context, '/api/jira/assign',
+                    {'issueKey': key, 'accountId': null},
+                    successMsg: '$key unassigned');
+              },
+            ),
+            if (users.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 20),
+                child: EmptyState('No assignable users',
+                    'Nobody on this Jira project can be assigned right now.'),
+              )
+            else
+              for (final u in users)
+                ListTile(
+                  dense: true,
+                  leading: CircleAvatar(
+                    radius: 12,
+                    backgroundColor: C.greenBg,
+                    child: Text(
+                      fmt.s(u['displayName'])
+                          .split(' ')
+                          .where((w) => w.isNotEmpty)
+                          .take(2)
+                          .map((w) => w[0])
+                          .join()
+                          .toUpperCase(),
+                      style: T.monoSmall.copyWith(
+                          fontSize: 9, color: C.greenBright),
+                    ),
+                  ),
+                  title: Text(fmt.s(u['displayName']), style: T.body2),
+                  subtitle: fmt.s(u['email']).isEmpty
+                      ? null
+                      : Text(fmt.s(u['email']), style: T.monoSmall),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await _post(context, '/api/jira/assign',
+                        {'issueKey': key, 'accountId': u['accountId']},
+                        successMsg: 'Assigned to ${fmt.s(u['displayName'])}');
+                  },
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _post(
+      BuildContext context, String path, Map<String, dynamic> body,
+      {required String successMsg}) async {
+    final services = AppScope.of(context);
+    try {
+      final res = await services.mutations.post(path, body);
+      if (!context.mounted) return;
+      final map = fmt.m(res);
+      if (map['success'] == true || map['error'] == null) {
+        toast(context, successMsg);
+        services.store.jira.refresh();
+      } else {
+        toast(context, fmt.s(map['error']).isEmpty ? 'Action failed' : fmt.s(map['error']),
+            error: true);
+      }
+    } catch (e) {
+      if (context.mounted) toast(context, 'Action failed: $e', error: true);
+    }
   }
 }
