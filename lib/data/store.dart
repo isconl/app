@@ -125,6 +125,12 @@ class Store {
   Snapshot get articles => of('articles', '/api/articles/list');
   Snapshot get buffer => of('buffer', '/api/buffer/desk');
 
+  /// The hosted-infrastructure catalogue (hub's native `/services`, not the
+  /// `/api/*` compat layer) -- distinct from `state['services']`'s
+  /// integration-credential status map and from the unrelated axial
+  /// `spaces` tree above; this is "every app/engine the owner runs."
+  Snapshot get hostedServices => of('hostedServices', '/services');
+
   /// Per-entity caches (task detail, lessons, DIA profiles...).
   Snapshot detail(String kind, String id, String path) =>
       of('$kind:$id', path);

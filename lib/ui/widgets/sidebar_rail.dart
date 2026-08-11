@@ -14,6 +14,7 @@ import '../views/decisions.dart';
 import '../views/files.dart';
 import '../views/finance.dart';
 import '../views/github.dart';
+import '../views/hosted_services.dart';
 import '../views/hub.dart';
 import '../views/ideas.dart';
 import '../views/inbox.dart';
@@ -84,6 +85,7 @@ final List<NavGroup> navGroups = [
     NavItem('files', Icons.folder_rounded, 'Files', () => const FilesView()),
     NavItem('articles', Icons.article_rounded, 'Articles', () => const ArticlesView()),
     NavItem('decisions', Icons.gavel_rounded, 'Decisions & Risks', () => const DecisionsView()),
+    NavItem('hosted-services', Icons.dns_rounded, 'Services', () => const HostedServicesView()),
   ]),
   NavGroup('System', [
     NavItem('audit', Icons.link_rounded, 'Audit Chain', () => const AuditView()),

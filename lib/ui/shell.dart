@@ -17,6 +17,7 @@ import 'views/decisions.dart';
 import 'views/files.dart';
 import 'views/finance.dart';
 import 'views/github.dart';
+import 'views/hosted_services.dart';
 import 'views/hub.dart';
 import 'views/ideas.dart';
 import 'views/inbox.dart';
@@ -443,6 +444,8 @@ class MenuSheet extends StatelessWidget {
               () => go(const ArticlesView(), 'Articles')),
           _item(ctx, Icons.gavel_rounded, 'Decisions & Risks',
               () => go(const DecisionsView(), 'Decisions & Risks')),
+          _item(ctx, Icons.dns_rounded, 'Services',
+              () => go(const HostedServicesView(), 'Services')),
           const SectionLabel('System'),
           _item(ctx, Icons.link_rounded, 'Audit Chain',
               () => go(const AuditView(), 'Audit Chain')),
