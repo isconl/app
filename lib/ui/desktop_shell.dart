@@ -10,6 +10,7 @@ import 'shell.dart' show OfflineBanner, SyncIndicator;
 import 'widgets/chat_rail.dart';
 import 'widgets/command_palette.dart';
 import 'widgets/sidebar_rail.dart';
+import 'widgets/vault_sync_banner.dart';
 
 /// Desktop/wide-web chrome: sidebar | content | chat rail, matching
 /// dashboard's 3-column grid (see ui/adaptive_shell.dart for when this picks
@@ -80,6 +81,7 @@ class _DesktopShellState extends State<DesktopShell> {
                 child: Column(
                   children: [
                     _DesktopHeader(title: findNavItem(_selected).label),
+                    const VaultSyncBanner(),
                     OfflineBanner(services: services),
                     Expanded(child: _current),
                   ],

@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/data_health_card.dart';
 import 'tasks.dart' show showAddTaskSheet, TaskRowTile;
 
 /// Hub: answers "what needs me?" in under two seconds.
@@ -45,6 +46,7 @@ class HubView extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const DataHealthCard(),
             // ---- hero ----
             Panel(
               child: Column(
