@@ -5,10 +5,18 @@ import '../../services/branding.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/integrations_section.dart';
 
 /// Connection, security, sync, update-on-cue, appearance, about.
+///
+/// [showIntegrations] adds the full service-credential management section
+/// (Jira/M365/Buffer/Anthropic/Telegram/Signal/Groq + status grid) ported
+/// from the legacy dashboard's Settings page - desktop-only, same reasoning
+/// as Buffer's compose gate: a phone typing a Jira API token is a bad
+/// afternoon. DesktopShell passes true; the mobile Shell's default is false.
 class SettingsView extends StatefulWidget {
-  const SettingsView({super.key});
+  const SettingsView({super.key, this.showIntegrations = false});
+  final bool showIntegrations;
 
   @override
   State<SettingsView> createState() => _SettingsViewState();
@@ -90,6 +98,10 @@ class _SettingsViewState extends State<SettingsView> {
                   ],
                 ),
               ),
+              if (widget.showIntegrations) ...[
+                const IntegrationsSection(),
+              ],
+
               // ---- security ----
               const SectionLabel('Security'),
               Panel(

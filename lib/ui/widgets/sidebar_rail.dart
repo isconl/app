@@ -88,7 +88,8 @@ final List<NavGroup> navGroups = [
   NavGroup('System', [
     NavItem('audit', Icons.link_rounded, 'Audit Chain', () => const AuditView()),
     NavItem('outbox', Icons.outbox_rounded, 'Outbox', () => const OutboxView()),
-    NavItem('settings', Icons.settings_rounded, 'Settings', () => const SettingsView()),
+    NavItem('settings', Icons.settings_rounded, 'Settings',
+        () => const SettingsView(showIntegrations: true)),
   ]),
 ];
 
