@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:sqflite/sqflite.dart' show databaseFactory;
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
 import 'app_scope.dart';
 import 'services/alerts.dart';
@@ -9,12 +12,18 @@ import 'services/platform.dart';
 import 'theme.dart';
 import 'ui/widgets/brand.dart' as brand;
 import 'ui/widgets/brand.dart' show BrandMotion;
+import 'ui/adaptive_shell.dart';
 import 'ui/login.dart';
-import 'ui/shell.dart';
 import 'ui/widgets/common.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // sqflite has no native web implementation; ffi-web backs the same Database
+  // API with an IndexedDB-stored sqlite3 (wasm), so AppDb needs no rewrite -
+  // see data/db.dart's kIsWeb branch for the other half of this.
+  if (kIsWeb) {
+    databaseFactory = databaseFactoryFfiWeb;
+  }
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
@@ -135,10 +144,13 @@ class _RootGateState extends State<RootGate> {
             if (share != null) _captureShare(share);
           });
         }
-        if (session.biometricLock && !_unlocked) {
+        // biometricLock never becomes true on web (session.dart's
+        // _armBiometricsIfUnchosen guards on kIsWeb) but the check is
+        // repeated here so this gate doesn't depend on that invariant holding.
+        if (session.biometricLock && !_unlocked && !kIsWeb) {
           return _LockScreen(onUnlock: _tryUnlock);
         }
-        return const Shell();
+        return const AdaptiveShell();
       },
     );
   }

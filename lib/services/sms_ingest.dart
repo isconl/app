@@ -99,6 +99,9 @@ class SmsIngest extends ChangeNotifier {
   /// Safe to call on every sync and on every app resume: with nothing new it is
   /// one cheap platform call and no network.
   Future<int> run({int limit = 400}) async {
+    // No SMS inbox on web at all - skip before touching the channel/storage,
+    // rather than relying on refreshPermission()'s existing try/catch.
+    if (kIsWeb) return 0;
     if (busy) return 0;
     await refreshPermission();
     if (!granted) return 0;

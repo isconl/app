@@ -32,6 +32,7 @@ dependencies:
   # /api/learning/audio is Bearer-gated and seekable.
   flutter_tts: ^4.2.0
   just_audio: ^0.9.42
+  sqflite_common_ffi_web: ^1.1.2
 
 dev_dependencies:
   flutter_test:

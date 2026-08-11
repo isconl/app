@@ -13,6 +13,9 @@ class SessionService extends ChangeNotifier {
 
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    // WebCrypto-backed on web; the Android options above are simply ignored
+    // there. Spelled out rather than left implicit.
+    webOptions: WebOptions(),
   );
   /* THERE IS NO DEFAULT SERVER, AND THAT IS THE POINT.
    *
@@ -28,8 +31,26 @@ class SessionService extends ChangeNotifier {
    * ARCHITECT's instruction, 7 Aug 2026: "i especially do not want the client apps
    * relying on the render server, eliminate this completely". This is step one of
    * that - the client no longer carries the address of a box holding nothing.
+   *
+   * The web console is the one exception, and it is not really an exception:
+   * on web, "no default" and "same origin" are the same fact stated two ways.
+   * hub serves this build's own HTML/JS (see hub/lib/static.js), so the page's
+   * own origin IS the agent that just handed it to the browser - not a
+   * hardcoded guess at some other box that might be stale or fake, which is
+   * the actual thing the doctrine above forbids. In dev (`flutter run -d
+   * chrome`, served by Flutter's own tooling, not hub) the detected origin
+   * will be wrong; the server field stays editable either way, same as native.
    */
-  static const defaultServer = '';
+  static final defaultServer = kIsWeb ? _webOrigin() : '';
+
+  static String _webOrigin() {
+    try {
+      final origin = Uri.base.origin;
+      return origin.startsWith('http') ? origin : '';
+    } catch (_) {
+      return '';
+    }
+  }
 
   late final ApiClient api =
       ApiClient(baseUrl: defaultServer)..onAuthFailure = _onAuthFailure;
@@ -158,7 +179,9 @@ class SessionService extends ChangeNotifier {
    * stays off, which is the whole difference between a default and a policy.
    */
   Future<void> _armBiometricsIfUnchosen() async {
-    if (_bioChosen || biometricLock) return;
+    // local_auth has no real web story - don't rely on how it happens to fail
+    // there, state the platform boundary outright.
+    if (_bioChosen || biometricLock || kIsWeb) return;
     try {
       final auth = LocalAuthentication();
       final can = await auth.canCheckBiometrics || await auth.isDeviceSupported();

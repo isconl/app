@@ -116,6 +116,10 @@ class Sz {
   static const rXl = 16.0;
   static const pad = 14.0; // card padding
   static const gap = 10.0; // grid gap
+
+  /// Below this width, the web build gets the phone-shaped [Shell] instead
+  /// of [DesktopShell] - see ui/adaptive_shell.dart.
+  static const desktopMinWidth = 900.0;
 }
 
 ThemeData buildTheme() {

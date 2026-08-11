@@ -1,8 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
+import 'branding_stub.dart' if (dart.library.io) 'branding_native.dart' as impl;
 import 'platform.dart';
 
 /// User-supplied in-app logo (Settings -> Appearance).
@@ -17,16 +15,11 @@ class BrandingService extends ChangeNotifier {
 
   Uint8List? logoBytes;
 
-  Future<File> _logoFile() async {
-    final dir = await getApplicationDocumentsDirectory();
-    return File('${dir.path}/brand-logo.png');
-  }
-
   Future<void> load() async {
     try {
-      final file = await _logoFile();
-      if (file.existsSync()) {
-        logoBytes = await file.readAsBytes();
+      final bytes = await impl.loadLogo();
+      if (bytes != null) {
+        logoBytes = bytes;
         notifyListeners();
       }
     } catch (_) {}
@@ -37,8 +30,7 @@ class BrandingService extends ChangeNotifier {
     final bytes = await PlatformBridge.instance.pickImage();
     if (bytes == null || bytes.isEmpty) return false;
     if (bytes.length > 2 * 1024 * 1024) return false; // keep it sane
-    final file = await _logoFile();
-    await file.writeAsBytes(bytes, flush: true);
+    await impl.saveLogo(bytes);
     logoBytes = bytes;
     notifyListeners();
     return true;
@@ -46,8 +38,7 @@ class BrandingService extends ChangeNotifier {
 
   Future<void> reset() async {
     try {
-      final file = await _logoFile();
-      if (file.existsSync()) await file.delete();
+      await impl.deleteLogo();
     } catch (_) {}
     logoBytes = null;
     notifyListeners();

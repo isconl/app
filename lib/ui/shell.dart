@@ -34,6 +34,7 @@ import 'views/tasks.dart';
 import 'views/teams.dart';
 import 'widgets/common.dart';
 import 'widgets/nav_bar.dart';
+import 'widgets/system_status.dart';
 
 /// The shell: Hub · Tasks · Ask · Alerts · Menu.
 /// "Order mirrors the day: orient, do, ask." (dashboard/index.html)
@@ -451,7 +452,9 @@ class MenuSheet extends StatelessWidget {
           _item(ctx, Icons.settings_rounded, 'Settings',
               () => go(const SettingsView(), 'Settings')),
           const SizedBox(height: 18),
-          _statusFooter(services),
+          const Divider(),
+          const SizedBox(height: 10),
+          SystemStatusLines(services: services),
         ],
       ),
     );
@@ -498,55 +501,6 @@ class MenuSheet extends StatelessWidget {
     );
   }
 
-  Widget _statusFooter(AppServices services) {
-    return ListenableBuilder(
-      listenable: Listenable.merge([services.sync, services.session]),
-      builder: (context, _) {
-        final health = services.session.serverHealth;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Divider(),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                StatusDot(services.sync.online ? C.green : C.red,
-                    glow: services.sync.online, size: 6),
-                const SizedBox(width: 8),
-                Text(
-                  services.sync.online
-                      ? 'Agent Online · Gate Armed'
-                      : 'Agent Unreachable · Local Mirror',
-                  style: T.monoSmall,
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                const StatusDot(C.cyan, size: 6),
-                const SizedBox(width: 8),
-                Text(services.sync.statusLine, style: T.monoSmall),
-              ],
-            ),
-            if (health != null) ...[
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  const StatusDot(C.text3, size: 6),
-                  const SizedBox(width: 8),
-                  Text(
-                    'server v${fmt.s(health['version'])} · build ${fmt.s(health['build'])}',
-                    style: T.monoSmall,
-                  ),
-                ],
-              ),
-            ],
-          ],
-        );
-      },
-    );
-  }
 }
 
 /// Wrapper scaffold for views pushed from the Menu.

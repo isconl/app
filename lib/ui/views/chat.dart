@@ -29,7 +29,12 @@ Future<void> openChatSheet(BuildContext context) {
 }
 
 class ChatSheet extends StatefulWidget {
-  const ChatSheet({super.key});
+  const ChatSheet({super.key, this.embedded = false});
+
+  /// True when hosted in the desktop [ChatRail] (a permanent column) rather
+  /// than the mobile modal sheet - hides the close button, which has
+  /// nothing to pop in that context.
+  final bool embedded;
 
   @override
   State<ChatSheet> createState() => _ChatSheetState();
@@ -335,10 +340,12 @@ class _ChatSheetState extends State<ChatSheet> {
                 icon: const Icon(Icons.forum_outlined, size: 19, color: C.text3),
                 onPressed: services.sync.online ? _openThreads : null,
               ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded, size: 20, color: C.text3),
-                onPressed: () => Navigator.pop(context),
-              ),
+              if (!widget.embedded)
+                IconButton(
+                  icon:
+                      const Icon(Icons.close_rounded, size: 20, color: C.text3),
+                  onPressed: () => Navigator.pop(context),
+                ),
             ],
           ),
         ),

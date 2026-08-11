@@ -1,17 +1,16 @@
-import 'dart:io';
-
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../app_scope.dart';
 import '../../data/modules.dart';
-import '../../services/platform.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show ShellAppBar;
 import '../widgets/common.dart';
 import '../widgets/listen_bar.dart';
 import '../widgets/reader.dart';
+import 'learning_export_stub.dart'
+    if (dart.library.io) 'learning_export_native.dart' as export_impl;
 
 /// Courses -> lessons -> reader.
 ///
@@ -462,23 +461,19 @@ class _ExportPdfButtonState extends State<_ExportPdfButton> {
           '/api/learning/export?course=${Uri.encodeComponent(widget.course)}'
           '&lesson=${Uri.encodeComponent(widget.file)}');
 
-      final tmp = await getTemporaryDirectory();
-      final dir = Directory('${tmp.path}/exports');
-      if (!await dir.exists()) await dir.create(recursive: true);
       final name = res.filename.isEmpty
           ? '${widget.course}-${widget.file.replaceAll(RegExp(r'\.md$'), '')}.pdf'
           : res.filename;
-      final out = File('${dir.path}/$name');
-      await out.writeAsBytes(res.bytes, flush: true);
+      final opened = await export_impl.saveAndOpenExport(name, res.bytes);
 
-      if (!mounted) return;
-      final opened = await PlatformBridge.instance.openFile(out.path);
       if (!mounted) return;
       toast(
           context,
           opened
               ? '${(res.bytes.length / 1024).round()} KB - opening'
-              : 'Saved, but nothing on this phone opens a PDF',
+              : kIsWeb
+                  ? 'PDF export isn\'t available in the web console yet'
+                  : 'Saved, but nothing on this phone opens a PDF',
           error: !opened);
     } catch (e) {
       if (!mounted) return;

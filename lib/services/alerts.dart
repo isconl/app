@@ -1,10 +1,13 @@
 import 'dart:ui' show Color;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../util/fmt.dart' as fmt;
 
 /// System notifications for high-severity agent alerts discovered on sync.
+/// No web implementation is registered for this plugin, so it stays quietly
+/// unready there rather than throwing into main.dart's fire-and-forget init().
 class AlertService {
   AlertService._();
   static final AlertService instance = AlertService._();
@@ -13,7 +16,7 @@ class AlertService {
   bool _ready = false;
 
   Future<void> init() async {
-    if (_ready) return;
+    if (_ready || kIsWeb) return;
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     await _plugin.initialize(
         const InitializationSettings(android: android));

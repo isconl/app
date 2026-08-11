@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -12,9 +13,14 @@ class AppDb {
   final Database _db;
 
   static Future<AppDb> open() async {
-    final dir = await getApplicationDocumentsDirectory();
+    // Web has no filesystem; ffi-web keys its IndexedDB store off a bare
+    // logical name rather than a joined directory path (see main.dart's
+    // databaseFactoryFfiWeb wiring).
+    final path = kIsWeb
+        ? 'isconl.db'
+        : p.join((await getApplicationDocumentsDirectory()).path, 'isconl.db');
     final db = await openDatabase(
-      p.join(dir.path, 'isconl.db'),
+      path,
       version: 1,
       onCreate: (db, _) async {
         await db.execute('''
