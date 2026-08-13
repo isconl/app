@@ -52,7 +52,7 @@ class NavGroup {
 /// desktop chrome can't regress the shipped mobile menu. Hub/Tasks/Alerts
 /// are added here (mobile reaches those via its bottom tab bar instead).
 final List<NavGroup> navGroups = [
-  NavGroup('Command', [
+  NavGroup('Hub', [
     NavItem('hub', Icons.bolt_rounded, 'Hub', () => const HubView()),
     NavItem('tasks', Icons.task_alt_rounded, 'Tasks', () => const TasksView()),
     NavItem('planning', Icons.flag_rounded, 'Planning', () => const PlanningView()),
@@ -103,7 +103,15 @@ NavItem findNavItem(String id) =>
 /// tab bar + [MenuSheet] instead). Pinned brand header, scrollable nav
 /// groups, pinned settings/search/status footer - same three-zone shape as
 /// dashboard/style.css's `.sidebar`.
-class SidebarRail extends StatelessWidget {
+/// Which group holds the nav item for a view.
+String? _navGroupForView(String id) {
+  for (final g in navGroups) {
+    if (g.items.any((i) => i.id == id)) return g.label;
+  }
+  return null;
+}
+
+class SidebarRail extends StatefulWidget {
   const SidebarRail({
     super.key,
     required this.selected,
@@ -114,6 +122,26 @@ class SidebarRail extends StatelessWidget {
   final String selected;
   final void Function(NavItem) onSelect;
   final VoidCallback onCommandPalette;
+
+  @override
+  State<SidebarRail> createState() => _SidebarRailState();
+}
+
+/// One group open, ever - whichever holds the active view. Ported from the
+/// web console's sidebar (see webconsole/static/app.js's navOpenOnly): no
+/// group is pinned, so the rail never shows more than the single group
+/// holding the view currently on screen.
+class _SidebarRailState extends State<SidebarRail> {
+  late String? _openGroup = _navGroupForView(widget.selected);
+
+  @override
+  void didUpdateWidget(SidebarRail old) {
+    super.didUpdateWidget(old);
+    if (old.selected != widget.selected) {
+      final g = _navGroupForView(widget.selected);
+      if (g != null && g != _openGroup) setState(() => _openGroup = g);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -133,16 +161,21 @@ class SidebarRail extends StatelessWidget {
                 const BrandMark(size: 30),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('iSconl',
+                  child: Text.rich(
+                    TextSpan(children: [
+                      TextSpan(text: 'i',
                           style: T.headline.copyWith(
-                              fontSize: 17, letterSpacing: -0.3)),
-                      Text('SOVEREIGN CONSOLE',
-                          style: T.label.copyWith(letterSpacing: 0.7)),
-                    ],
+                              fontSize: 17, letterSpacing: -0.3,
+                              fontWeight: FontWeight.w700)),
+                      TextSpan(text: 'Architect',
+                          style: T.headline.copyWith(
+                              fontSize: 17, letterSpacing: -0.3,
+                              fontWeight: FontWeight.w300, color: C.green)),
+                      TextSpan(text: 'hub',
+                          style: T.headline.copyWith(
+                              fontSize: 17, letterSpacing: -0.3,
+                              fontWeight: FontWeight.w700)),
+                    ]),
                   ),
                 ),
               ],
@@ -171,15 +204,20 @@ class SidebarRail extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   children: [
                     for (final group in navGroups) ...[
-                      SectionLabel(group.label,
-                          padding: const EdgeInsets.fromLTRB(6, 14, 6, 6)),
-                      for (final item in group.items)
-                        _RailItem(
-                          item: item,
-                          selected: item.id == selected,
-                          badge: badgeFor(item.id),
-                          onTap: () => onSelect(item),
-                        ),
+                      InkWell(
+                        onTap: () => setState(() =>
+                            _openGroup = _openGroup == group.label ? null : group.label),
+                        child: SectionLabel(group.label,
+                            padding: const EdgeInsets.fromLTRB(6, 14, 6, 6)),
+                      ),
+                      if (_openGroup == group.label)
+                        for (final item in group.items)
+                          _RailItem(
+                            item: item,
+                            selected: item.id == widget.selected,
+                            badge: badgeFor(item.id),
+                            onTap: () => widget.onSelect(item),
+                          ),
                     ],
                   ],
                 );
@@ -188,12 +226,19 @@ class SidebarRail extends StatelessWidget {
           ),
           const Divider(height: 1),
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Enter the Architect...', style: T.small),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
             child: Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => onSelect(findNavItem('settings')),
+                    onPressed: () => widget.onSelect(findNavItem('settings')),
                     icon: const Icon(Icons.settings_rounded, size: 15),
                     label: const Text('Settings'),
                   ),
@@ -201,7 +246,7 @@ class SidebarRail extends StatelessWidget {
                 const SizedBox(width: 8),
                 IconButton(
                   tooltip: 'Command palette (Ctrl+K)',
-                  onPressed: onCommandPalette,
+                  onPressed: widget.onCommandPalette,
                   icon: const Icon(Icons.search_rounded, size: 18),
                   style: IconButton.styleFrom(
                     side: const BorderSide(color: C.border),

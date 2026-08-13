@@ -39,7 +39,7 @@ void main() {
   test('taxonomy matches MenuSheet\'s (27 items: 24 shared with mobile menu + hub/tasks/alerts)', () {
     expect(allItems.length, 27);
     expect(navGroups.map((g) => g.label), [
-      'Command',
+      'Hub',
       'Channels',
       'Personal',
       'Circle',

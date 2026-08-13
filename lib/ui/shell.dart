@@ -397,7 +397,7 @@ class MenuSheet extends StatelessWidget {
               ),
             ),
           ),
-          const SectionLabel('Command'),
+          const SectionLabel('Hub'),
           _item(ctx, Icons.flag_rounded, 'Planning',
               () => go(const PlanningView(), 'Planning')),
           _item(ctx, Icons.calendar_month_rounded, 'Calendar',
