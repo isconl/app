@@ -13,6 +13,7 @@ import 'views/buffer.dart';
 import 'views/calendar.dart';
 import 'views/chat.dart';
 import 'views/circle.dart';
+import 'views/corporate.dart';
 import 'views/decisions.dart';
 import 'views/files.dart';
 import 'views/finance.dart';
@@ -436,6 +437,8 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Projects & Spaces'),
           _item(ctx, Icons.rocket_launch_rounded, 'Projects',
               () => go(const ProjectsView(), 'Projects')),
+          _item(ctx, Icons.apartment_rounded, 'Corporate',
+              () => go(const CorporateView(), 'Corporate')),
           _item(ctx, Icons.hub_rounded, 'Spaces',
               () => go(const SpacesView(), 'Spaces')),
           _item(ctx, Icons.folder_rounded, 'Files',

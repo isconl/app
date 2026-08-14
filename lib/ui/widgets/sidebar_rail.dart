@@ -10,6 +10,7 @@ import '../views/audit.dart';
 import '../views/buffer.dart';
 import '../views/calendar.dart';
 import '../views/circle.dart';
+import '../views/corporate.dart';
 import '../views/decisions.dart';
 import '../views/files.dart';
 import '../views/finance.dart';
@@ -81,6 +82,7 @@ final List<NavGroup> navGroups = [
   ]),
   NavGroup('Projects & Spaces', [
     NavItem('projects', Icons.rocket_launch_rounded, 'Projects', () => const ProjectsView()),
+    NavItem('corporate', Icons.apartment_rounded, 'Corporate', () => const CorporateView()),
     NavItem('spaces', Icons.hub_rounded, 'Spaces', () => const SpacesView()),
     NavItem('files', Icons.folder_rounded, 'Files', () => const FilesView()),
     NavItem('articles', Icons.article_rounded, 'Articles', () => const ArticlesView()),

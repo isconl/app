@@ -36,8 +36,8 @@ void main() {
     }
   });
 
-  test('taxonomy matches MenuSheet\'s (27 items: 24 shared with mobile menu + hub/tasks/alerts)', () {
-    expect(allItems.length, 27);
+  test('taxonomy matches MenuSheet\'s (28 items: 25 shared with mobile menu + hub/tasks/alerts)', () {
+    expect(allItems.length, 28);
     expect(navGroups.map((g) => g.label), [
       'Hub',
       'Channels',

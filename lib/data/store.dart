@@ -120,6 +120,7 @@ class Store {
   Snapshot get rhythm => of('rhythm', '/api/personal/rhythm');
   Snapshot get insights => of('insights', '/api/insights');
   Snapshot get decisions => of('decisions', '/api/decisions');
+  Snapshot get corporate => of('corporate', '/api/corporate');
   Snapshot get wishlist => of('wishlist', '/api/finance/wishlist');
   Snapshot get chatThreads => of('chatThreads', '/api/chat/threads');
   Snapshot get articles => of('articles', '/api/articles/list');
