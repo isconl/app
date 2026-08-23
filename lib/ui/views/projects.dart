@@ -8,7 +8,8 @@ import '../widgets/common.dart';
 
 /// Ventures / products / platforms with live health checks.
 class ProjectsView extends StatelessWidget {
-  const ProjectsView({super.key});
+  const ProjectsView({super.key, this.cat});
+  final String? cat;
 
   @override
   Widget build(BuildContext context) {
@@ -16,10 +17,16 @@ class ProjectsView extends StatelessWidget {
     return SnapshotView(
       snapshot: services.store.projects,
       builder: (context, data) {
-        final projects = fmt.lm(fmt.m(data)['projects']);
+        final allProjects = fmt.lm(fmt.m(data)['projects']);
+        final projects = cat == null || cat!.isEmpty || cat!.toLowerCase() == 'all'
+            ? allProjects
+            : allProjects.where((p) {
+                final category = fmt.s(p['CATEGORY'] ?? p['TYPE'] ?? p['cat']).toLowerCase();
+                return category.contains(cat!.toLowerCase());
+              }).toList();
         if (projects.isEmpty) {
-          return const EmptyState(
-            'No projects registered',
+          return EmptyState(
+            cat == null ? 'No projects registered' : 'No $cat projects registered',
             'Ventures and products from the finance vault appear here.',
             icon: Icons.rocket_launch_rounded,
           );

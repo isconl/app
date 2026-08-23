@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/context_ring_card.dart';
 import '../widgets/data_health_card.dart';
 import 'tasks.dart' show showAddTaskSheet, TaskRowTile;
 
@@ -46,6 +47,7 @@ class HubView extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const ContextRingCard(),
             const DataHealthCard(),
             // ---- hero ----
             Panel(

@@ -139,7 +139,18 @@ class _SettingsViewState extends State<SettingsView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    KvRow('State', sync.statusLine),
+                    Row(
+                      children: [
+                        Expanded(child: KvRow('State', sync.statusLine)),
+                        ListenableBuilder(
+                          listenable: services.outbox,
+                          builder: (context, _) => services.outbox.pending > 0
+                              ? Badge2('${services.outbox.pending}',
+                                  color: C.amberBg, textColor: C.amber)
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ),
                     ListenableBuilder(
                       listenable: services.outbox,
                       builder: (context, _) => KvRow(

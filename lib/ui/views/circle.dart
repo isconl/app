@@ -8,11 +8,12 @@ import '../../util/markdown.dart';
 import '../shell.dart' show ShellAppBar;
 import '../widgets/common.dart';
 
-/// People, by ring. Cards show cadence state; detail view has the DIA
-/// profile, interactions, reachout suggestion, and native contact actions.
+/// People, by ring or full flat roster. Cards show cadence state; detail
+/// view has the DIA profile, interactions, reachout suggestion, and native
+/// contact actions.
 class CircleView extends StatelessWidget {
-  const CircleView({super.key, required this.ring});
-  final String ring;
+  const CircleView({super.key, this.ring});
+  final String? ring;
 
   @override
   Widget build(BuildContext context) {
@@ -20,14 +21,16 @@ class CircleView extends StatelessWidget {
     return SnapshotView(
       snapshot: services.store.circle,
       builder: (context, data) {
-        final people = fmt
-            .lm(fmt.m(data)['people'])
-            .where((p) =>
-                fmt.s(p['CIRCLE']).toLowerCase() == ring.toLowerCase())
-            .toList();
+        final allPeople = fmt.lm(fmt.m(data)['people']);
+        final people = ring == null || ring!.isEmpty || ring!.toLowerCase() == 'all'
+            ? allPeople
+            : allPeople
+                .where((p) =>
+                    fmt.s(p['CIRCLE']).toLowerCase() == ring!.toLowerCase())
+                .toList();
         if (people.isEmpty) {
           return EmptyState(
-            'No one in $ring yet',
+            ring == null ? 'No contacts yet' : 'No one in $ring yet',
             'People appear here as the vault learns your circle.',
             icon: Icons.group_rounded,
           );
@@ -403,3 +406,12 @@ class _DiaCard extends StatelessWidget {
     );
   }
 }
+
+/// Flat contacts roster (all circles, no filter).
+class ContactsView extends StatelessWidget {
+  const ContactsView({super.key});
+
+  @override
+  Widget build(BuildContext context) => const CircleView();
+}
+

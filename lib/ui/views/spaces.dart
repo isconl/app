@@ -5,9 +5,10 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 
-/// The axial tree: AX-VIS / AX-INN / AX-CRE.
+/// The axial tree: AX-WRI / AX-VIS / AX-INN / AX-CRE.
 class SpacesView extends StatelessWidget {
-  const SpacesView({super.key});
+  const SpacesView({super.key, this.axis});
+  final String? axis;
 
   @override
   Widget build(BuildContext context) {
@@ -15,10 +16,18 @@ class SpacesView extends StatelessWidget {
     return SnapshotView(
       snapshot: services.store.spaces,
       builder: (context, data) {
-        final tree = fmt.lm(fmt.m(data)['tree']);
+        final allTree = fmt.lm(fmt.m(data)['tree']);
+        final tree = axis == null || axis!.isEmpty
+            ? allTree
+            : allTree.where((n) {
+                final id = fmt.s(n['ID']).toUpperCase();
+                final name = fmt.s(n['NAME'] ?? n['TITLE']).toUpperCase();
+                final target = axis!.toUpperCase();
+                return id.contains(target) || name.contains(target);
+              }).toList();
         if (tree.isEmpty) {
-          return const EmptyState(
-            'No spaces yet',
+          return EmptyState(
+            axis == null ? 'No spaces yet' : 'No $axis space yet',
             'The trifractal tree appears after the first sync.',
             icon: Icons.hub_rounded,
           );

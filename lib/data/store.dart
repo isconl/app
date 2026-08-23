@@ -93,6 +93,7 @@ class Store {
 
   // Core
   Snapshot get state => of('state', '/api/state');
+  Snapshot get dayBlock => of('dayBlock', '/api/blocks');
   Snapshot get orientation => of('orientation', '/api/orientation');
   Snapshot get notifications =>
       of('notifications', '/api/notifications?limit=200');
@@ -150,6 +151,7 @@ class Store {
   /// spending on a background poll the user may never look at.
   List<Snapshot> get syncSet => [
         state,
+        dayBlock,
         notifications,
         orientation,
         jira,

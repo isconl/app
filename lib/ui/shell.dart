@@ -11,6 +11,7 @@ import 'views/articles.dart';
 import 'views/audit.dart';
 import 'views/buffer.dart';
 import 'views/calendar.dart';
+import 'views/channels_home.dart';
 import 'views/chat.dart';
 import 'views/circle.dart';
 import 'views/corporate.dart';
@@ -25,12 +26,15 @@ import 'views/inbox.dart';
 import 'views/jira.dart';
 import 'views/journal.dart';
 import 'views/learning.dart';
+import 'views/media_view.dart';
 import 'views/notifications.dart';
 import 'views/outbox_view.dart';
+import 'views/personal_home.dart';
 import 'views/planning.dart';
 import 'views/projects.dart';
 import 'views/rhythm.dart';
 import 'views/settings.dart';
+import 'views/social.dart';
 import 'views/spaces.dart';
 import 'views/tasks.dart';
 import 'views/teams.dart';
@@ -38,8 +42,10 @@ import 'widgets/common.dart';
 import 'widgets/nav_bar.dart';
 import 'widgets/system_status.dart';
 
-/// The shell: Hub · Tasks · Ask · Alerts · Menu.
-/// "Order mirrors the day: orient, do, ask." (dashboard/index.html)
+
+/// The shell: Command · Channels · Personal · Projects · Settings (5 true tabs).
+/// FAB = chat. Hamburger in app bar opens the full navigation menu sheet.
+/// Each tab has a horizontal sub-tab strip for inner views.
 class Shell extends StatefulWidget {
   const Shell({super.key});
 
@@ -47,8 +53,79 @@ class Shell extends StatefulWidget {
   State<Shell> createState() => _ShellState();
 }
 
+// ─── Sub-tab label + view definitions ────────────────────────────────────────
+class _SubTab {
+  const _SubTab(this.label, this.view);
+  final String label;
+  final Widget view;
+}
+
+const _commandSubs = [
+  _SubTab('Today',     HubView()),
+  _SubTab('Tasks',     TasksView()),
+  _SubTab('Planning',  PlanningView()),
+  _SubTab('Calendar',  CalendarView()),
+  _SubTab('Alerts',    NotificationsView()),
+];
+
+// Channels & Personal subs are constructed dynamically (need onNavigate callback).
+// They're wired inside _ShellState.
+
+const _projectsSubs = [
+  _SubTab('Portfolio', ProjectsView(cat: 'portfolio')),
+  _SubTab('Products',  ProjectsView(cat: 'product')),
+  _SubTab('Platforms', ProjectsView(cat: 'platform')),
+  _SubTab('Corporate', CorporateView()),
+];
+
+const _settingsSubs = [
+  _SubTab('Settings', SettingsView()),
+  _SubTab('Audit',    AuditView()),
+  _SubTab('Files',    FilesView()),
+  _SubTab('Outbox',   OutboxView()),
+];
+
 class _ShellState extends State<Shell> {
-  int _tab = 0;
+  int _tab = 0;          // 0=Command 1=Channels 2=Personal 3=Projects 4=Settings
+  int _sub = 0;          // sub-tab index within current tab
+
+  void _switchTab(int t) {
+    if (_tab != t) setState(() { _tab = t; _sub = 0; });
+  }
+
+  void _switchSub(int s) {
+    if (_sub != s) setState(() => _sub = s);
+  }
+
+  List<_SubTab> get _channelSubs => [
+    _SubTab('Channels', ChannelsHomeView(onNavigate: _switchSub)),
+    const _SubTab('Teams',   TeamsView()),
+    const _SubTab('Inbox',   InboxView()),
+    const _SubTab('Social',  SocialView()),
+    const _SubTab('Jira',    JiraView()),
+    const _SubTab('GitHub',  GithubView()),
+  ];
+
+  List<_SubTab> get _personalSubs => [
+    _SubTab('Personal', PersonalHomeView(onNavigate: _switchSub)),
+    const _SubTab('Rhythm',    RhythmView()),
+    const _SubTab('Finance',   FinanceView()),
+    const _SubTab('Ideas',     IdeasView()),
+    const _SubTab('Journal',   JournalView()),
+    const _SubTab('Learning',  LearningView()),
+    const _SubTab('Media',     MediaView()),
+  ];
+
+  List<_SubTab> _subsFor(int tab) => switch (tab) {
+    0 => _commandSubs,
+    1 => _channelSubs,
+    2 => _personalSubs,
+    3 => _projectsSubs,
+    4 => _settingsSubs,
+    _ => _commandSubs,
+  };
+
+  static const _tabLabels = ['Command', 'Channels', 'Personal', 'Projects', 'Settings'];
 
   @override
   void initState() {
@@ -59,14 +136,8 @@ class _ShellState extends State<Shell> {
           (fresh) => AlertService.instance.showAgentAlerts(fresh);
       services.sync.start();
       services.sync.fullSync(wake: true).then((_) async {
-        // The whole library, on the device, whether or not he has opened it.
-        // check() asks the agent what exists and what moved; prefetchAll() pulls
-        // everything not already current, including modules never touched. On a
-        // library that is already complete this is zero requests.
         await services.modules.check();
         await services.modules.prefetchAll();
-        // M-Pesa context, every sync. With nothing new this is one cheap
-        // platform call and no network - see services/sms_ingest.dart.
         await services.sms.run();
       });
     });
@@ -75,29 +146,41 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
-    final titles = ['Hub', 'Tasks', 'Alerts'];
+    final subs = _subsFor(_tab);
+    final safeSubIndex = _sub.clamp(0, subs.length - 1);
     return Scaffold(
-      appBar: ShellAppBar(title: titles[_tab]),
+      appBar: ShellAppBar(
+        title: _tabLabels[_tab],
+        onMenu: () => _openMenu(context),
+      ),
       body: Column(
         children: [
           OfflineBanner(services: services),
+          _SubTabBar(
+            subs: subs,
+            index: safeSubIndex,
+            onSelect: _switchSub,
+          ),
           Expanded(
             child: IndexedStack(
-              index: _tab,
-              children: const [
-                HubView(),
-                TasksView(),
-                NotificationsView(),
-              ],
+              index: safeSubIndex,
+              children: subs.map((s) => s.view).toList(),
             ),
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'fab_chat',
+        backgroundColor: C.green,
+        foregroundColor: C.textInverse,
+        child: const Icon(Icons.forum_rounded),
+        onPressed: () => openChatSheet(context),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _BottomBar(
         tab: _tab,
-        onTab: (t) => setState(() => _tab = t),
-        onAsk: () => openChatSheet(context),
-        onMenu: () => _openMenu(context),
+        onTab: _switchTab,
+        services: services,
       ),
     );
   }
@@ -118,20 +201,85 @@ class _ShellState extends State<Shell> {
   }
 }
 
+// ─── Sub-tab horizontal strip ─────────────────────────────────────────────────
+class _SubTabBar extends StatelessWidget {
+  const _SubTabBar({
+    required this.subs,
+    required this.index,
+    required this.onSelect,
+  });
+  final List<_SubTab> subs;
+  final int index;
+  final void Function(int) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    if (subs.length <= 1) return const SizedBox.shrink();
+    return Container(
+      height: 36,
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: C.border)),
+        color: C.bg,
+      ),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        itemCount: subs.length,
+        itemBuilder: (context, i) {
+          final selected = i == index;
+          return GestureDetector(
+            onTap: () => onSelect(i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
+              margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: selected ? C.greenBg : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+                border: selected ? Border.all(color: C.greenDim) : null,
+              ),
+              child: Center(
+                child: Text(
+                  subs[i].label,
+                  style: (selected
+                          ? T.body2.copyWith(color: C.greenBright, fontWeight: FontWeight.w600)
+                          : T.body2)
+                      .copyWith(fontSize: 12),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+
+
 /// App bar shared by the shell and pushed views: brand, title, equicycle
-/// context, live sync indicator.
+/// context, sync indicator. The shell passes [onMenu] to render a hamburger
+/// icon in the actions trailing area; secondary screens omit it and get the
+/// back arrow from the navigator instead.
 class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const ShellAppBar(
-      {super.key,
-      required this.title,
-      this.showBrand = true,
-      this.actions = const []});
+  const ShellAppBar({
+    super.key,
+    required this.title,
+    this.showBrand = true,
+    this.actions = const [],
+    this.onMenu,
+  });
   final String title;
   final bool showBrand;
 
   /// Screen-specific controls, placed before the sync indicator so the
   /// indicator stays in the same corner on every screen.
   final List<Widget> actions;
+
+  /// When non-null, renders a hamburger icon button as the leading trailing
+  /// action. Used by the Shell; secondary screens leave this null.
+  final VoidCallback? onMenu;
 
   @override
   Size get preferredSize => const Size.fromHeight(56);
@@ -174,8 +322,18 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
       ),
       actions: [
         ...actions,
-        const SyncIndicator(),
-        const SizedBox(width: 12),
+        if (onMenu != null)
+          IconButton(
+            icon: const Icon(Icons.menu_rounded),
+            tooltip: 'Navigation menu',
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              onMenu!();
+            },
+          )
+        else
+          const SyncIndicator(),
+        const SizedBox(width: 4),
       ],
       shape: const Border(bottom: BorderSide(color: C.border)),
     );
@@ -269,70 +427,46 @@ class OfflineBanner extends StatelessWidget {
   }
 }
 
-/// Hub · Tasks · Ask · Alerts · Menu, in the expanding-pill style ARCHITECT
-/// specified (see `widgets/nav_bar.dart`).
-///
-/// The elevated green Ask circle that used to sit in the middle is gone: a
-/// raised button in the centre of a flat animated row fights it. Ask keeps its
-/// prominence a quieter way - it is the one item tinted green at rest, so it
-/// is still the thing your eye lands on first.
+/// Command · Channels · Personal · Projects · Settings — 5 true tabs.
+/// The floating chat FAB replaces the old Ask slot.
+/// The hamburger is now in the app bar; this bar is purely navigational.
 class _BottomBar extends StatelessWidget {
   const _BottomBar({
     required this.tab,
     required this.onTab,
-    required this.onAsk,
-    required this.onMenu,
+    required this.services,
   });
 
   final int tab;
   final void Function(int) onTab;
-  final VoidCallback onAsk;
-  final VoidCallback onMenu;
-
-  /// Row order, and the map from row position to tab index. Ask and Menu are
-  /// actions, so they hold no tab.
-  static const _askSlot = 2;
-  static const _menuSlot = 4;
-  static const _tabForSlot = {0: 0, 1: 1, 3: 2};
-  static const _slotForTab = {0: 0, 1: 1, 2: 3};
+  final AppServices services;
 
   @override
   Widget build(BuildContext context) {
-    final services = AppScope.of(context);
     return ListenableBuilder(
       listenable: services.sync,
       builder: (context, _) {
         final n = services.sync.newAlerts;
         return PillNavBar(
-          index: _slotForTab[tab] ?? -1,
-          onSelect: (slot) {
-            if (slot == _askSlot) return onAsk();
-            if (slot == _menuSlot) return onMenu();
-            final t = _tabForSlot[slot];
-            if (t != null) onTab(t);
-          },
+          index: tab,
+          onSelect: onTab,
           items: [
-            const PillNavItem(icon: Icons.bolt_rounded, label: 'Hub'),
-            const PillNavItem(icon: Icons.task_alt_rounded, label: 'Tasks'),
-            const PillNavItem(
-              icon: Icons.forum_rounded,
-              label: 'Ask',
-              isTab: false,
-              restingColor: C.green,
-            ),
+            const PillNavItem(icon: Icons.bolt_rounded,       label: 'Command'),
+            const PillNavItem(icon: Icons.forum_rounded,       label: 'Channels'),
+            const PillNavItem(icon: Icons.person_rounded,      label: 'Personal'),
+            const PillNavItem(icon: Icons.rocket_launch_rounded, label: 'Projects'),
             PillNavItem(
-              icon: Icons.notifications_rounded,
-              label: 'Alerts',
+              icon: Icons.settings_rounded,
+              label: 'Settings',
               badge: n > 0 ? _AlertCount(n) : null,
             ),
-            const PillNavItem(
-                icon: Icons.menu_rounded, label: 'Menu', isTab: false),
           ],
         );
       },
     );
   }
 }
+
 
 class _AlertCount extends StatelessWidget {
   const _AlertCount(this.n);
@@ -398,49 +532,78 @@ class MenuSheet extends StatelessWidget {
               ),
             ),
           ),
-          const SectionLabel('Hub'),
+          // ── COMMAND ──────────────────────────────────────────
+          const SectionLabel('Command'),
+          _item(ctx, Icons.bolt_rounded, 'Today',
+              () => go(const HubView(), 'Today')),
+          _item(ctx, Icons.task_alt_rounded, 'Tasks',
+              () => go(const TasksView(), 'Tasks')),
           _item(ctx, Icons.flag_rounded, 'Planning',
               () => go(const PlanningView(), 'Planning')),
           _item(ctx, Icons.calendar_month_rounded, 'Calendar',
               () => go(const CalendarView(), 'Calendar')),
-          _item(ctx, Icons.lightbulb_rounded, 'Ideas',
-              () => go(const IdeasView(), 'Ideas'),
-              badge: ideasCount > 0 ? '$ideasCount' : null),
+          _item(ctx, Icons.notifications_rounded, 'Notifications',
+              () => go(const NotificationsView(), 'Notifications')),
+          // ── CHANNELS ─────────────────────────────────────────
           const SectionLabel('Channels'),
+          _item(ctx, Icons.groups_rounded, 'Teams',
+              () => go(const TeamsView(), 'Teams')),
           _item(ctx, Icons.inbox_rounded, 'Inbox',
               () => go(const InboxView(), 'Inbox'),
               badge: inboxCount > 0 ? '$inboxCount' : null),
-          _item(ctx, Icons.view_kanban_rounded, 'Kanban',
-              () => go(const JiraView(), 'Kanban')),
-          _item(ctx, Icons.groups_rounded, 'Teams',
-              () => go(const TeamsView(), 'Teams')),
+          _item(ctx, Icons.share_rounded, 'Social',
+              () => go(const SocialView(), 'Social')),
+          _item(ctx, Icons.view_kanban_rounded, 'Jira',
+              () => go(const JiraView(), 'Jira')),
           _item(ctx, Icons.code_rounded, 'GitHub',
               () => go(const GithubView(), 'GitHub')),
-          _item(ctx, Icons.share_rounded, 'Buffer',
-              () => go(const BufferView(), 'Buffer')),
+          // ── PERSONAL ─────────────────────────────────────────
           const SectionLabel('Personal'),
-          _item(ctx, Icons.account_balance_wallet_rounded, 'Finance',
-              () => go(const FinanceView(), 'Finance')),
           _item(ctx, Icons.local_fire_department_rounded, 'Rhythm',
               () => go(const RhythmView(), 'Rhythm')),
+          _item(ctx, Icons.account_balance_wallet_rounded, 'Finance',
+              () => go(const FinanceView(), 'Finance')),
+          _item(ctx, Icons.lightbulb_rounded, 'Ideas',
+              () => go(const IdeasView(), 'Ideas'),
+              badge: ideasCount > 0 ? '$ideasCount' : null),
           _item(ctx, Icons.auto_stories_rounded, 'Journal',
               () => go(const JournalView(), 'Journal')),
           _item(ctx, Icons.school_rounded, 'Learning',
               () => go(const LearningView(), 'Learning')),
+          _item(ctx, Icons.play_circle_filled_rounded, 'Media',
+              () => go(const MediaView(), 'Media')),
+          // ── PROJECTS ─────────────────────────────────────────
+          const SectionLabel('Projects'),
+          _item(ctx, Icons.rocket_launch_rounded, 'Portfolio',
+              () => go(const ProjectsView(cat: 'portfolio'), 'Portfolio')),
+          _item(ctx, Icons.inventory_2_rounded, 'Products',
+              () => go(const ProjectsView(cat: 'product'), 'Products')),
+          _item(ctx, Icons.layers_rounded, 'Platforms',
+              () => go(const ProjectsView(cat: 'platform'), 'Platforms')),
+          _item(ctx, Icons.apartment_rounded, 'Corporate',
+              () => go(const CorporateView(), 'Corporate')),
+          // ── CIRCLE ───────────────────────────────────────────
           const SectionLabel('Circle'),
+          _item(ctx, Icons.contacts_rounded, 'All Contacts',
+              () => go(const ContactsView(), 'Contacts')),
           _item(ctx, Icons.favorite_rounded, 'Family',
               () => go(const CircleView(ring: 'family'), 'Family')),
           _item(ctx, Icons.work_rounded, 'Professional',
               () => go(const CircleView(ring: 'professional'), 'Professional')),
           _item(ctx, Icons.celebration_rounded, 'Social',
               () => go(const CircleView(ring: 'social'), 'Social')),
-          const SectionLabel('Projects & Spaces'),
-          _item(ctx, Icons.rocket_launch_rounded, 'Projects',
-              () => go(const ProjectsView(), 'Projects')),
-          _item(ctx, Icons.apartment_rounded, 'Corporate',
-              () => go(const CorporateView(), 'Corporate')),
-          _item(ctx, Icons.hub_rounded, 'Spaces',
+          // ── SPACES ───────────────────────────────────────────
+          const SectionLabel('Spaces'),
+          _item(ctx, Icons.hub_rounded, 'All Spaces',
               () => go(const SpacesView(), 'Spaces')),
+          _item(ctx, Icons.visibility_rounded, 'Visionary',
+              () => go(const SpacesView(axis: 'VIS'), 'Visionary')),
+          _item(ctx, Icons.engineering_rounded, 'Innovator',
+              () => go(const SpacesView(axis: 'INN'), 'Innovator')),
+          _item(ctx, Icons.palette_rounded, 'Creator',
+              () => go(const SpacesView(axis: 'CRE'), 'Creator')),
+          // ── SYSTEM ───────────────────────────────────────────
+          const SectionLabel('System'),
           _item(ctx, Icons.folder_rounded, 'Files',
               () => go(const FilesView(), 'Files')),
           _item(ctx, Icons.article_rounded, 'Articles',
@@ -449,7 +612,6 @@ class MenuSheet extends StatelessWidget {
               () => go(const DecisionsView(), 'Decisions & Risks')),
           _item(ctx, Icons.dns_rounded, 'Services',
               () => go(const HostedServicesView(), 'Services')),
-          const SectionLabel('System'),
           _item(ctx, Icons.link_rounded, 'Audit Chain',
               () => go(const AuditView(), 'Audit Chain')),
           _item(ctx, Icons.outbox_rounded, 'Outbox',
@@ -465,6 +627,7 @@ class MenuSheet extends StatelessWidget {
       ),
     );
   }
+
 
   Widget _item(BuildContext context, IconData icon, String label,
       VoidCallback onTap,
