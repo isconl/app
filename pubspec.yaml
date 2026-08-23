@@ -6,7 +6,7 @@ publish_to: 'none'
 # minor bump: the client caught up with three days of agent work (Ideas, Rhythm,
 # Files, Buffer, Articles, PIN sign-in, agent-served updates), which is more than
 # a patch admits to.
-version: 0.1.3+6
+version: 0.2.0+7
 
 environment:
   sdk: ^3.12.0
@@ -27,7 +27,7 @@ dependencies:
   flutter_local_notifications: ^19.0.0
   # Course audio. flutter_tts is the free, offline, always-available default and
   # works on every module including the plane-B ones, because nothing leaves the
-  # device. just_audio plays the agent's ElevenLabs narration - chosen over
+  # device. just_audio plays the agent's Chatterbox narration - chosen over
   # audioplayers because it supports auth headers and HTTP range requests, and
   # /api/learning/audio is Bearer-gated and seekable.
   flutter_tts: ^4.2.0

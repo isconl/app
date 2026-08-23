@@ -119,13 +119,13 @@ class _ShellState extends State<Shell> {
   List<_SubTab> _subsFor(int tab) => switch (tab) {
     0 => _commandSubs,
     1 => _channelSubs,
-    2 => _personalSubs,
-    3 => _projectsSubs,
+    2 => _projectsSubs,
+    3 => _personalSubs,
     4 => _settingsSubs,
     _ => _commandSubs,
   };
 
-  static const _tabLabels = ['Command', 'Channels', 'Personal', 'Projects', 'Settings'];
+  static const _tabLabels = ['Command', 'Channels', 'Projects', 'Personal', 'Settings'];
 
   @override
   void initState() {
@@ -427,7 +427,7 @@ class OfflineBanner extends StatelessWidget {
   }
 }
 
-/// Command · Channels · Personal · Projects · Settings — 5 true tabs.
+/// Command · Channels · Projects · Personal · Settings — 5 true tabs.
 /// The floating chat FAB replaces the old Ask slot.
 /// The hamburger is now in the app bar; this bar is purely navigational.
 class _BottomBar extends StatelessWidget {
@@ -451,10 +451,10 @@ class _BottomBar extends StatelessWidget {
           index: tab,
           onSelect: onTab,
           items: [
-            const PillNavItem(icon: Icons.bolt_rounded,       label: 'Command'),
-            const PillNavItem(icon: Icons.forum_rounded,       label: 'Channels'),
-            const PillNavItem(icon: Icons.person_rounded,      label: 'Personal'),
+            const PillNavItem(icon: Icons.bolt_rounded,         label: 'Command'),
+            const PillNavItem(icon: Icons.dynamic_feed_rounded, label: 'Channels'),
             const PillNavItem(icon: Icons.rocket_launch_rounded, label: 'Projects'),
+            const PillNavItem(icon: Icons.person_rounded,        label: 'Personal'),
             PillNavItem(
               icon: Icons.settings_rounded,
               label: 'Settings',
@@ -542,8 +542,8 @@ class MenuSheet extends StatelessWidget {
               () => go(const PlanningView(), 'Planning')),
           _item(ctx, Icons.calendar_month_rounded, 'Calendar',
               () => go(const CalendarView(), 'Calendar')),
-          _item(ctx, Icons.notifications_rounded, 'Notifications',
-              () => go(const NotificationsView(), 'Notifications')),
+          _item(ctx, Icons.notifications_rounded, 'Alerts',
+              () => go(const NotificationsView(), 'Alerts')),
           // ── CHANNELS ─────────────────────────────────────────
           const SectionLabel('Channels'),
           _item(ctx, Icons.groups_rounded, 'Teams',
@@ -557,6 +557,16 @@ class MenuSheet extends StatelessWidget {
               () => go(const JiraView(), 'Jira')),
           _item(ctx, Icons.code_rounded, 'GitHub',
               () => go(const GithubView(), 'GitHub')),
+          // ── PROJECTS ─────────────────────────────────────────
+          const SectionLabel('Projects'),
+          _item(ctx, Icons.rocket_launch_rounded, 'Portfolio',
+              () => go(const ProjectsView(cat: 'portfolio'), 'Portfolio')),
+          _item(ctx, Icons.inventory_2_rounded, 'Products',
+              () => go(const ProjectsView(cat: 'product'), 'Products')),
+          _item(ctx, Icons.layers_rounded, 'Platforms',
+              () => go(const ProjectsView(cat: 'platform'), 'Platforms')),
+          _item(ctx, Icons.apartment_rounded, 'Corporate',
+              () => go(const CorporateView(), 'Corporate')),
           // ── PERSONAL ─────────────────────────────────────────
           const SectionLabel('Personal'),
           _item(ctx, Icons.local_fire_department_rounded, 'Rhythm',
@@ -572,16 +582,6 @@ class MenuSheet extends StatelessWidget {
               () => go(const LearningView(), 'Learning')),
           _item(ctx, Icons.play_circle_filled_rounded, 'Media',
               () => go(const MediaView(), 'Media')),
-          // ── PROJECTS ─────────────────────────────────────────
-          const SectionLabel('Projects'),
-          _item(ctx, Icons.rocket_launch_rounded, 'Portfolio',
-              () => go(const ProjectsView(cat: 'portfolio'), 'Portfolio')),
-          _item(ctx, Icons.inventory_2_rounded, 'Products',
-              () => go(const ProjectsView(cat: 'product'), 'Products')),
-          _item(ctx, Icons.layers_rounded, 'Platforms',
-              () => go(const ProjectsView(cat: 'platform'), 'Platforms')),
-          _item(ctx, Icons.apartment_rounded, 'Corporate',
-              () => go(const CorporateView(), 'Corporate')),
           // ── CIRCLE ───────────────────────────────────────────
           const SectionLabel('Circle'),
           _item(ctx, Icons.contacts_rounded, 'All Contacts',

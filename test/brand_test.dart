@@ -87,6 +87,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump(const Duration(milliseconds: 400));
       expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
     });
 
     testWidgets('drawing completes and reports', (tester) async {

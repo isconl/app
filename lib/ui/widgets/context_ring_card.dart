@@ -422,16 +422,29 @@ class _ParticleNetworkPainter extends CustomPainter {
   final double progress;
   final Color color;
 
+  // Exact coordinates from web console's CTX_FIELD on 200x400 viewBox
   static const _nodesA = [
-    [0.2, 0.3], [0.7, 0.4], [0.3, 0.6], [0.6, 0.7],
-    [0.4, 0.8], [0.8, 0.8], [0.2, 0.9], [0.1, 0.4],
+    [100 / 200, 120 / 400],
+    [148 / 200, 158 / 400],
+    [60 / 200, 168 / 400],
+    [122 / 200, 206 / 400],
+    [74 / 200, 232 / 400],
+    [142 / 200, 252 / 400],
+    [100 / 200, 290 / 400],
+    [56 / 200, 124 / 400],
   ];
   static const _edgesA = [
     [0, 1], [0, 2], [1, 3], [2, 4], [3, 4], [3, 5], [4, 6], [5, 6], [0, 7], [2, 7]
   ];
 
   static const _nodesB = [
-    [0.4, 0.35], [0.65, 0.45], [0.45, 0.55], [0.7, 0.6], [0.3, 0.5], [0.55, 0.7], [0.4, 0.25],
+    [80 / 200, 150 / 400],
+    [130 / 200, 186 / 400],
+    [92 / 200, 224 / 400],
+    [136 / 200, 236 / 400],
+    [64 / 200, 196 / 400],
+    [112 / 200, 268 / 400],
+    [86 / 200, 102 / 400],
   ];
   static const _edgesB = [
     [0, 1], [1, 2], [2, 3], [0, 4], [4, 2], [2, 5], [3, 5], [0, 6]
@@ -439,17 +452,8 @@ class _ParticleNetworkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final linePaint = Paint()
-      ..color = color.withOpacity(0.06)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    final dotPaint = Paint()
-      ..color = color.withOpacity(0.12)
-      ..style = PaintingStyle.fill;
-
-    _drawLayer(canvas, size, _nodesA, _edgesA, progress * 2 * math.pi, linePaint, dotPaint);
-    _drawLayer(canvas, size, _nodesB, _edgesB, -progress * 2 * math.pi, linePaint, dotPaint);
+    _drawLayer(canvas, size, _nodesA, _edgesA, progress * 2 * math.pi, 1.0, 0);
+    _drawLayer(canvas, size, _nodesB, _edgesB, -progress * 2 * math.pi, 0.85, 5);
   }
 
   void _drawLayer(
@@ -458,28 +462,59 @@ class _ParticleNetworkPainter extends CustomPainter {
     List<List<double>> nodes,
     List<List<int>> edges,
     double angle,
-    Paint linePaint,
-    Paint dotPaint,
+    double scale,
+    int offsetSeed,
   ) {
     final cx = size.width / 2;
     final cy = size.height / 2;
 
-    final points = nodes.map((n) {
-      final x = n[0] * size.width - cx;
-      final y = n[1] * size.height - cy;
-      final rx = x * math.cos(angle * 0.05) - y * math.sin(angle * 0.05) + cx;
-      final ry = x * math.sin(angle * 0.05) + y * math.cos(angle * 0.05) + cy;
-      return Offset(rx, ry);
-    }).toList();
+    final points = <Offset>[];
+    for (int i = 0; i < nodes.length; i++) {
+      final n = nodes[i];
+      // subtle drift around center
+      final x = (n[0] - 0.5) * size.width;
+      final y = (n[1] - 0.5) * size.height;
+      final cosA = math.cos(angle * 0.15);
+      final sinA = math.sin(angle * 0.15);
+      final rx = cx + (x * cosA - y * sinA);
+      final ry = cy + (x * sinA + y * cosA);
+      points.add(Offset(rx, ry));
+    }
 
-    for (final e in edges) {
+    // Edges with animated opacity pulses
+    for (int i = 0; i < edges.length; i++) {
+      final e = edges[i];
       if (e[0] < points.length && e[1] < points.length) {
-        canvas.drawLine(points[e[0]], points[e[1]], linePaint);
+        final p1 = points[e[0]];
+        final p2 = points[e[1]];
+        final wave = 0.5 + 0.5 * math.sin(progress * 2 * math.pi * 3 + (i + offsetSeed) * 1.4);
+        final lineAlpha = (0.05 + 0.10 * wave).clamp(0.0, 1.0);
+        final linePaint = Paint()
+          ..color = color.withOpacity(lineAlpha)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0;
+        canvas.drawLine(p1, p2, linePaint);
       }
     }
 
-    for (final p in points) {
-      canvas.drawCircle(p, 1.5, dotPaint);
+    // Nodes with glowing halos and pulsing scale
+    for (int i = 0; i < points.length; i++) {
+      final p = points[i];
+      final nodeWave = 0.5 + 0.5 * math.sin(progress * 2 * math.pi * 2.5 + (i + offsetSeed) * 2.1);
+      final dotAlpha = (0.15 + 0.25 * nodeWave).clamp(0.0, 1.0);
+      final radius = (i % 3 == 0 ? 2.5 : 1.8) * (0.85 + 0.35 * nodeWave);
+
+      // Outer halo
+      final haloPaint = Paint()
+        ..color = color.withOpacity(dotAlpha * 0.25)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(p, radius * 2.8, haloPaint);
+
+      // Core dot
+      final dotPaint = Paint()
+        ..color = color.withOpacity(dotAlpha)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(p, radius, dotPaint);
     }
   }
 
