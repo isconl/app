@@ -146,39 +146,52 @@ class _ShellState extends State<Shell> {
     final services = AppScope.of(context);
     final subs = _subsFor(_tab);
     final safeSubIndex = _sub.clamp(0, subs.length - 1);
-    return Scaffold(
-      appBar: ShellAppBar(
-        title: _tabLabels[_tab],
-        onMenu: () => _openMenu(context),
-      ),
-      body: Column(
-        children: [
-          OfflineBanner(services: services),
-          _SubTabBar(
-            subs: subs,
-            index: safeSubIndex,
-            onSelect: _switchSub,
-          ),
-          Expanded(
-            child: IndexedStack(
+    return PopScope(
+      // Allow the system to pop only when we are already at the root position
+      // (tab 0, sub 0). Otherwise step back within the app ourselves.
+      canPop: _tab == 0 && _sub == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return; // system handled it (we're at root)
+        if (_sub > 0) {
+          setState(() => _sub = 0);
+        } else if (_tab > 0) {
+          setState(() { _tab = 0; _sub = 0; });
+        }
+      },
+      child: Scaffold(
+        appBar: ShellAppBar(
+          title: _tabLabels[_tab],
+          onMenu: () => _openMenu(context),
+        ),
+        body: Column(
+          children: [
+            OfflineBanner(services: services),
+            _SubTabBar(
+              subs: subs,
               index: safeSubIndex,
-              children: subs.map((s) => s.view).toList(),
+              onSelect: _switchSub,
             ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'fab_chat',
-        backgroundColor: C.green,
-        foregroundColor: C.textInverse,
-        child: const Icon(Icons.forum_rounded),
-        onPressed: () => openChatSheet(context),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      bottomNavigationBar: _BottomBar(
-        tab: _tab,
-        onTab: _switchTab,
-        services: services,
+            Expanded(
+              child: IndexedStack(
+                index: safeSubIndex,
+                children: subs.map((s) => s.view).toList(),
+              ),
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          heroTag: 'fab_chat',
+          backgroundColor: C.green,
+          foregroundColor: C.textInverse,
+          child: const Icon(Icons.forum_rounded),
+          onPressed: () => openChatSheet(context),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        bottomNavigationBar: _BottomBar(
+          tab: _tab,
+          onTab: _switchTab,
+          services: services,
+        ),
       ),
     );
   }

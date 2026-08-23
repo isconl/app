@@ -164,6 +164,9 @@ class Store {
         spaces,
         plans,
         projects,
+        corporate,
+        articles,
+        ventures,
         github,
         ideas,
         rhythm,
@@ -171,6 +174,9 @@ class Store {
         audit,
         refs,
         tags,
+        hostedServices,
+        dataHealth,
+        wishlist,
       ];
 
   Future<void> clearAll() async {

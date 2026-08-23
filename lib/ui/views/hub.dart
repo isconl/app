@@ -74,9 +74,8 @@ class HubView extends StatelessWidget {
                 ],
               ),
             ),
-            // ---- console ring + data health below the hero ----
+            // ---- console ring ----
             const ContextRingCard(),
-            const DataHealthCard(),
             // ---- orientation ----
             const _OrientationStrip(),
             // ---- today's tasks ----
@@ -154,6 +153,8 @@ class HubView extends StatelessWidget {
                 ),
               ),
             ],
+            // ---- data health ----
+            const DataHealthCard(),
             // ---- services ----
             const SectionLabel('Services'),
             _ServicesCard(services: fmt.m(state['services'])),
