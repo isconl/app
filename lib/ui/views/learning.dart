@@ -29,8 +29,14 @@ class _LearningViewState extends State<LearningView> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      AppScope.of(context).modules.check();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final lib = AppScope.of(context).modules;
+      // Check manifest first, then immediately pull anything missing/stale.
+      // This is what puts the whole library on the device without the user
+      // having to open every module manually.
+      await lib.check();
+      if (mounted) lib.prefetchAll();
     });
   }
 
@@ -51,9 +57,22 @@ class _LearningViewState extends State<LearningView> {
             );
           }
           final lib = services.modules;
+
+          // Group courses by CLASSROOM track (matching the web UI organization)
+          final Map<String, List<Map<String, dynamic>>> byTrack = {};
+          for (final c in courses) {
+            final track = fmt.s(c['CLASSROOM']).isEmpty
+                ? 'Other'
+                : fmt.s(c['CLASSROOM']);
+            byTrack.putIfAbsent(track, () => []).add(c);
+          }
+          // Preserve the natural order tracks appear in the data
+          final tracks = byTrack.keys.toList();
+
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // ── offline status bar + download-all action ──────────────
               if (lib.prefetching)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10, left: 2),
@@ -61,14 +80,16 @@ class _LearningViewState extends State<LearningView> {
                     children: [
                       const MiniSpinner(),
                       const SizedBox(width: 8),
-                      Text(
-                        'Taking the library offline · ${lib.prefetchDone} of ${lib.prefetchTotal}',
-                        style: T.tiny.copyWith(color: C.text2),
+                      Expanded(
+                        child: Text(
+                          'Taking the library offline · ${lib.prefetchDone} of ${lib.prefetchTotal}',
+                          style: T.tiny.copyWith(color: C.text2),
+                        ),
                       ),
                     ],
                   ),
                 )
-              else if (lib.downloadedCount > 0)
+              else
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10, left: 2),
                   child: Row(
@@ -76,30 +97,62 @@ class _LearningViewState extends State<LearningView> {
                       Icon(
                           lib.staleCount > 0
                               ? Icons.sync_problem_rounded
-                              : Icons.offline_pin_rounded,
+                              : (lib.downloadedCount >= lib.knownCount && lib.knownCount > 0
+                                  ? Icons.offline_pin_rounded
+                                  : Icons.cloud_download_rounded),
                           size: 13,
-                          color: lib.staleCount > 0 ? C.amber : C.green),
+                          color: lib.staleCount > 0
+                              ? C.amber
+                              : (lib.downloadedCount >= lib.knownCount && lib.knownCount > 0
+                                  ? C.green
+                                  : C.text3)),
                       const SizedBox(width: 7),
                       Expanded(
                         child: Text(
                           lib.staleCount > 0
-                              ? '${lib.downloadedCount} modules on this device · ${lib.staleCount} updated on the agent'
-                              : lib.knownCount > 0 &&
-                                      lib.downloadedCount >= lib.knownCount
-                                  ? 'The whole library is on this device, ${lib.downloadedCount} modules, readable anywhere'
-                                  : '${lib.downloadedCount} of ${lib.knownCount} modules on this device',
+                              ? '${lib.downloadedCount} modules on device · ${lib.staleCount} updated'
+                              : lib.knownCount > 0 && lib.downloadedCount >= lib.knownCount
+                                  ? 'All ${lib.downloadedCount} modules on this device — readable anywhere'
+                                  : lib.downloadedCount > 0
+                                      ? '${lib.downloadedCount} of ${lib.knownCount} modules on this device'
+                                      : 'Modules will download automatically',
                           style: T.tiny.copyWith(
                               color: lib.staleCount > 0 ? C.amber : C.text3),
                         ),
                       ),
+                      // Download-all / refresh-stale tap target
+                      if (!lib.prefetching &&
+                          (lib.staleCount > 0 ||
+                              lib.downloadedCount < lib.knownCount))
+                        InkWell(
+                          borderRadius: BorderRadius.circular(Sz.rSm),
+                          onTap: () => lib.prefetchAll(),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            child: Text(
+                              lib.staleCount > 0
+                                  ? 'Refresh all'
+                                  : 'Download all',
+                              style: T.tiny.copyWith(
+                                  color: C.green,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
-              for (final course in courses)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _CourseTile(course: course),
-                ),
+
+              // ── courses grouped by track ──────────────────────────────
+              for (final track in tracks) ...[
+                SectionLabel(track),
+                for (final course in byTrack[track]!)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _CourseTile(course: course),
+                  ),
+              ],
             ],
           );
         },

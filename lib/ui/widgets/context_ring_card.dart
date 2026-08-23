@@ -82,7 +82,7 @@ class _ContextRingCardState extends State<ContextRingCard>
           decoration: BoxDecoration(
             color: C.panel,
             borderRadius: BorderRadius.circular(Sz.rLg),
-            border: Border.all(color: C.border),
+            // no border — console ring floats without a hard edge
           ),
           clipBehavior: Clip.antiAlias,
           child: Stack(

@@ -47,9 +47,7 @@ class HubView extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const ContextRingCard(),
-            const DataHealthCard(),
-            // ---- hero ----
+            // ---- hero — date/due/review card, always first ----
             Panel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,6 +74,9 @@ class HubView extends StatelessWidget {
                 ],
               ),
             ),
+            // ---- console ring + data health below the hero ----
+            const ContextRingCard(),
+            const DataHealthCard(),
             // ---- orientation ----
             const _OrientationStrip(),
             // ---- today's tasks ----
