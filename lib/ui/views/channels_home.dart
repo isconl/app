@@ -4,11 +4,6 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
-import 'github.dart';
-import 'inbox.dart';
-import 'jira.dart';
-import 'social.dart';
-import 'teams.dart';
 
 /// Channels: dashboard landing screen for flow and coordination.
 /// Links to Teams, Inbox, Social/Buffer, Jira/Kanban, and GitHub.

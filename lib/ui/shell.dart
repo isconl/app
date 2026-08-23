@@ -9,7 +9,6 @@ import '../theme.dart';
 import '../util/fmt.dart' as fmt;
 import 'views/articles.dart';
 import 'views/audit.dart';
-import 'views/buffer.dart';
 import 'views/calendar.dart';
 import 'views/channels_home.dart';
 import 'views/chat.dart';
@@ -61,11 +60,10 @@ class _SubTab {
 }
 
 const _commandSubs = [
-  _SubTab('Today',     HubView()),
+  _SubTab('Hub',       HubView()),
   _SubTab('Tasks',     TasksView()),
   _SubTab('Planning',  PlanningView()),
   _SubTab('Calendar',  CalendarView()),
-  _SubTab('Alerts',    NotificationsView()),
 ];
 
 // Channels & Personal subs are constructed dynamically (need onNavigate callback).
@@ -80,6 +78,7 @@ const _projectsSubs = [
 
 const _settingsSubs = [
   _SubTab('Settings', SettingsView()),
+  _SubTab('Media',    MediaView()),
   _SubTab('Audit',    AuditView()),
   _SubTab('Files',    FilesView()),
   _SubTab('Outbox',   OutboxView()),
@@ -113,7 +112,6 @@ class _ShellState extends State<Shell> {
     const _SubTab('Ideas',     IdeasView()),
     const _SubTab('Journal',   JournalView()),
     const _SubTab('Learning',  LearningView()),
-    const _SubTab('Media',     MediaView()),
   ];
 
   List<_SubTab> _subsFor(int tab) => switch (tab) {
@@ -453,7 +451,7 @@ class _BottomBar extends StatelessWidget {
           items: [
             const PillNavItem(icon: Icons.bolt_rounded,         label: 'Command'),
             const PillNavItem(icon: Icons.dynamic_feed_rounded, label: 'Channels'),
-            const PillNavItem(icon: Icons.rocket_launch_rounded, label: 'Projects'),
+            const PillNavItem(icon: Icons.folder_rounded,       label: 'Projects'),
             const PillNavItem(icon: Icons.person_rounded,        label: 'Personal'),
             PillNavItem(
               icon: Icons.settings_rounded,
@@ -534,8 +532,8 @@ class MenuSheet extends StatelessWidget {
           ),
           // ── COMMAND ──────────────────────────────────────────
           const SectionLabel('Command'),
-          _item(ctx, Icons.bolt_rounded, 'Today',
-              () => go(const HubView(), 'Today')),
+          _item(ctx, Icons.bolt_rounded, 'Hub',
+              () => go(const HubView(), 'Hub')),
           _item(ctx, Icons.task_alt_rounded, 'Tasks',
               () => go(const TasksView(), 'Tasks')),
           _item(ctx, Icons.flag_rounded, 'Planning',
@@ -580,8 +578,6 @@ class MenuSheet extends StatelessWidget {
               () => go(const JournalView(), 'Journal')),
           _item(ctx, Icons.school_rounded, 'Learning',
               () => go(const LearningView(), 'Learning')),
-          _item(ctx, Icons.play_circle_filled_rounded, 'Media',
-              () => go(const MediaView(), 'Media')),
           // ── CIRCLE ───────────────────────────────────────────
           const SectionLabel('Circle'),
           _item(ctx, Icons.contacts_rounded, 'All Contacts',
@@ -604,6 +600,8 @@ class MenuSheet extends StatelessWidget {
               () => go(const SpacesView(axis: 'CRE'), 'Creator')),
           // ── SYSTEM ───────────────────────────────────────────
           const SectionLabel('System'),
+          _item(ctx, Icons.play_circle_filled_rounded, 'Media',
+              () => go(const MediaView(), 'Media')),
           _item(ctx, Icons.folder_rounded, 'Files',
               () => go(const FilesView(), 'Files')),
           _item(ctx, Icons.article_rounded, 'Articles',

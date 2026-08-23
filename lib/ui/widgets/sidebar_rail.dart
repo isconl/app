@@ -22,6 +22,7 @@ import '../views/inbox.dart';
 import '../views/jira.dart';
 import '../views/journal.dart';
 import '../views/learning.dart';
+import '../views/media_view.dart';
 import '../views/notifications.dart';
 import '../views/outbox_view.dart';
 import '../views/planning.dart';
@@ -81,7 +82,7 @@ final List<NavGroup> navGroups = [
     NavItem('social', Icons.celebration_rounded, 'Social', () => const CircleView(ring: 'social')),
   ]),
   NavGroup('Projects & Spaces', [
-    NavItem('projects', Icons.rocket_launch_rounded, 'Projects', () => const ProjectsView()),
+    NavItem('projects', Icons.folder_rounded, 'Projects', () => const ProjectsView()),
     NavItem('corporate', Icons.apartment_rounded, 'Corporate', () => const CorporateView()),
     NavItem('spaces', Icons.hub_rounded, 'Spaces', () => const SpacesView()),
     NavItem('files', Icons.folder_rounded, 'Files', () => const FilesView()),
@@ -90,6 +91,7 @@ final List<NavGroup> navGroups = [
     NavItem('hosted-services', Icons.dns_rounded, 'Services', () => const HostedServicesView()),
   ]),
   NavGroup('System', [
+    NavItem('media', Icons.play_circle_filled_rounded, 'Media', () => const MediaView()),
     NavItem('audit', Icons.link_rounded, 'Audit Chain', () => const AuditView()),
     NavItem('outbox', Icons.outbox_rounded, 'Outbox', () => const OutboxView()),
     NavItem('settings', Icons.settings_rounded, 'Settings',

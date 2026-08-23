@@ -61,13 +61,6 @@ class PersonalHomeView extends StatelessWidget {
                 subtitle: 'Campus curriculum modules, reading progress, and tracks',
                 onTap: () => onNavigate?.call(5),
               ),
-              const SizedBox(height: 8),
-              _Tile(
-                icon: Icons.play_circle_filled_rounded,
-                title: 'Media',
-                subtitle: 'Audio narrations, videos, streams, and player library',
-                onTap: () => onNavigate?.call(6),
-              ),
             ],
           ),
         );
