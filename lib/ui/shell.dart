@@ -183,6 +183,7 @@ class _ShellState extends State<Shell> {
           heroTag: 'fab_chat',
           backgroundColor: C.green,
           foregroundColor: C.textInverse,
+          shape: const CircleBorder(),
           child: const Icon(Icons.forum_rounded),
           onPressed: () => openChatSheet(context),
         ),
