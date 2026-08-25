@@ -51,8 +51,10 @@ class _SettingsViewState extends State<SettingsView> {
               const SectionLabel('Automatic context'),
               const SmsCard(),
 
-              // ---- connection ----
-              const SectionLabel('Connection'),
+              // ---- account: connection + security, regrouped from two
+              // separate top-level sections into one - both are "who is
+              // signed in and how is that guarded", not two different topics.
+              const SectionLabel('Account'),
               Panel(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,6 +97,35 @@ class _SettingsViewState extends State<SettingsView> {
                         ),
                       ],
                     ),
+                    const Divider(),
+                    Row(
+                      children: [
+                        const Icon(Icons.fingerprint_rounded,
+                            size: 20, color: C.text2),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Biometric lock', style: T.body2),
+                              // Says what is true rather than what the switch
+                              // does. It arms itself after the first code, so
+                              // the useful information is that turning it OFF
+                              // is the decision.
+                              Text(
+                                session.biometricLock
+                                    ? 'On. You stay signed in - a fingerprint is all it asks for.'
+                                    : 'Off. The app opens without asking anything.',
+                                style: T.tiny),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: session.biometricLock,
+                          onChanged: (v) => session.setBiometricLock(v),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -102,39 +133,10 @@ class _SettingsViewState extends State<SettingsView> {
                 const IntegrationsSection(),
               ],
 
-              // ---- security ----
-              const SectionLabel('Security'),
-              Panel(
-                child: Row(
-                  children: [
-                    const Icon(Icons.fingerprint_rounded,
-                        size: 20, color: C.text2),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Biometric lock', style: T.body2),
-                          // Says what is true rather than what the switch does.
-                          // It arms itself after the first code, so the useful
-                          // information is that turning it OFF is the decision.
-                          Text(
-                            session.biometricLock
-                                ? 'On. You stay signed in - a fingerprint is all it asks for.'
-                                : 'Off. The app opens without asking anything.',
-                            style: T.tiny),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: session.biometricLock,
-                      onChanged: (v) => session.setBiometricLock(v),
-                    ),
-                  ],
-                ),
-              ),
-              // ---- sync ----
-              const SectionLabel('Sync'),
+              // ---- sync & updates: regrouped from two separate sections
+              // into one - "keeping this phone current" is one topic whether
+              // it's data or the app binary itself.
+              const SectionLabel('Sync & updates'),
               Panel(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,15 +198,7 @@ class _SettingsViewState extends State<SettingsView> {
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-              // ---- update on cue ----
-              const SectionLabel('App update'),
-              Panel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                    const Divider(),
                     KvRow('Installed', 'v${updater.installedVersion}',
                         mono: true),
                     if (updater.latestVersion != null)
@@ -267,8 +261,12 @@ class _SettingsViewState extends State<SettingsView> {
                   ],
                 ),
               ),
-              // ---- appearance ----
-              const SectionLabel('Appearance'),
+
+              // ---- general: appearance + local data, regrouped from two
+              // separate sections into one - both are "how this device's
+              // copy of the app looks and holds", the lightest-touch settings
+              // that were previously getting a full section each.
+              const SectionLabel('General'),
               Panel(
                 child: ListenableBuilder(
                   listenable: BrandingService.instance,
@@ -309,42 +307,34 @@ class _SettingsViewState extends State<SettingsView> {
                             ),
                         ],
                       ),
+                      const Divider(),
+                      Text(
+                        'The local mirror is cache - the vault on the server '
+                        'remains the single source of truth.',
+                        style: T.small.copyWith(color: C.text3),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final sure = await confirmDialog(
+                              context,
+                              'Clear local mirror?',
+                              'Cached snapshots are wiped and re-pulled on '
+                                  'the next sync. Queued changes are kept.',
+                              action: 'Clear');
+                          if (!sure) return;
+                          await services.store.clearAll();
+                          if (context.mounted) {
+                            toast(context, 'Local mirror cleared');
+                          }
+                          if (sync.online) sync.fullSync();
+                        },
+                        icon: const Icon(Icons.cleaning_services_rounded,
+                            size: 16),
+                        label: const Text('Clear cached snapshots'),
+                      ),
                     ],
                   ),
-                ),
-              ),
-              // ---- data ----
-              const SectionLabel('Local data'),
-              Panel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'The local mirror is cache - the vault on the server '
-                      'remains the single source of truth.',
-                      style: T.small.copyWith(color: C.text3),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final sure = await confirmDialog(
-                            context,
-                            'Clear local mirror?',
-                            'Cached snapshots are wiped and re-pulled on '
-                                'the next sync. Queued changes are kept.',
-                            action: 'Clear');
-                        if (!sure) return;
-                        await services.store.clearAll();
-                        if (context.mounted) {
-                          toast(context, 'Local mirror cleared');
-                        }
-                        if (sync.online) sync.fullSync();
-                      },
-                      icon: const Icon(Icons.cleaning_services_rounded,
-                          size: 16),
-                      label: const Text('Clear cached snapshots'),
-                    ),
-                  ],
                 ),
               ),
               const SizedBox(height: 20),

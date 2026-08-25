@@ -72,7 +72,10 @@ class _LearningViewState extends State<LearningView> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── offline status bar + download-all action ──────────────
+              // ── transient prefetch progress only - the idle summary moved
+              // down to each track card, where "how much of THIS is offline"
+              // is actually actionable rather than one global number nobody
+              // can act on from the landing screen.
               if (lib.prefetching)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10, left: 2),
@@ -88,74 +91,278 @@ class _LearningViewState extends State<LearningView> {
                       ),
                     ],
                   ),
-                )
-              else
+                ),
+
+              // ── landing: one card per track, not a flat course/module list ──
+              for (final track in tracks)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 10, left: 2),
-                  child: Row(
-                    children: [
-                      Icon(
-                          lib.staleCount > 0
-                              ? Icons.sync_problem_rounded
-                              : (lib.downloadedCount >= lib.knownCount && lib.knownCount > 0
-                                  ? Icons.offline_pin_rounded
-                                  : Icons.cloud_download_rounded),
-                          size: 13,
-                          color: lib.staleCount > 0
-                              ? C.amber
-                              : (lib.downloadedCount >= lib.knownCount && lib.knownCount > 0
-                                  ? C.green
-                                  : C.text3)),
-                      const SizedBox(width: 7),
-                      Expanded(
-                        child: Text(
-                          lib.staleCount > 0
-                              ? '${lib.downloadedCount} modules on device · ${lib.staleCount} updated'
-                              : lib.knownCount > 0 && lib.downloadedCount >= lib.knownCount
-                                  ? 'All ${lib.downloadedCount} modules on this device — readable anywhere'
-                                  : lib.downloadedCount > 0
-                                      ? '${lib.downloadedCount} of ${lib.knownCount} modules on this device'
-                                      : 'Modules will download automatically',
-                          style: T.tiny.copyWith(
-                              color: lib.staleCount > 0 ? C.amber : C.text3),
-                        ),
-                      ),
-                      // Download-all / refresh-stale tap target
-                      if (!lib.prefetching &&
-                          (lib.staleCount > 0 ||
-                              lib.downloadedCount < lib.knownCount))
-                        InkWell(
-                          borderRadius: BorderRadius.circular(Sz.rSm),
-                          onTap: () => lib.prefetchAll(),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
-                            child: Text(
-                              lib.staleCount > 0
-                                  ? 'Refresh all'
-                                  : 'Download all',
-                              style: T.tiny.copyWith(
-                                  color: C.green,
-                                  fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ),
-                    ],
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _TrackCard(
+                    track: track,
+                    courses: byTrack[track]!,
+                    accent: _trackAccent(tracks.indexOf(track)),
                   ),
                 ),
 
-              // ── courses grouped by track ──────────────────────────────
-              for (final track in tracks) ...[
-                SectionLabel(track),
-                for (final course in byTrack[track]!)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _CourseTile(course: course),
+              // ── low-emphasis library-wide action, moved off the top ──────
+              if (!lib.prefetching &&
+                  (lib.staleCount > 0 || lib.downloadedCount < lib.knownCount))
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Center(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(Sz.rSm),
+                      onTap: () => lib.prefetchAll(),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        child: Text(
+                          lib.staleCount > 0
+                              ? 'Refresh everything (${lib.staleCount} updated)'
+                              : 'Download the whole library',
+                          style: T.tiny.copyWith(
+                              color: C.green, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
                   ),
-              ],
+                ),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Cycles the four callout accents across tracks so each has a stable colour
+/// without hardcoding to specific track names - new tracks just fall in line.
+Color _trackAccent(int index) =>
+    const [C.green, C.cyan, C.violet, C.amber][index % 4];
+
+/// Per-track aggregate: courses started, module progress, offline coverage.
+class _TrackStats {
+  _TrackStats(List<Map<String, dynamic>> courses, ModuleLibrary lib) {
+    courseCount = courses.length;
+    for (final c in courses) {
+      final lessons = fmt.lm(c['lessons']);
+      final done =
+          lessons.where((l) => fmt.s(l['status']).toLowerCase() == 'done').length;
+      if (done > 0) coursesStarted++;
+      totalModules += lessons.length;
+      doneModules += done;
+      final courseId = fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID']);
+      for (final l in lessons) {
+        final file = fmt.s(l['file']);
+        if (file.isEmpty) continue;
+        final st = lib.status(courseId, file);
+        if (st.downloaded) offlineModules++;
+        if (st.state == ModuleState.stale) staleModules++;
+      }
+    }
+  }
+
+  int courseCount = 0;
+  int coursesStarted = 0;
+  int totalModules = 0;
+  int doneModules = 0;
+  int offlineModules = 0;
+  int staleModules = 0;
+}
+
+/// Track landing card - name, aggregate progress, offline coverage. No course
+/// or module detail here; that is the entire fix for the old flat list's
+/// overwhelm. Tap to drill into the track's course list.
+class _TrackCard extends StatelessWidget {
+  const _TrackCard({
+    required this.track,
+    required this.courses,
+    required this.accent,
+  });
+
+  final String track;
+  final List<Map<String, dynamic>> courses;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = AppScope.of(context).modules;
+    final stats = _TrackStats(courses, lib);
+    final pct = stats.totalModules == 0
+        ? 0.0
+        : stats.doneModules / stats.totalModules;
+    final allOffline = stats.totalModules > 0 &&
+        stats.offlineModules == stats.totalModules &&
+        stats.staleModules == 0;
+
+    return Panel(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => _TrackDetailScreen(track: track, courses: courses),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(track, style: T.title)),
+              const Icon(Icons.chevron_right_rounded, size: 18, color: C.text3),
+            ],
+          ),
+          const SizedBox(height: 9),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 4,
+              backgroundColor: C.surface,
+              valueColor: AlwaysStoppedAnimation(accent),
+            ),
+          ),
+          const SizedBox(height: 9),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${stats.coursesStarted} of ${stats.courseCount} '
+                  '${stats.courseCount == 1 ? 'course' : 'courses'} started · '
+                  '${stats.doneModules}/${stats.totalModules} modules',
+                  style: T.small,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(
+                  stats.staleModules > 0
+                      ? Icons.sync_problem_rounded
+                      : (allOffline
+                          ? Icons.offline_pin_rounded
+                          : Icons.cloud_download_rounded),
+                  size: 12,
+                  color: stats.staleModules > 0
+                      ? C.amber
+                      : (allOffline ? C.green : C.text3)),
+              const SizedBox(width: 6),
+              Text(
+                stats.staleModules > 0
+                    ? '${stats.offlineModules}/${stats.totalModules} on device · ${stats.staleModules} updated'
+                    : allOffline
+                        ? 'All on this device'
+                        : '${stats.offlineModules}/${stats.totalModules} on this device',
+                style: T.tiny.copyWith(
+                    color: stats.staleModules > 0 ? C.amber : C.text3),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Track detail: the course list for one track only, each course collapsed
+/// to a compact summary card. Tap a course to see its full module list.
+class _TrackDetailScreen extends StatelessWidget {
+  const _TrackDetailScreen({required this.track, required this.courses});
+  final String track;
+  final List<Map<String, dynamic>> courses;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: ShellAppBar(title: track, showBrand: false),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(Sz.pad),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final course in courses)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _CourseSummaryCard(course: course),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact course card for the track-detail list: title, progress, module
+/// count. Full lesson list lives one tap deeper, in [_CourseDetailScreen].
+class _CourseSummaryCard extends StatelessWidget {
+  const _CourseSummaryCard({required this.course});
+  final Map<String, dynamic> course;
+
+  @override
+  Widget build(BuildContext context) {
+    final lessons = fmt.lm(course['lessons']);
+    final done =
+        lessons.where((l) => fmt.s(l['status']).toLowerCase() == 'done').length;
+    final pct = lessons.isEmpty ? 0.0 : done / lessons.length;
+    final title = fmt.s(course['TITLE']).isEmpty
+        ? (fmt.s(course['ID']).isEmpty ? fmt.s(course['id']) : fmt.s(course['ID']))
+        : fmt.s(course['TITLE']);
+
+    return Panel(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => _CourseDetailScreen(course: course, title: title),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: T.w600(T.body2)),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(value: pct, minHeight: 4),
+                ),
+                const SizedBox(height: 6),
+                Text('$done/${lessons.length} modules',
+                    style: T.tiny.copyWith(color: C.text3)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Icon(Icons.chevron_right_rounded, size: 18, color: C.text3),
+        ],
+      ),
+    );
+  }
+}
+
+/// Course detail: the existing [_CourseTile]'s full expanded content
+/// (module list, take-offline, per-lesson rows), reused as-is rather than
+/// rebuilt, pushed as its own screen instead of always-expanded inline.
+class _CourseDetailScreen extends StatelessWidget {
+  const _CourseDetailScreen({required this.course, required this.title});
+  final Map<String, dynamic> course;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: ShellAppBar(title: title, showBrand: false),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(Sz.pad),
+        child: _CourseTile(course: course),
       ),
     );
   }
