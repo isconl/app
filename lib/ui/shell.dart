@@ -100,14 +100,12 @@ class _ShellState extends State<Shell> {
     _SubTab('Channels', ChannelsHomeView(onNavigate: _switchSub)),
     const _SubTab('Teams',   TeamsView()),
     const _SubTab('Inbox',   InboxView()),
-    const _SubTab('Social',  SocialView()),
-    const _SubTab('Jira',    JiraView()),
-    const _SubTab('GitHub',  GithubView()),
+    const _SubTab('Buffer',  SocialView()),
+    const _SubTab('Kanban',  JiraView()),
   ];
 
   List<_SubTab> get _personalSubs => [
     _SubTab('Personal', PersonalHomeView(onNavigate: _switchSub)),
-    const _SubTab('Rhythm',    RhythmView()),
     const _SubTab('Finance',   FinanceView()),
     const _SubTab('Ideas',     IdeasView()),
     const _SubTab('Journal',   JournalView()),

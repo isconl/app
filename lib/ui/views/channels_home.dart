@@ -6,7 +6,7 @@ import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 
 /// Channels: dashboard landing screen for flow and coordination.
-/// Links to Teams, Inbox, Social/Buffer, Jira/Kanban, and GitHub.
+/// Links to Teams, Inbox, Buffer, and Kanban.
 class ChannelsHomeView extends StatelessWidget {
   const ChannelsHomeView({super.key, this.onNavigate});
   final void Function(int subIndex)? onNavigate;
@@ -44,24 +44,17 @@ class ChannelsHomeView extends StatelessWidget {
               const SizedBox(height: 8),
               _Tile(
                 icon: Icons.share_rounded,
-                title: 'Social & Buffer',
+                title: 'Buffer',
                 subtitle: 'Social publishing channels, campaigns, and queue',
                 onTap: () => onNavigate?.call(3),
               ),
               const SizedBox(height: 8),
               _Tile(
                 icon: Icons.view_kanban_rounded,
-                title: 'Jira / Kanban',
+                title: 'Kanban',
                 subtitle: 'Board tasks, workflow transitions, and sprint tracking',
                 badge: jiraIssues.isNotEmpty ? '${jiraIssues.length}' : null,
                 onTap: () => onNavigate?.call(4),
-              ),
-              const SizedBox(height: 8),
-              _Tile(
-                icon: Icons.code_rounded,
-                title: 'GitHub',
-                subtitle: 'Repository fleet status, commits, PRs, and CI health',
-                onTap: () => onNavigate?.call(5),
               ),
             ],
           ),

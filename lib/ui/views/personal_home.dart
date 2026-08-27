@@ -5,8 +5,8 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 
-/// Personal: dashboard landing screen for sovereign ground, rhythm, and life.
-/// Links to Rhythm, Finance, Ideas, Journal, Learning, and Media.
+/// Personal: dashboard landing screen for sovereign ground and life.
+/// Links to Finance, Ideas, Journal, and Learning.
 class PersonalHomeView extends StatelessWidget {
   const PersonalHomeView({super.key, this.onNavigate});
   final void Function(int subIndex)? onNavigate;
@@ -27,17 +27,10 @@ class PersonalHomeView extends StatelessWidget {
             children: [
               const SectionLabel('Personal & Life Ground'),
               _Tile(
-                icon: Icons.local_fire_department_rounded,
-                title: 'Rhythm',
-                subtitle: 'Habits, daily practices, workout cadence, and streaks',
-                onTap: () => onNavigate?.call(1),
-              ),
-              const SizedBox(height: 8),
-              _Tile(
                 icon: Icons.account_balance_wallet_rounded,
                 title: 'Finance',
                 subtitle: 'Net worth, cashflows, capital runway, and investments',
-                onTap: () => onNavigate?.call(2),
+                onTap: () => onNavigate?.call(1),
               ),
               const SizedBox(height: 8),
               _Tile(
@@ -45,21 +38,21 @@ class PersonalHomeView extends StatelessWidget {
                 title: 'Ideas',
                 subtitle: 'Captured sparks, insights, and concepts pipeline',
                 badge: ideasCount > 0 ? '$ideasCount' : null,
-                onTap: () => onNavigate?.call(3),
+                onTap: () => onNavigate?.call(2),
               ),
               const SizedBox(height: 8),
               _Tile(
                 icon: Icons.auto_stories_rounded,
                 title: 'Journal',
                 subtitle: 'Daily reflections, voice entries, and personal records',
-                onTap: () => onNavigate?.call(4),
+                onTap: () => onNavigate?.call(3),
               ),
               const SizedBox(height: 8),
               _Tile(
                 icon: Icons.school_rounded,
                 title: 'Learning',
                 subtitle: 'Campus curriculum modules, reading progress, and tracks',
-                onTap: () => onNavigate?.call(5),
+                onTap: () => onNavigate?.call(4),
               ),
             ],
           ),
