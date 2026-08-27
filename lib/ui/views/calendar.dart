@@ -1,9 +1,64 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import 'learning_export_stub.dart'
+    if (dart.library.io) 'learning_export_native.dart' as export_impl;
+
+/// BN26082504: which grid this view renders. Gregorian is the existing
+/// month grid (unchanged); Equicycle is Architect's own 28-day cycle, ported
+/// from the webconsole's renderEqCalendar(). Planner (the webconsole's
+/// week/hour grid, renderPlannerCalendar()) is NOT built here -- a real,
+/// separate UI-canvas effort, not a small addition; flagged rather than
+/// faked, see fix.md.
+enum _CalMode { gregorian, equicycle }
+
+/// Ported from the webconsole's getEquicycleContext() -- the year anchors on
+/// the first Sunday of June, so a 28-day cycle divides evenly into 4 true
+/// weeks. Pure function, no state, easy to keep in sync with the web version
+/// if the anchor rule ever changes there.
+class _EqContext {
+  _EqContext(DateTime today)
+      : cycleStart = _computeCycleStart(today),
+        dayInCycle = _computeDayInCycle(today) {
+    cycleNum = ((today.difference(cycleStart).inDays) ~/ 28) + 1;
+  }
+  late final DateTime cycleStart;
+  late final int dayInCycle;
+  late final int cycleNum;
+  static const _themes = [
+    'Plant', 'Push', 'Climb', 'Reap', 'Dig', 'Weave', 'Mend', 'Scout',
+    'Scale', 'Make', 'Run', 'Stock', 'Audit',
+  ];
+  String get theme => _themes[(cycleNum - 1).clamp(0, 12)];
+
+  static DateTime _eqStart(DateTime today) {
+    final eqYear = today.month < 6 ? today.year - 1 : today.year;
+    final june1 = DateTime(eqYear, 6, 1);
+    final daysAhead = (7 - june1.weekday % 7) % 7;
+    return DateTime(eqYear, 6, 1 + daysAhead);
+  }
+
+  static int _daysSince(DateTime today) {
+    final start = _eqStart(today);
+    final diff = DateTime(today.year, today.month, today.day)
+        .difference(DateTime(start.year, start.month, start.day))
+        .inDays;
+    return diff < 0 ? 0 : diff;
+  }
+
+  static int _computeDayInCycle(DateTime today) =>
+      (_daysSince(today) % 28) + 1;
+
+  static DateTime _computeCycleStart(DateTime today) => DateTime(
+      today.year, today.month, today.day)
+      .subtract(Duration(days: _computeDayInCycle(today) - 1));
+}
 
 /// Month grid + upcoming key dates. Events merge local + M365 server-side.
 class CalendarView extends StatefulWidget {
@@ -16,6 +71,8 @@ class CalendarView extends StatefulWidget {
 class _CalendarViewState extends State<CalendarView> {
   late DateTime _month;
   DateTime? _selected;
+  _CalMode _mode = _CalMode.gregorian;
+  bool _busy = false;
 
   @override
   void initState() {
@@ -27,6 +84,74 @@ class _CalendarViewState extends State<CalendarView> {
       final services = AppScope.of(context);
       services.sync.touch(services.store.dates);
     });
+  }
+
+  Future<void> _importIcs() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['ics'],
+      withData: true,
+    );
+    final files = result?.files ?? const [];
+    if (files.isEmpty || files.first.bytes == null) return;
+    final file = files.first;
+    if (!mounted) return;
+    final services = AppScope.of(context);
+    setState(() => _busy = true);
+    try {
+      final text = utf8.decode(file.bytes!, allowMalformed: true);
+      final res = await services.api
+          .postJson('/api/calendar/import', {'ics': text, 'label': file.name});
+      final map = res is Map ? res : <String, dynamic>{};
+      if (map['success'] == true) {
+        final added = fmt.i(map['added'], 0);
+        final found = fmt.i(map['found'], 0);
+        services.store.calendar.refresh();
+        if (mounted) {
+          toast(
+              context,
+              added > 0
+                  ? '$added imported (${found - added} already known)'
+                  : 'Nothing new - all $found were already here');
+        }
+      } else if (mounted) {
+        toast(context, fmt.s(map['error']).isEmpty ? 'Import failed' : fmt.s(map['error']), error: true);
+      }
+    } catch (e) {
+      if (mounted) toast(context, '$e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _exportIcs() async {
+    if (!mounted) return;
+    final services = AppScope.of(context);
+    setState(() => _busy = true);
+    try {
+      final res = await services.api.getJson('/api/calendar/export');
+      final map = res is Map ? res : <String, dynamic>{};
+      if (map['ok'] != true) {
+        if (mounted) {
+          toast(context, fmt.s(map['error']).isEmpty ? 'Export failed' : fmt.s(map['error']), error: true);
+        }
+        return;
+      }
+      final ics = fmt.s(map['ics']);
+      final name =
+          'isconl-calendar-${fmt.isoDate(DateTime.now())}.ics';
+      final opened =
+          await export_impl.saveAndOpenExport(name, utf8.encode(ics));
+      if (mounted && !opened) {
+        toast(context, 'Exported to $name, but nothing on this device opens .ics files');
+      } else if (mounted) {
+        toast(context, 'Calendar exported');
+      }
+    } catch (e) {
+      if (mounted) toast(context, '$e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -50,12 +175,20 @@ class _CalendarViewState extends State<CalendarView> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _monthHeader(),
+                _modeAndActionsRow(),
                 const SizedBox(height: 8),
-                Panel(
-                  padding: const EdgeInsets.all(8),
-                  child: _grid(byDay),
-                ),
+                if (_mode == _CalMode.gregorian) ...[
+                  _monthHeader(),
+                  const SizedBox(height: 8),
+                  Panel(
+                    padding: const EdgeInsets.all(8),
+                    child: _grid(byDay),
+                  ),
+                ] else
+                  Panel(
+                    padding: const EdgeInsets.all(8),
+                    child: _equicycleGrid(byDay),
+                  ),
                 SectionLabel(_selected == null
                     ? 'Events'
                     : fmt.weekdayDate(_selected!)),
@@ -123,6 +256,112 @@ class _CalendarViewState extends State<CalendarView> {
             onPressed: () => _addEventSheet(context),
             child: const Icon(Icons.add_rounded),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _modeAndActionsRow() {
+    return Row(
+      children: [
+        SegmentedButton<_CalMode>(
+          segments: const [
+            ButtonSegment(value: _CalMode.gregorian, label: Text('Gregorian')),
+            ButtonSegment(value: _CalMode.equicycle, label: Text('Equicycle')),
+          ],
+          selected: {_mode},
+          onSelectionChanged: (s) => setState(() => _mode = s.first),
+        ),
+        const Spacer(),
+        if (_busy)
+          const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2))
+        else ...[
+          IconButton(
+            tooltip: 'Import .ics',
+            icon: const Icon(Icons.file_upload_outlined, color: C.text2),
+            onPressed: _importIcs,
+          ),
+          IconButton(
+            tooltip: 'Export .ics',
+            icon: const Icon(Icons.file_download_outlined, color: C.text2),
+            onPressed: _exportIcs,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _equicycleGrid(Map<String, List<Map<String, dynamic>>> byDay) {
+    final today = DateTime.now();
+    final ctx = _EqContext(today);
+    final weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    final cells = <Widget>[
+      for (final wd in weekdayLabels)
+        Center(child: Text(wd, style: T.monoSmall.copyWith(color: C.text3))),
+    ];
+    for (var dayN = 1; dayN <= 28; dayN++) {
+      final date = ctx.cycleStart.add(Duration(days: dayN - 1));
+      final key = fmt.isoDate(date);
+      final items = byDay[key] ?? const [];
+      final isToday = dayN == ctx.dayInCycle;
+      final isSel = _selected != null && fmt.isoDate(_selected!) == key;
+      cells.add(GestureDetector(
+        onTap: () => setState(() => _selected = date),
+        child: Container(
+          margin: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: isSel ? C.greenBg : null,
+            border: Border.all(
+                color: isSel
+                    ? C.green
+                    : isToday
+                        ? C.borderMid
+                        : Colors.transparent),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('$dayN',
+                  style: T.small.copyWith(
+                    color: isSel
+                        ? C.greenBright
+                        : isToday
+                            ? C.text
+                            : C.text2,
+                    fontWeight:
+                        isToday || isSel ? FontWeight.w600 : FontWeight.w400,
+                  )),
+              Text('${date.day}/${date.month}',
+                  style: T.monoSmall.copyWith(color: C.text3, fontSize: 8)),
+              SizedBox(
+                height: 5,
+                child: items.isNotEmpty
+                    ? const StatusDot(C.green, size: 4)
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      ));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Text('Cycle ${ctx.cycleNum} · Day ${ctx.dayInCycle} · ${ctx.theme}',
+              style: T.title),
+        ),
+        GridView.count(
+          crossAxisCount: 7,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: 0.95,
+          children: cells,
         ),
       ],
     );

@@ -26,7 +26,9 @@ val hasReleaseSigning = releaseStoreFile != null && releaseStorePassword != null
 
 android {
     namespace = "com.sconl.isconl"
-    compileSdk = flutter.compileSdkVersion
+    // BN26082504: file_picker's transitive flutter_plugin_android_lifecycle
+    // dependency requires compileSdk >= 36; flutter.compileSdkVersion was lower.
+    compileSdk = maxOf(flutter.compileSdkVersion, 36)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

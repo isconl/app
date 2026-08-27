@@ -6,7 +6,7 @@ publish_to: 'none'
 # minor bump: the client caught up with three days of agent work (Ideas, Rhythm,
 # Files, Buffer, Articles, PIN sign-in, agent-served updates), which is more than
 # a patch admits to.
-version: 0.2.0+7
+version: 0.2.0+8
 
 environment:
   sdk: ^3.12.0
@@ -17,6 +17,14 @@ dependencies:
   http: ^1.5.0
   sqflite: ^2.4.2
   path_provider: ^2.1.5
+  # BN26082504: .ics import needs a file picker; export reuses the existing
+  # saveAndOpenExport/openFile native bridge, no new dependency for that half.
+  # BN26082504 follow-up: 8.1.4's bundled Android module compiled against
+  # android-34, tripping flutter_plugin_android_lifecycle's compileSdk>=36
+  # requirement at release-build time. 12.x fixes this but its Windows
+  # sub-package needs win32 ^6.3.0, conflicting with flutter_secure_storage's
+  # win32 ^5.0.0 pin -- 8.3.7 is the highest version still resolvable here.
+  file_picker: ^8.3.7
   path: ^1.9.1
   connectivity_plus: ^7.0.0
   flutter_secure_storage: ^9.2.4
