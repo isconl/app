@@ -169,6 +169,20 @@ class _SettingsViewState extends State<SettingsView> {
                       children: [
                         FilledButton.icon(
                           onPressed: sync.online
+                              ? () async {
+                                  await sync.fullSync();
+                                  await services.modules.check(force: true);
+                                  await services.modules.prefetchAll();
+                                  if (context.mounted) {
+                                    toast(context, 'Full offline mirror updated (${services.modules.downloadedCount} modules cached)');
+                                  }
+                                }
+                              : null,
+                          icon: const Icon(Icons.download_for_offline_rounded, size: 16),
+                          label: const Text('Download all for offline'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: sync.online
                               ? () => sync.fullSync()
                               : null,
                           icon: const Icon(Icons.sync_rounded, size: 16),
@@ -197,6 +211,39 @@ class _SettingsViewState extends State<SettingsView> {
                           label: const Text('Push to OneDrive'),
                         ),
                       ],
+                    ),
+                    ListenableBuilder(
+                      listenable: services.modules,
+                      builder: (context, _) {
+                        final mod = services.modules;
+                        if (mod.prefetching) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Downloading offline library: ${mod.prefetchDone}/${mod.prefetchTotal} modules…',
+                                    style: T.tiny.copyWith(color: C.cyan)),
+                                const SizedBox(height: 4),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(3),
+                                  child: LinearProgressIndicator(
+                                    value: mod.prefetchTotal > 0 ? mod.prefetchDone / mod.prefetchTotal : null,
+                                    minHeight: 4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Offline status: ${mod.downloadedCount}/${mod.knownCount} learning modules, tasks, calendar & full vault cached locally in SQLite.',
+                            style: T.tiny.copyWith(color: C.text3),
+                          ),
+                        );
+                      },
                     ),
                     const Divider(),
                     KvRow('Installed', 'v${updater.installedVersion}',
