@@ -5,9 +5,14 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
-/// Local persistence. The vault on the server remains the single source of
-/// truth (constitution 2.7); everything here is cache plus a queue of
-/// not-yet-delivered writes.
+/// Local persistence. The vault ENGINE on the server remains the single
+/// source of truth for this app's data (constitution 2.7); everything here
+/// is cache plus a queue of not-yet-delivered writes -- this contract is
+/// unchanged and still correct after BI26083005. What changed is what
+/// backs the vault ENGINE itself: it's an encrypted local SQLite file now
+/// (`VAULT_STORE_ENGINE=sqlite`), backed up to OneDrive on a schedule --
+/// OneDrive is a backup copy, never live-read, never the arbiter of a
+/// conflict, not "the vault" this comment means when it says "truth."
 class AppDb {
   AppDb._(this._db);
   final Database _db;
