@@ -85,7 +85,7 @@ const _settingsSubs = [
 ];
 
 class _ShellState extends State<Shell> {
-  int _tab = 0;          // 0=Command 1=Channels 2=Personal 3=Projects 4=Settings
+  int _tab = 0;          // 0=Command 1=Channels 2=Projects 3=Personal 4=Settings
   int _sub = 0;          // sub-tab index within current tab
 
   void _switchTab(int t) {

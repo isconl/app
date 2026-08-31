@@ -50,6 +50,8 @@ class C {
   static const callBookBg = Color(0x1ABC8CFF);
   static const callQuote = Color(0xFFF0883E);
   static const callQuoteBg = Color(0x1AF0883E);
+  static const callResearch = Color(0xFF6EA6D9);
+  static const callResearchBg = Color(0x1A6EA6D9);
 
   static Color forPriority(String p) => switch (p.toLowerCase()) {
         'high' => red,

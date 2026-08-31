@@ -532,6 +532,8 @@ final _callouts = <_Callout>[
   _Callout('quote', 'Book quote', C.callQuote, C.callQuoteBg,
       RegExp(r'^\*\*(?:Book quote|Quote|In their words):?\*\*\s*',
           caseSensitive: false)),
+  _Callout('research', 'Research', C.callResearch, C.callResearchBg,
+      RegExp(r'^\*\*Research:?\*\*\s*', caseSensitive: false)),
 ];
 
 _Callout? _matchCallout(String line) {
