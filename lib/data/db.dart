@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import 'vault_mirror.dart';
+
 /// Local persistence. The vault ENGINE on the server remains the single
 /// source of truth for this app's data (constitution 2.7); everything here
 /// is cache plus a queue of not-yet-delivered writes -- this contract is
@@ -26,7 +28,12 @@ class AppDb {
         : p.join((await getApplicationDocumentsDirectory()).path, 'isconl.db');
     final db = await openDatabase(
       path,
-      version: 1,
+      // v2 (BN26083107): added the vault-mirror tables (real per-collection
+      // tables matching a slice of vault's own schema -- see
+      // vault_schema.dart) alongside the pre-existing generic snapshot
+      // cache, which stays as-is. onUpgrade only needs to ADD the new
+      // tables for an existing install; onCreate covers both for a fresh one.
+      version: 2,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE snapshots (
@@ -54,6 +61,10 @@ class AppDb {
             meta TEXT,
             ts INTEGER NOT NULL
           )''');
+        await ensureVaultMirrorTables(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) await ensureVaultMirrorTables(db);
       },
     );
     return AppDb._(db);
@@ -185,4 +196,19 @@ class AppDb {
   }
 
   Future<void> clearChat() => _db.delete('chat').then((_) {});
+
+  // ---- vault mirror (BN26083107) ----
+
+  /// Extracts and upserts whatever `kMirrorSources` declares for this
+  /// snapshot key -- a no-op for the (still-majority) snapshot keys with no
+  /// mirror source declared yet. Called from `Snapshot.refresh()` right
+  /// after a successful fetch, alongside (not instead of) the existing
+  /// `putSnapshot()` blob cache.
+  Future<void> mirrorSnapshot(String snapshotKey, dynamic responseJson) =>
+      mirrorSnapshotIntoVaultTables(_db, snapshotKey, responseJson);
+
+  /// Every row currently mirrored into `table` (see `vault_schema.dart`'s
+  /// `kVaultTables` for the declared columns), same shape a server-side
+  /// `vault.read()` would return.
+  Future<List<VaultRow>> vaultRows(String table) => readVaultRows(_db, table);
 }

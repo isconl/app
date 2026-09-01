@@ -47,6 +47,14 @@ class Snapshot extends ChangeNotifier {
       value = fresh;
       fetchedAt = DateTime.now();
       await _db.putSnapshot(key, fresh);
+      // BN26083107: real per-collection tables, populated alongside (not
+      // instead of) the blob cache above -- a no-op for snapshot keys with
+      // no declared mirror source. Deliberately NOT called from
+      // patchLocal() below: that path writes a locally-edited, not
+      // server-confirmed, blob -- mirroring speculative edits into the
+      // structured tables risks the tables disagreeing with what the
+      // server actually has once the edit round-trips.
+      await _db.mirrorSnapshot(key, fresh);
       loading = false;
       notifyListeners();
       return true;

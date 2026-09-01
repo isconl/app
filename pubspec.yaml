@@ -46,6 +46,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # BN26083107: real sqlite (not a fake/mock) for db.dart/vault_mirror.dart
+  # unit tests -- `flutter test` runs on the host, not a device/emulator,
+  # so the plugin's real platform channel isn't available; this ffi
+  # backend is a real SQLite engine, just reached without one.
+  sqflite_common_ffi: ^2.3.6
 
 flutter:
   uses-material-design: true
