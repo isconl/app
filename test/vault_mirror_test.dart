@@ -148,4 +148,84 @@ void main() {
     final rows = await readVaultRows(db, 'circle__people');
     expect(rows.single['GROUP'], 'friends');
   });
+
+  // -- overlayVaultMirrorTables: the "UI reads the mirror" wiring itself --
+
+  test('overlayVaultMirrorTables is a no-op (returns base untouched) for a snapshot key with no mirror source', () async {
+    final db = await freshDb();
+    final base = {'issues': ['not vault-shaped at all']};
+    expect(await overlayVaultMirrorTables(db, 'jira', base), same(base));
+  });
+
+  test('overlayVaultMirrorTables leaves a mirrored field exactly as base had it when the table is empty (never fetched != empty)', () async {
+    final db = await freshDb();
+    final base = {'people': [{'ID': 'P1', 'NAME': 'real cached data'}]};
+    final result = await overlayVaultMirrorTables(db, 'circle', base) as Map;
+    expect(result['people'], base['people'], reason: 'an empty mirror table must not stomp real cached data with []');
+  });
+
+  test('overlayVaultMirrorTables merges by ID: hub-added/renamed fields survive, vault-schema fields refresh from the mirror', () async {
+    final db = await freshDb();
+    // circle's real shape: derived fields (lastTouch/dueIn/recent) the UI
+    // depends on, none of which are vault schema columns.
+    await upsertVaultRows(db, 'circle__people', [
+      {'ID': 'P1', 'NAME': 'Alex (fresher)', 'CIRCLE': '-', 'GROUP': '-', 'ROLE': '-', 'MET': '-', 'CHANNEL': '-', 'LAST_TOUCH': '2026-08-30', 'CADENCE_DAYS': '-', 'STATUS': '-', 'FOLDER': '-', 'NOTE': '-', 'REMEMBER': '-', 'EMAIL': '-', 'IS_SELF': '-'},
+    ]);
+    final base = {
+      'people': [
+        {'ID': 'P1', 'NAME': 'Alex (stale)', 'LAST_TOUCH': '2026-08-01', 'lastTouch': '2026-08-18', 'dueIn': 3, 'touchCount': 8, 'recent': [{'ID': 'X1'}]},
+      ],
+    };
+    final result = await overlayVaultMirrorTables(db, 'circle', base) as Map;
+    final person = (result['people'] as List).single as Map;
+
+    expect(person['NAME'], 'Alex (fresher)', reason: 'vault schema field refreshed from the mirror');
+    expect(person['LAST_TOUCH'], '2026-08-30', reason: 'vault schema field refreshed from the mirror');
+    expect(person['lastTouch'], '2026-08-18', reason: 'hub-derived field (not a vault column) must survive from base');
+    expect(person['dueIn'], 3, reason: 'hub-derived field must survive from base');
+    expect(person['touchCount'], 8, reason: 'hub-derived field must survive from base');
+    expect(person['recent'], [{'ID': 'X1'}], reason: 'nested/derived field must survive from base');
+  });
+
+  test('overlayVaultMirrorTables includes a mirror-only row (accumulated from an earlier fetch, absent from this base) rather than dropping it', () async {
+    final db = await freshDb();
+    await upsertVaultRows(db, 'spark__ideas', [
+      {'ID': 'I1', 'TITLE': 'Base has this one', 'BODY': '-', 'STAGE': '-', 'TYPE': '-', 'DOMAIN': '-', 'TAGS': '-', 'IMPACT': '-', 'EFFORT': '-', 'STATUS': '-', 'SOURCE': '-', 'CREATED_AT': '-', 'UPDATED_AT': '-', 'AI_NOTE': '-', 'NOTE': '-', 'LINKS': '-'},
+      {'ID': 'I2', 'TITLE': 'Only the mirror remembers this one', 'BODY': '-', 'STAGE': '-', 'TYPE': '-', 'DOMAIN': '-', 'TAGS': '-', 'IMPACT': '-', 'EFFORT': '-', 'STATUS': '-', 'SOURCE': '-', 'CREATED_AT': '-', 'UPDATED_AT': '-', 'AI_NOTE': '-', 'NOTE': '-', 'LINKS': '-'},
+    ]);
+    final base = {
+      'ideas': [
+        {'ID': 'I1', 'TITLE': 'Base has this one'},
+      ],
+    };
+    final result = await overlayVaultMirrorTables(db, 'ideas', base) as Map;
+    final ids = (result['ideas'] as List).map((r) => (r as Map)['ID']).toSet();
+    expect(ids, {'I1', 'I2'}, reason: 'a row this fetch didn\'t include but an earlier one did must still appear');
+  });
+
+  test('overlayVaultMirrorTables keeps a base-only row (mirror source hasn\'t caught up yet) rather than dropping it', () async {
+    final db = await freshDb();
+    await upsertVaultRows(db, 'scope__plans', [
+      {'ID': 'PL1', 'TITLE': 'In the mirror', 'HORIZON': '-', 'TAG': '-', 'STATUS': '-', 'CREATED_AT': '-', 'NOTE': '-'},
+    ]);
+    final base = {
+      'plans': [
+        {'ID': 'PL1', 'TITLE': 'In the mirror', 'tasks': []},
+        {'ID': 'PL2', 'TITLE': 'Not in the mirror yet', 'tasks': [{'ID': 'T9'}]},
+      ],
+    };
+    final result = await overlayVaultMirrorTables(db, 'plans', base) as Map;
+    final byId = {for (final r in (result['plans'] as List)) (r as Map)['ID']: r};
+    expect(byId.keys, {'PL1', 'PL2'});
+    expect(byId['PL2']!['tasks'], [{'ID': 'T9'}], reason: 'a plan\'s nested tasks (not a vault column) must survive when the row itself is base-only');
+  });
+
+  test('overlayVaultMirrorTables handles a null/non-Map base gracefully (first-ever hydrate, mirror has data, blob does not)', () async {
+    final db = await freshDb();
+    await upsertVaultRows(db, 'scope__dates', [
+      {'ID': 'D1', 'TITLE': 'Birthday', 'DATE': '2026-09-01', 'KIND': 'birthday', 'WHO': '-', 'RECURS': '-', 'COLOR': '-', 'NOTE': '-', 'PERSON_ID': '-'},
+    ]);
+    final result = await overlayVaultMirrorTables(db, 'dates', null) as Map;
+    expect((result['dates'] as List).single, containsPair('ID', 'D1'));
+  });
 }

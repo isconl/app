@@ -23,15 +23,25 @@ class Snapshot extends ChangeNotifier {
 
   bool get hasData => value != null;
 
-  /// Load the cached copy from SQLite (once).
+  /// Load the cached copy from SQLite (once). BN26083107: overlays the
+  /// mirrored per-collection tables on top of the blob before exposing it
+  /// -- a real (offline-capable) upgrade over the blob alone, since the
+  /// tables accumulate every row ever seen, not just the last fetch; see
+  /// `overlayVaultMirror`'s own doc comment for why this is a safe merge,
+  /// not a blind replace. A no-op for a snapshot key with no mirror
+  /// source, so most keys are entirely unaffected.
   Future<void> hydrate() async {
     if (_hydrated) return;
     _hydrated = true;
     final row = await _db.getSnapshot(key);
-    if (row != null && value == null) {
-      value = row.$1;
-      fetchedAt = row.$2;
-      notifyListeners();
+    if (value == null) {
+      final overlaid = await _db.overlayVaultMirror(key, row?.$1);
+      final hasMirrorOnlyData = row == null && overlaid is Map && overlaid.isNotEmpty;
+      if (row != null || hasMirrorOnlyData) {
+        value = overlaid;
+        fetchedAt = row?.$2;
+        notifyListeners();
+      }
     }
   }
 
@@ -44,7 +54,6 @@ class Snapshot extends ChangeNotifier {
     notifyListeners();
     try {
       final fresh = await _api().getJson(path, cold: cold);
-      value = fresh;
       fetchedAt = DateTime.now();
       await _db.putSnapshot(key, fresh);
       // BN26083107: real per-collection tables, populated alongside (not
@@ -55,6 +64,12 @@ class Snapshot extends ChangeNotifier {
       // structured tables risks the tables disagreeing with what the
       // server actually has once the edit round-trips.
       await _db.mirrorSnapshot(key, fresh);
+      // Overlay right back on top of the response we just stored -- the
+      // mirror can genuinely know MORE than this one fetch did (rows
+      // accumulated from earlier fetches this one didn't happen to
+      // include), so `value` ends up at least as complete as `fresh`
+      // alone, per-row-merged the same safe way hydrate() does.
+      value = await _db.overlayVaultMirror(key, fresh);
       loading = false;
       notifyListeners();
       return true;

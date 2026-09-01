@@ -211,4 +211,12 @@ class AppDb {
   /// `kVaultTables` for the declared columns), same shape a server-side
   /// `vault.read()` would return.
   Future<List<VaultRow>> vaultRows(String table) => readVaultRows(_db, table);
+
+  /// Returns `base` (a decoded API response, or the cached blob) with its
+  /// mirrored fields refreshed from the live per-collection tables --
+  /// same JSON shape, per-row merge, never a blind replace. See
+  /// `overlayVaultMirror`'s own doc comment for why. A no-op for a
+  /// snapshot key with no mirror source declared.
+  Future<dynamic> overlayVaultMirror(String snapshotKey, dynamic base) =>
+      overlayVaultMirrorTables(_db, snapshotKey, base);
 }

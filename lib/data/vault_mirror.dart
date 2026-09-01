@@ -93,3 +93,86 @@ Future<void> mirrorSnapshotIntoVaultTables(Database db, String snapshotKey, dyna
     await upsertVaultRows(db, table, rows);
   }
 }
+
+/// Wires the mirrored tables into what `Snapshot.value` actually holds --
+/// this is the "UI reads the mirrored tables" step: `Store`'s ~26 getters
+/// and every view that reads `store.X.value['someField']` do NOT change,
+/// because this function returns the exact same JSON shape the blob cache
+/// always had -- same field names, same nesting -- just with each row's
+/// vault-schema columns refreshed from the live table.
+///
+/// PER-ROW MERGE, not a blind array swap -- found live while wiring the
+/// first views to this: every hub endpoint enriches or renames fields on
+/// top of vault's raw schema (`/api/circle`'s `lastTouch`/`dueIn`/`recent`,
+/// `/api/plans`' nested `tasks`, inbox's `RECEIVED` vs. vault's own
+/// `RECEIVED_AT`). A blind replace with the mirror's schema-only rows would
+/// have silently dropped every one of those and broken the screens that
+/// render them -- circle's touch-recency sort/badges, planning's per-plan
+/// subtask list, inbox's timestamp. Merging `{...baseRow, ...mirrorRow}`
+/// by ID is safe unconditionally: a hub-added/renamed field survives
+/// because its key never collides with a vault schema column name; a
+/// vault schema field gets refreshed with the mirror's (possibly more
+/// complete/fresher) value on top.
+///
+/// The mirror is preferred over the blob for a mirrored field WHENEVER the
+/// table has rows -- not just as an offline fallback. This is a genuine
+/// upgrade, not a passthrough: `upsertVaultRows` never deletes, so the
+/// table accumulates every row this app has ever seen for that collection
+/// across multiple fetches, while the blob only ever holds the single most
+/// recent response verbatim. A row present in the mirror but not in the
+/// current base response (the base fetch was filtered/paginated, or simply
+/// hasn't run yet) still appears -- with its vault-schema fields only,
+/// since there's no base row to merge hub-added fields from. That's a net
+/// improvement over today (the row was invisible before), not a
+/// regression, even though it renders with fewer decorations than a row
+/// the base response also covered.
+///
+/// A base row NOT found in the mirror (the mirror source for this table
+/// hasn't caught up yet) is kept as-is, appended after the merged ones --
+/// never silently dropped.
+///
+/// A mirrored field with zero rows in its table is left exactly as `base`
+/// already had it -- an empty table is indistinguishable from "never
+/// fetched yet" and must not stomp real cached data with emptiness.
+/// Non-mirrored fields (`/api/state`'s `time`, `services`, etc.) always
+/// come from `base` untouched -- this function only ever touches the
+/// specific `jsonKey`s `kMirrorSources` declares for `snapshotKey`.
+Future<dynamic> overlayVaultMirrorTables(Database db, String snapshotKey, dynamic base) async {
+  final sources = kMirrorSources.where((s) => s.$1 == snapshotKey);
+  if (sources.isEmpty) return base; // no-op for the majority of snapshot keys today
+
+  final merged = (base is Map) ? Map<String, dynamic>.from(base) : <String, dynamic>{};
+  for (final (_, table, jsonKey) in sources) {
+    final mirrorRows = await readVaultRows(db, table);
+    if (mirrorRows.isEmpty) continue;
+
+    final baseList = merged[jsonKey];
+    final baseById = <String, Map<String, dynamic>>{};
+    if (baseList is List) {
+      for (final item in baseList) {
+        if (item is Map && item['ID'] != null) {
+          baseById[item['ID'].toString()] = Map<String, dynamic>.from(item);
+        }
+      }
+    }
+
+    final combined = <Map<String, dynamic>>[];
+    final seenIds = <String>{};
+    for (final row in mirrorRows) {
+      final id = row['ID'] ?? '-';
+      final baseRow = baseById[id];
+      combined.add(baseRow != null ? {...baseRow, ...row} : Map<String, dynamic>.from(row));
+      seenIds.add(id);
+    }
+    if (baseList is List) {
+      for (final item in baseList) {
+        if (item is Map) {
+          final id = item['ID']?.toString() ?? '-';
+          if (!seenIds.contains(id)) combined.add(Map<String, dynamic>.from(item));
+        }
+      }
+    }
+    merged[jsonKey] = combined;
+  }
+  return merged;
+}
