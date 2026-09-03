@@ -430,9 +430,27 @@ class Markdown extends StatelessWidget {
     return raw;
   }
 
+  // BL26083105: a missing alt or a hot-linked external URL is a build-time
+  // lint, not a silent accept — mirrors learnMd()'s red-flagged inline
+  // callout on web (same "cite it or do not claim it" discipline).
+  Widget _imageLintBlocked(String message) => Container(
+        margin: EdgeInsets.symmetric(vertical: _reading ? 16 : 8),
+        child: Text(message, style: T.small.copyWith(color: C.red)),
+      );
+
   Widget _image(_Block block) {
+    if (block.imageAlt.trim().isEmpty) {
+      return _imageLintBlocked(
+          '[Image blocked: missing required alt text — add `![Descriptive alt text](${block.imageUrl})`]');
+    }
+    final isExternal = RegExp(r'^https?://', caseSensitive: false).hasMatch(block.imageUrl);
+    final isAsset = block.imageUrl.startsWith('_assets/');
+    if (isExternal && !isAsset) {
+      return _imageLintBlocked(
+          '[Image blocked: must be stored in _assets/, not linked externally]');
+    }
     final resolvedUrl = _resolveImageUrl(block.imageUrl);
-    final rawCaption = block.imageAlt.trim();
+    final rawCaption = block.imageCaption.trim();
     // Detect _captured DD Mon YYYY_ pattern (mirrors web renderer's convention)
     final capturedMatch = RegExp(r'_captured\s+([^_]+)_', caseSensitive: false)
         .firstMatch(rawCaption);
@@ -675,16 +693,16 @@ class _Callout {
 }
 
 final _callouts = <_Callout>[
-  _Callout('learn', 'What you will learn', C.callLearn, C.callLearnBg,
-      RegExp(r'^\*\*(?:What you will learn|What will be learnt|You will be able to|Learning outcomes?):?\*\*\s*',
+  _Callout('learn', 'Objective', C.callLearn, C.callLearnBg,
+      RegExp(r'^\*\*(?:What you will learn|What will be learnt|You will be able to|Objective|Learning outcomes?):?\*\*\s*',
           caseSensitive: false)),
   _Callout('jargon', 'Jargon', C.callJargon, C.callJargonBg,
       RegExp(r'^\*\*(?:Jargon|In plain language|Plain language|The word):?\*\*\s*',
           caseSensitive: false)),
-  _Callout('watch', 'What to watch for', C.callWatch, C.callWatchBg,
-      RegExp(r'^\*\*(?:What to watch for|Watch out for|Watch for|Watch|Careful):?\*\*\s*',
+  _Callout('watch', 'Failure', C.callWatch, C.callWatchBg,
+      RegExp(r'^\*\*(?:What to watch for|Watch out for|Watch for|Watch|Failure|Careful):?\*\*\s*',
           caseSensitive: false)),
-  _Callout('book', 'In a book', C.callBook, C.callBookBg,
+  _Callout('book', 'Book', C.callBook, C.callBookBg,
       RegExp(r'^\*\*(?:In a book|Book|From the literature):?\*\*\s*',
           caseSensitive: false)),
   _Callout('quote', 'Book quote', C.callQuote, C.callQuoteBg,
@@ -692,6 +710,8 @@ final _callouts = <_Callout>[
           caseSensitive: false)),
   _Callout('research', 'Research', C.callResearch, C.callResearchBg,
       RegExp(r'^\*\*Research:?\*\*\s*', caseSensitive: false)),
+  _Callout('fact', 'Fact', C.callFact, C.callFactBg,
+      RegExp(r'^\*\*(?:Fun fact|Fact):?\*\*\s*', caseSensitive: false)),
 ];
 
 _Callout? _matchCallout(String line) {
@@ -734,6 +754,7 @@ class _Block {
   String mapLabel = '';
   String imageUrl = '';
   String imageAlt = '';
+  String imageCaption = '';
 }
 
 List<_Block> _parseBlocks(String source) {
@@ -826,12 +847,16 @@ List<_Block> _parseBlocks(String source) {
       continue;
     }
 
-    // Standalone image ![alt](url)
-    final imgMatch = RegExp(r'^!\[([^\]]*)\]\(([^)]+)\)$').firstMatch(trimmed);
+    // Standalone image ![alt](url "caption") — title-syntax caption mirrors
+    // the web renderer's `caption = title || alt` convention (learnMd()).
+    final imgMatch = RegExp(r'^!\[([^\]]*)\]\(([^\s)]+)(?:\s+"([^"]*)")?\)$').firstMatch(trimmed);
     if (imgMatch != null) {
       flushPara();
+      final alt = imgMatch.group(1)!.trim();
+      final title = imgMatch.group(3)?.trim() ?? '';
       blocks.add(_Block(_Kind.image)
-        ..imageAlt = imgMatch.group(1)!.trim()
+        ..imageAlt = alt
+        ..imageCaption = title.isNotEmpty ? title : alt
         ..imageUrl = imgMatch.group(2)!.trim());
       idx++;
       continue;
