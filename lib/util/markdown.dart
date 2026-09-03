@@ -451,40 +451,45 @@ class Markdown extends StatelessWidget {
     );
   }
 
-  /// Inline markdown: **bold**, *italic*, `code`, [text](url).
+  /// Inline markdown: **bold**, *italic*, `code`, [text](url), and (BL26083104)
+  /// the `[[term|definition]]` jargon marker -- matched first so its double
+  /// brackets are never mistaken for the `[text](url)` link group below,
+  /// which requires a `(url)` immediately after `]` a jargon marker never has.
   TextSpan _inline(String text, TextStyle style) {
     final spans = <InlineSpan>[];
     final pattern = RegExp(
-        r'(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))');
+        r'(\[\[([^|\]]+)\|([^\]]+)\]\])|(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))');
     var pos = 0;
     for (final match in pattern.allMatches(text)) {
       if (match.start > pos) {
         spans.add(TextSpan(text: text.substring(pos, match.start)));
       }
       if (match.group(1) != null) {
+        spans.add(_jargonTermSpan(match.group(2)!.trim(), match.group(3)!.trim(), style));
+      } else if (match.group(4) != null) {
         spans.add(TextSpan(
-            text: match.group(2),
+            text: match.group(5),
             style: const TextStyle(fontWeight: FontWeight.w600)));
-      } else if (match.group(3) != null) {
+      } else if (match.group(6) != null) {
         spans.add(TextSpan(
-            text: match.group(4),
+            text: match.group(7),
             style: const TextStyle(fontStyle: FontStyle.italic)));
-      } else if (match.group(5) != null) {
+      } else if (match.group(8) != null) {
         spans.add(TextSpan(
-            text: match.group(6),
+            text: match.group(9),
             style: const TextStyle(fontStyle: FontStyle.italic)));
-      } else if (match.group(7) != null) {
+      } else if (match.group(10) != null) {
         spans.add(TextSpan(
-          text: match.group(8),
+          text: match.group(11),
           style: T.mono.copyWith(
               color: C.greenBright,
               fontSize: (style.fontSize ?? 13) - 1,
               backgroundColor: C.surface),
         ));
-      } else if (match.group(9) != null) {
-        final url = match.group(11)!;
+      } else if (match.group(12) != null) {
+        final url = match.group(14)!;
         spans.add(TextSpan(
-          text: match.group(10),
+          text: match.group(13),
           style: const TextStyle(
               color: C.cyan, decoration: TextDecoration.underline,
               decorationColor: C.cyan),
@@ -502,6 +507,83 @@ class Markdown extends StatelessWidget {
     if (pos < text.length) spans.add(TextSpan(text: text.substring(pos)));
     return TextSpan(style: style, children: spans);
   }
+
+  /// BL26083104: a purple, code-styled inline span for a jargon term,
+  /// wherever it appears in flowing text -- replaces the old full-width
+  /// Jargon callout for new/rewritten content. A `Builder` gets a fresh
+  /// `BuildContext` bound right here (rather than threading `context`
+  /// through every `_inline` call site above), which is all
+  /// `showJargonDefinition` below needs to find the enclosing Navigator.
+  WidgetSpan _jargonTermSpan(String term, String definition, TextStyle style) {
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: Builder(
+        builder: (context) => GestureDetector(
+          onTap: () => showJargonDefinition(context, term, definition),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: C.violet.withValues(alpha: 0.1),
+              border: Border.all(color: C.violet.withValues(alpha: 0.3)),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              term,
+              style: T.mono.copyWith(
+                color: C.violet,
+                fontSize: (style.fontSize ?? 15.5) - 1,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// BL26083104: the definition popup for an inline jargon term -- a small
+/// dismissible bottom sheet (tap-outside or the close button dismisses,
+/// same "never lose the reader's place" principle as everywhere else this
+/// pattern is used in the app), not the full `showFormSheet` title-heavy
+/// scaffold, since this is a couple of sentences, not a form.
+Future<void> showJargonDefinition(
+    BuildContext context, String term, String definition) {
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: C.panel,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
+      side: BorderSide(color: C.border),
+    ),
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(term,
+                      style: T.title.copyWith(
+                          color: C.violet, fontFamily: T.mono.fontFamily)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 20, color: C.text3),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  tooltip: 'Close',
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(definition, style: T.body.copyWith(color: C.text, height: 1.5)),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 enum _Kind { paragraph, heading, code, quote, rule, listItem, table, callout, chart, map, equation, image }

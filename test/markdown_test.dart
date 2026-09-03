@@ -96,4 +96,42 @@ Some **bold** text and *italic*.
     await pump(tester, 'Some prose leading in.\n**Jargon:** a term.');
     expect(find.text('JARGON'), findsOneWidget);
   });
+
+  // ── BL26083104: inline jargon marker ────────────────────────────────────
+
+  testWidgets('a [[term|definition]] marker renders the term inline, not the definition',
+      (tester) async {
+    await pump(tester,
+        'The report shows real [[churn|customers who stop paying]] this quarter.');
+    expect(find.textContaining('churn'), findsOneWidget);
+    // The definition is not rendered as visible body text -- only reachable
+    // by tapping, per the popup below.
+    expect(find.textContaining('customers who stop paying'), findsNothing);
+  });
+
+  testWidgets('tapping the jargon term opens a popup with the definition',
+      (tester) async {
+    await pump(tester,
+        'Watch the [[churn|customers who stop paying]] number closely.');
+    await tester.tap(find.textContaining('churn'));
+    await tester.pumpAndSettle();
+    expect(find.text('customers who stop paying'), findsOneWidget);
+  });
+
+  testWidgets('the popup closes on the close button', (tester) async {
+    await pump(tester, 'A [[term|the definition text]] here.');
+    await tester.tap(find.textContaining('term'));
+    await tester.pumpAndSettle();
+    expect(find.text('the definition text'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('the definition text'), findsNothing);
+  });
+
+  testWidgets('the old block-style Jargon callout still renders unchanged (no migration required)',
+      (tester) async {
+    await pump(tester, '**Jargon:** handoff - work crossing between portals.');
+    expect(find.text('JARGON'), findsOneWidget);
+    expect(find.textContaining('work crossing between portals'), findsOneWidget);
+  });
 }
