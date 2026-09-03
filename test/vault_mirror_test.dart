@@ -111,7 +111,7 @@ void main() {
     expect(await readVaultRows(db, 'scope__tasks'), isEmpty);
   });
 
-  test('mirrorSnapshotIntoVaultTables feeds every table declared for that snapshot key from one response (state feeds both tasks and spaces)', () async {
+  test('mirrorSnapshotIntoVaultTables feeds every table declared for that snapshot key from one response (state feeds tasks and inbox, not spaces -- FN26090102)', () async {
     final db = await freshDb();
     final stateResponse = {
       'tasks': [
@@ -127,7 +127,9 @@ void main() {
     await mirrorSnapshotIntoVaultTables(db, 'state', stateResponse);
 
     expect((await readVaultRows(db, 'scope__tasks')).map((r) => r['ID']), ['T1']);
-    expect((await readVaultRows(db, 'space__spaces')).map((r) => r['ID']), ['S1']);
+    // space__spaces is no longer in kMirrorSources (FN26090102) -- spaces.dart
+    // reads /api/spaces (tree endpoint), not /api/state's flat 'spaces' field.
+    expect((await readVaultRows(db, 'space__spaces')), isEmpty, reason: 'space__spaces has no mirror source, state response ignored for this table');
     expect((await readVaultRows(db, 'scope__inbox')).map((r) => r['ID']), ['IN1']);
   });
 

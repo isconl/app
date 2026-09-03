@@ -63,7 +63,11 @@ const Map<String, List<String>> kVaultTables = {
 /// `spaces`).
 const List<(String snapshotKey, String table, String jsonKey)> kMirrorSources = [
   ('state', 'scope__tasks', 'tasks'),
-  ('state', 'space__spaces', 'spaces'),
+  // NOTE: space__spaces intentionally removed (FN26090102) -- spaces.dart
+  // reads services.store.spaces → /api/spaces (a tree endpoint returning
+  // {tree:[...]}, each node with children/descendantCount), NOT /api/state's
+  // flat 'spaces' field. The table stays in kVaultTables for schema
+  // completeness; a future UI using the flat rows can add a mirror source then.
   ('state', 'scope__inbox', 'feed'), // /api/state's inbox rows, reversed -- order doesn't matter for storage
   ('circle', 'circle__people', 'people'),
   ('dates', 'scope__dates', 'dates'),
