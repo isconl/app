@@ -476,8 +476,13 @@ class _CourseTileState extends State<_CourseTile> {
             ),
           ],
           const SizedBox(height: 10),
-          for (final lesson in lessons)
-            _LessonRow(courseId: courseId, lesson: lesson),
+          for (var i = 0; i < lessons.length; i++)
+            _LessonRow(
+              courseId: courseId,
+              lesson: lessons[i],
+              nextLesson: i + 1 < lessons.length ? lessons[i + 1] : null,
+              allLessons: lessons,
+            ),
         ],
       ),
     );
@@ -485,9 +490,16 @@ class _CourseTileState extends State<_CourseTile> {
 }
 
 class _LessonRow extends StatelessWidget {
-  const _LessonRow({required this.courseId, required this.lesson});
+  const _LessonRow({
+    required this.courseId,
+    required this.lesson,
+    this.nextLesson,
+    this.allLessons = const [],
+  });
   final String courseId;
   final Map<String, dynamic> lesson;
+  final Map<String, dynamic>? nextLesson;
+  final List<Map<String, dynamic>> allLessons;
 
   @override
   Widget build(BuildContext context) {
@@ -505,6 +517,8 @@ class _LessonRow extends StatelessWidget {
             file: file,
             title: fmt.s(lesson['title']),
             status: fmt.s(lesson['status']),
+            nextLesson: nextLesson,
+            allLessons: allLessons,
           ),
         ),
       ),
@@ -562,12 +576,16 @@ class LessonScreen extends StatefulWidget {
     required this.file,
     required this.title,
     required this.status,
+    this.nextLesson,
+    this.allLessons = const [],
   });
 
   final String course;
   final String file;
   final String title;
   final String status;
+  final Map<String, dynamic>? nextLesson;
+  final List<Map<String, dynamic>> allLessons;
 
   @override
   State<LessonScreen> createState() => _LessonScreenState();
@@ -578,6 +596,19 @@ class _LessonScreenState extends State<LessonScreen> {
   final _scroll = ScrollController();
   Timer? _resumeDebounce;
   bool _restoredResume = false;
+  bool _showScrollTop = false;
+
+  Map<String, dynamic>? get _computedNextLesson {
+    if (widget.nextLesson != null) return widget.nextLesson;
+    if (widget.allLessons.isNotEmpty) {
+      final idx = widget.allLessons
+          .indexWhere((l) => fmt.s(l['file']) == widget.file);
+      if (idx >= 0 && idx + 1 < widget.allLessons.length) {
+        return widget.allLessons[idx + 1];
+      }
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -608,6 +639,10 @@ class _LessonScreenState extends State<LessonScreen> {
   // dropped server write is no longer a real data-loss risk.
   void _onScroll() {
     if (!_scroll.hasClients || _scroll.position.maxScrollExtent <= 0) return;
+    final show = _scroll.offset > (MediaQuery.of(context).size.height * 0.6);
+    if (show != _showScrollTop) {
+      setState(() => _showScrollTop = show);
+    }
     // First layout after a restore-triggered jump also fires this listener
     // -- don't let that overwrite the just-restored position with itself;
     // harmless either way, but skip it while a restore is still pending.
@@ -673,6 +708,20 @@ class _LessonScreenState extends State<LessonScreen> {
     final heading = widget.title.isEmpty ? widget.file : widget.title;
 
     return Scaffold(
+      floatingActionButton: _showScrollTop
+          ? FloatingActionButton.small(
+              backgroundColor: C.surface,
+              foregroundColor: C.text,
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Sz.rSm),
+                side: const BorderSide(color: C.border),
+              ),
+              onPressed: () => _scroll.jumpTo(0),
+              tooltip: 'Scroll to top',
+              child: const Icon(Icons.arrow_upward_rounded, size: 18),
+            )
+          : null,
       appBar: ShellAppBar(
         title: heading,
         showBrand: false,
@@ -742,6 +791,55 @@ class _LessonScreenState extends State<LessonScreen> {
                           courseId: widget.course,
                           baseUrl: services.api.baseUrl),
                     _LessonNotes(course: widget.course, file: widget.file),
+                    if (_computedNextLesson != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 24, bottom: 20),
+                        child: Center(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              shape: const StadiumBorder(),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 12),
+                              side: const BorderSide(color: C.greenDim),
+                            ),
+                            onPressed: () => Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => LessonScreen(
+                                  course: widget.course,
+                                  file: fmt.s(_computedNextLesson!['file']),
+                                  title: fmt.s(_computedNextLesson!['title']),
+                                  status: fmt.s(_computedNextLesson!['status']),
+                                  allLessons: widget.allLessons,
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(Icons.arrow_forward_rounded,
+                                size: 16, color: C.green),
+                            label: Text(
+                              'Next: ${fmt.s(_computedNextLesson!['title']).isEmpty ? fmt.s(_computedNextLesson!['file']) : fmt.s(_computedNextLesson!['title'])}',
+                              style: T.small.copyWith(
+                                  color: C.green, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+                      )
+                    else if (widget.allLessons.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 24, bottom: 20),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.check_circle_rounded,
+                                  size: 16, color: C.green),
+                              const SizedBox(width: 8),
+                              Text('Course complete',
+                                  style: T.small.copyWith(color: C.text3)),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
                 );
               },
@@ -819,7 +917,7 @@ class _ExportPdfButtonState extends State<_ExportPdfButton> {
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.picture_as_pdf_outlined, size: 20),
+          : const Icon(Icons.download_rounded, size: 20),
     );
   }
 }
