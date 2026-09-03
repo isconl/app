@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
@@ -574,6 +576,8 @@ class LessonScreen extends StatefulWidget {
 class _LessonScreenState extends State<LessonScreen> {
   late String _status = widget.status;
   final _scroll = ScrollController();
+  Timer? _resumeDebounce;
+  bool _restoredResume = false;
 
   @override
   void initState() {
@@ -591,10 +595,69 @@ class _LessonScreenState extends State<LessonScreen> {
         await lib.download(widget.course, widget.file);
       }
     });
+    _scroll.addListener(_onScroll);
+  }
+
+  // BN26083103: local, always-on scroll-position tracking -- written
+  // unconditionally (online or offline, since it's on-device), debounced
+  // 1.2s of stillness, matching the web console's own resume-tracker
+  // (app.js, "The reader's scroll is written back on a debounce (1.2s of
+  // stillness)"). The best-effort server sync (saveLessonResume(), already
+  // written elsewhere, queueable:false) fires on the same tick, but only
+  // when online -- the local row is now the durable source of truth, so a
+  // dropped server write is no longer a real data-loss risk.
+  void _onScroll() {
+    if (!_scroll.hasClients || _scroll.position.maxScrollExtent <= 0) return;
+    // First layout after a restore-triggered jump also fires this listener
+    // -- don't let that overwrite the just-restored position with itself;
+    // harmless either way, but skip it while a restore is still pending.
+    _resumeDebounce?.cancel();
+    _resumeDebounce = Timer(const Duration(milliseconds: 1200), () {
+      if (!mounted) return;
+      final pct = (_scroll.position.pixels / _scroll.position.maxScrollExtent * 100)
+          .clamp(0, 100)
+          .round();
+      final services = AppScope.of(context);
+      services.db.saveLessonResumeLocal(
+        course: widget.course,
+        file: widget.file,
+        scrollPct: pct,
+      );
+      if (services.sync.online) {
+        services.mutations.saveLessonResume(
+          course: widget.course,
+          lesson: widget.file,
+          scrollPct: pct,
+        );
+      }
+    });
+  }
+
+  /// Jumps to the locally-saved scroll position once the content has laid
+  /// out (needs maxScrollExtent to be known -- a post-frame callback after
+  /// SnapshotView's builder has actually rendered the reading surface, not
+  /// before). Called from the content builder below since that's the first
+  /// point layout is guaranteed to exist; `_restoredResume` guards against
+  /// re-jumping on every rebuild.
+  void _maybeRestoreResume() {
+    if (_restoredResume) return;
+    _restoredResume = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !_scroll.hasClients) return;
+      final pct = await AppScope.of(context).db.lessonResumeLocal(
+            course: widget.course,
+            file: widget.file,
+          );
+      if (pct == null || !mounted || !_scroll.hasClients) return;
+      final target = _scroll.position.maxScrollExtent * (pct / 100);
+      if (target > 0) _scroll.jumpTo(target.clamp(0, _scroll.position.maxScrollExtent));
+    });
   }
 
   @override
   void dispose() {
+    _resumeDebounce?.cancel();
+    _scroll.removeListener(_onScroll);
     _scroll.dispose();
     super.dispose();
   }
@@ -630,6 +693,7 @@ class _LessonScreenState extends State<LessonScreen> {
               padding: const EdgeInsets.fromLTRB(0, 0, 0, 56),
               builder: (context, data) {
                 final content = fmt.s(fmt.m(data)['content']);
+                _maybeRestoreResume();
                 return ReadingSurface(
                   children: [
                     ReadingHeader(

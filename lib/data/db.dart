@@ -28,12 +28,18 @@ class AppDb {
         : p.join((await getApplicationDocumentsDirectory()).path, 'isconl.db');
     final db = await openDatabase(
       path,
+      // v3 (BN26083103): added lesson_resume, an always-on local table for
+      // offline-safe scroll-position tracking -- separate from the
+      // server-side saveLessonResume() mutation (queueable:false, so an
+      // offline write there is simply dropped, not queued). This table is
+      // written unconditionally, online or offline, since it's on-device;
+      // the server mutation stays best-effort on top of it.
       // v2 (BN26083107): added the vault-mirror tables (real per-collection
       // tables matching a slice of vault's own schema -- see
       // vault_schema.dart) alongside the pre-existing generic snapshot
       // cache, which stays as-is. onUpgrade only needs to ADD the new
       // tables for an existing install; onCreate covers both for a fresh one.
-      version: 2,
+      version: 3,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE snapshots (
@@ -61,10 +67,28 @@ class AppDb {
             meta TEXT,
             ts INTEGER NOT NULL
           )''');
+        await db.execute('''
+          CREATE TABLE lesson_resume (
+            course TEXT NOT NULL,
+            file TEXT NOT NULL,
+            scroll_pct INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (course, file)
+          )''');
         await ensureVaultMirrorTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) await ensureVaultMirrorTables(db);
+        if (oldVersion < 3) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS lesson_resume (
+              course TEXT NOT NULL,
+              file TEXT NOT NULL,
+              scroll_pct INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (course, file)
+            )''');
+        }
       },
     );
     return AppDb._(db);
@@ -196,6 +220,46 @@ class AppDb {
   }
 
   Future<void> clearChat() => _db.delete('chat').then((_) {});
+
+  // ---- lesson resume (BN26083103) ----
+
+  /// Always-on, offline-safe scroll-position write -- unconditional, online
+  /// or offline, since it's purely on-device. This is the real "absolutely
+  /// aware" local source of truth; the server-side saveLessonResume()
+  /// mutation is best-effort on top of it, not a replacement for it.
+  Future<void> saveLessonResumeLocal({
+    required String course,
+    required String file,
+    required int scrollPct,
+  }) async {
+    await _db.insert(
+      'lesson_resume',
+      {
+        'course': course,
+        'file': file,
+        'scroll_pct': scrollPct,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// The saved scroll percentage (0-100) for one lesson, or null if this
+  /// lesson has never had a position saved on this device.
+  Future<int?> lessonResumeLocal({
+    required String course,
+    required String file,
+  }) async {
+    final rows = await _db.query(
+      'lesson_resume',
+      columns: ['scroll_pct'],
+      where: 'course = ? AND file = ?',
+      whereArgs: [course, file],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['scroll_pct'] as int?;
+  }
 
   // ---- vault mirror (BN26083107) ----
 
