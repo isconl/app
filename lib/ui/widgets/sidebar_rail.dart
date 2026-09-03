@@ -74,7 +74,7 @@ final List<NavGroup> navGroups = [
     NavItem('finance', Icons.account_balance_wallet_rounded, 'Finance', () => const FinanceView()),
     NavItem('rhythm', Icons.local_fire_department_rounded, 'Rhythm', () => const RhythmView()),
     NavItem('journal', Icons.auto_stories_rounded, 'Journal', () => const JournalView()),
-    NavItem('learning', Icons.school_rounded, 'Learning', () => const LearningView()),
+    NavItem('learning', Icons.school_rounded, 'Academia', () => const LearningView()),
   ]),
   NavGroup('Circle', [
     NavItem('family', Icons.favorite_rounded, 'Family', () => const CircleView(ring: 'family')),

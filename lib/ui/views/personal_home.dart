@@ -50,7 +50,7 @@ class PersonalHomeView extends StatelessWidget {
               const SizedBox(height: 8),
               _Tile(
                 icon: Icons.school_rounded,
-                title: 'Learning',
+                title: 'Academia',
                 subtitle: 'Campus curriculum modules, reading progress, and tracks',
                 onTap: () => onNavigate?.call(4),
               ),

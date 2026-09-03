@@ -109,7 +109,7 @@ class _ShellState extends State<Shell> {
     const _SubTab('Finance',   FinanceView()),
     const _SubTab('Ideas',     IdeasView()),
     const _SubTab('Journal',   JournalView()),
-    const _SubTab('Learning',  LearningView()),
+    const _SubTab('Academia',  LearningView()),
   ];
 
   List<_SubTab> _subsFor(int tab) => switch (tab) {
@@ -588,8 +588,8 @@ class MenuSheet extends StatelessWidget {
               badge: ideasCount > 0 ? '$ideasCount' : null),
           _item(ctx, Icons.auto_stories_rounded, 'Journal',
               () => go(const JournalView(), 'Journal')),
-          _item(ctx, Icons.school_rounded, 'Learning',
-              () => go(const LearningView(), 'Learning')),
+          _item(ctx, Icons.school_rounded, 'Academia',
+              () => go(const LearningView(), 'Academia')),
           // ── CIRCLE ───────────────────────────────────────────
           const SectionLabel('Circle'),
           _item(ctx, Icons.contacts_rounded, 'All Contacts',
