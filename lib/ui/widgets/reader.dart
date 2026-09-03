@@ -55,13 +55,20 @@ class ReadingSurface extends StatelessWidget {
 /// The prose itself. Selectable, because the second thing you do with a good
 /// paragraph is quote it.
 class ReadingBody extends StatelessWidget {
-  const ReadingBody(this.markdown, {super.key});
+  const ReadingBody(this.markdown,
+      {super.key, this.courseId = '', this.baseUrl = ''});
   final String markdown;
+  /// Passed to [Markdown] so `_assets/` image paths resolve to the hub API.
+  final String courseId;
+  final String baseUrl;
 
   @override
   Widget build(BuildContext context) {
     return SelectionArea(
-      child: Markdown(markdown, variant: MarkdownVariant.reading),
+      child: Markdown(markdown,
+          variant: MarkdownVariant.reading,
+          courseId: courseId,
+          baseUrl: baseUrl),
     );
   }
 }

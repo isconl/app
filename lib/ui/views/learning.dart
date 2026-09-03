@@ -738,7 +738,9 @@ class _LessonScreenState extends State<LessonScreen> {
                         ),
                       )
                     else
-                      ReadingBody(content),
+                      ReadingBody(content,
+                          courseId: widget.course,
+                          baseUrl: services.api.baseUrl),
                     _LessonNotes(course: widget.course, file: widget.file),
                   ],
                 );

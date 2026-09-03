@@ -21,12 +21,21 @@ enum MarkdownVariant { compact, reading }
 /// horizontal rules, links and tables. No external dependency, fully offline.
 class Markdown extends StatelessWidget {
   const Markdown(this.source,
-      {super.key, this.baseStyle, this.variant = MarkdownVariant.compact});
+      {super.key,
+      this.baseStyle,
+      this.variant = MarkdownVariant.compact,
+      this.courseId = '',
+      this.baseUrl = ''});
   final String source;
   final TextStyle? baseStyle;
   final MarkdownVariant variant;
+  /// If set, `![alt](_assets/file.ext)` paths resolve to
+  /// `$baseUrl/api/learning/asset?course=$courseId&file=file.ext`.
+  final String courseId;
+  final String baseUrl;
 
   bool get _reading => variant == MarkdownVariant.reading;
+
 
   @override
   Widget build(BuildContext context) {
@@ -410,46 +419,113 @@ class Markdown extends StatelessWidget {
     );
   }
 
+  // BL26083105: resolve _assets/ path to the hub's /api/learning/asset endpoint.
+  String _resolveImageUrl(String raw) {
+    if (raw.startsWith('_assets/') && courseId.isNotEmpty && baseUrl.isNotEmpty) {
+      final base = baseUrl.trimRight().replaceAll(RegExp(r'/$'), '');
+      final file = Uri.encodeComponent(raw.substring(8));
+      final cid  = Uri.encodeComponent(courseId);
+      return '$base/api/learning/asset?course=$cid&file=$file';
+    }
+    return raw;
+  }
+
   Widget _image(_Block block) {
+    final resolvedUrl = _resolveImageUrl(block.imageUrl);
+    final rawCaption = block.imageAlt.trim();
+    // Detect _captured DD Mon YYYY_ pattern (mirrors web renderer's convention)
+    final capturedMatch = RegExp(r'_captured\s+([^_]+)_', caseSensitive: false)
+        .firstMatch(rawCaption);
+    final capturedText = capturedMatch?.group(1)?.trim() ?? '';
+    final captionText  = rawCaption
+        .replaceAll(RegExp(r'_captured\s+[^_]+_', caseSensitive: false), '')
+        .trim();
+
+    Widget imgWidget(BuildContext context) => GestureDetector(
+          onTap: () => showDialog<void>(
+            context: context,
+            barrierColor: Colors.black87,
+            builder: (_) => Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.all(12),
+              child: Stack(children: [
+                InteractiveViewer(
+                  panEnabled: true,
+                  minScale: 0.8,
+                  maxScale: 6.0,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      resolvedUrl,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Icon(
+                          Icons.image_not_supported_rounded,
+                          color: Colors.white54, size: 48),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 0, right: 0,
+                  child: IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(Sz.rMd),
+              border: Border.all(color: C.border),
+              boxShadow: const [BoxShadow(color: Color(0x1a000000), blurRadius: 4, offset: Offset(0, 1))],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(Sz.rMd),
+              child: Image.network(
+                resolvedUrl,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: C.surface,
+                    borderRadius: BorderRadius.circular(Sz.rMd),
+                    border: Border.all(color: C.border),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.image_not_supported_rounded, size: 20, color: C.text3),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(
+                      captionText.isNotEmpty ? captionText : block.imageUrl,
+                      style: T.small.copyWith(color: C.text3),
+                    )),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        );
+
     return Container(
       margin: EdgeInsets.symmetric(vertical: _reading ? 16 : 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(Sz.rMd),
-            child: Image.network(
-              block.imageUrl,
-              errorBuilder: (context, error, stackTrace) => Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: C.surface,
-                  borderRadius: BorderRadius.circular(Sz.rMd),
-                  border: Border.all(color: C.border),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.image_not_supported_rounded, size: 20, color: C.text3),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        block.imageAlt.isNotEmpty ? block.imageAlt : block.imageUrl,
-                        style: T.small.copyWith(color: C.text3),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (block.imageAlt.isNotEmpty) ...[
+          Builder(builder: imgWidget),
+          if (captionText.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(block.imageAlt, style: T.tiny.copyWith(color: C.text3)),
+            Text(captionText, style: T.tiny.copyWith(color: C.text3)),
+          ],
+          if (capturedText.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text('captured $capturedText',
+                style: T.tiny.copyWith(color: C.text3, fontStyle: FontStyle.italic)),
           ],
         ],
       ),
     );
   }
+
 
   /// Inline markdown: **bold**, *italic*, `code`, [text](url), and (BL26083104)
   /// the `[[term|definition]]` jargon marker -- matched first so its double
