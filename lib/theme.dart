@@ -52,6 +52,8 @@ class C {
   static const callQuoteBg = Color(0x1AF0883E);
   static const callResearch = Color(0xFF6EA6D9);
   static const callResearchBg = Color(0x1A6EA6D9);
+  static const callFact = Color(0xFFD9C15C);
+  static const callFactBg = Color(0x1AD9C15C);
 
   static Color forPriority(String p) => switch (p.toLowerCase()) {
         'high' => red,
@@ -104,6 +106,8 @@ class T {
       fontFamily: _mono, fontSize: 11.5, height: 1.45, color: C.text2);
   static const monoSmall = TextStyle(
       fontFamily: _mono, fontSize: 10, height: 1.35, color: C.text3);
+  static const idBadge = TextStyle(
+      fontFamily: _mono, fontSize: 10.5, height: 1.2, color: C.green, fontWeight: FontWeight.w500);
 
   static TextStyle w500(TextStyle s) => s.copyWith(fontWeight: FontWeight.w500);
   static TextStyle w600(TextStyle s) => s.copyWith(fontWeight: FontWeight.w600);

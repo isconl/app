@@ -297,9 +297,20 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
+    final canPop = Navigator.of(context).canPop();
     return AppBar(
-      automaticallyImplyLeading: !showBrand,
-      titleSpacing: showBrand ? 14 : 0,
+      automaticallyImplyLeading: false,
+      leading: !showBrand && canPop
+          ? IconButton(
+              icon: const Icon(Icons.chevron_left_rounded, size: 26),
+              tooltip: 'Back',
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                Navigator.of(context).maybePop();
+              },
+            )
+          : null,
+      titleSpacing: (showBrand || (!canPop && !showBrand)) ? 14 : 0,
       title: Row(
         children: [
           if (showBrand) ...[

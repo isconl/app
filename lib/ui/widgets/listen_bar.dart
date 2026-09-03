@@ -250,6 +250,7 @@ class _PrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FilledButton.icon(
+      style: FilledButton.styleFrom(shape: const StadiumBorder()),
       onPressed: loading ? null : onTap,
       icon: loading ? const MiniSpinner() : Icon(icon, size: 16),
       label: Text(label),

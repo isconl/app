@@ -563,3 +563,34 @@ class Segmented extends StatelessWidget {
     );
   }
 }
+
+/// Mono-green bordered pill ID badge matching the web console's `.id-badge`.
+class IdBadge extends StatelessWidget {
+  const IdBadge({super.key, required this.id, this.onTap});
+
+  final String id;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final badge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: C.greenBg,
+        border: Border.all(color: C.greenDim),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        id,
+        style: T.idBadge,
+      ),
+    );
+
+    if (onTap == null) return badge;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: badge,
+    );
+  }
+}
