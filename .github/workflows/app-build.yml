@@ -12,7 +12,7 @@
 # release rather than earning a new tag scheme.
 #
 # Triggers:
-#  - push to the app branch (code changes; bump commits carry [skip ci])
+#  - push to main (code changes; bump commits carry [skip ci])
 #  - workflow_dispatch (ARCHITECT's manual cue)
 #  - repository_dispatch type "app-build" (also accepts the legacy
 #    "apk-build" type so any already-installed trigger keeps working)
@@ -50,10 +50,10 @@ jobs:
       version: ${{ steps.bump.outputs.version }}
       date: ${{ steps.bump.outputs.date }}
     steps:
-      - name: Checkout app branch
+      - name: Checkout app repo
         uses: actions/checkout@v4
         with:
-          ref: app
+          ref: main
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -78,7 +78,7 @@ jobs:
           git config user.email "ci@isconl.local"
           git add pubspec.yaml android/app/src/main/res || true
           git commit -m "ci: bump to v${{ steps.bump.outputs.version }} [skip ci]"
-          git push origin app
+          git push origin main
 
       # Created here, exactly once, before any build runs. Three matrix jobs
       # racing to create-or-upload the same release is how you get two releases
@@ -90,10 +90,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: apk-v${{ steps.bump.outputs.version }}
         run: |
-          NOTES='Automated build from the app branch. Android installs over the previous version and data is preserved, because every build is signed with the same key - in-app: Settings -> Check for update. Windows and Linux artefacts are attached to this same release.'
+          NOTES='Automated build from isconl/app main. Android installs over the previous version and data is preserved, because every build is signed with the same key - in-app: Settings -> Check for update. Windows and Linux artefacts are attached to this same release.'
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" \
-              --target app \
+              --target main \
               --title "iSconl v${{ steps.bump.outputs.version }}" \
               --notes "$NOTES"
           fi
@@ -112,12 +112,12 @@ jobs:
             runner: ubuntu-latest
     runs-on: ${{ matrix.runner }}
     steps:
-      # The version job pushed a bump commit; check out app AFTER it so every
+      # The version job pushed a bump commit; check out main AFTER it so every
       # artefact carries the same version the release is tagged with.
-      - name: Checkout app branch
+      - name: Checkout app repo
         uses: actions/checkout@v4
         with:
-          ref: app
+          ref: main
 
       - name: Set up JDK 17
         if: matrix.platform == 'android'
