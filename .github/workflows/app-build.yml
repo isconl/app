@@ -26,7 +26,7 @@ name: Build app
 
 on:
   push:
-    branches: [app]
+    branches: [main]
     paths-ignore:
       - '**.md'
       - 'docs/**'
