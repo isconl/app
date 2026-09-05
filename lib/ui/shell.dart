@@ -592,6 +592,8 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Personal'),
           _item(ctx, Icons.local_fire_department_rounded, 'Rhythm',
               () => go(const RhythmView(), 'Rhythm')),
+          _item(ctx, Icons.school_rounded, 'Academia',
+              () => go(const LearningView(), 'Academia')),
           _item(ctx, Icons.account_balance_wallet_rounded, 'Finance',
               () => go(const FinanceView(), 'Finance')),
           _item(ctx, Icons.lightbulb_rounded, 'Ideas',
@@ -599,8 +601,6 @@ class MenuSheet extends StatelessWidget {
               badge: ideasCount > 0 ? '$ideasCount' : null),
           _item(ctx, Icons.auto_stories_rounded, 'Journal',
               () => go(const JournalView(), 'Journal')),
-          _item(ctx, Icons.school_rounded, 'Academia',
-              () => go(const LearningView(), 'Academia')),
           // ── CIRCLE ───────────────────────────────────────────
           const SectionLabel('Circle'),
           _item(ctx, Icons.contacts_rounded, 'All Contacts',
