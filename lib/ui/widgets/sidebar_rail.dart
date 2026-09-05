@@ -171,7 +171,7 @@ class _SidebarRailState extends State<SidebarRail> {
                           style: T.headline.copyWith(
                               fontSize: 17, letterSpacing: -0.3,
                               fontWeight: FontWeight.w700)),
-                      TextSpan(text: 'Architect',
+                      TextSpan(text: 'Sconl',
                           style: T.headline.copyWith(
                               fontSize: 17, letterSpacing: -0.3,
                               fontWeight: FontWeight.w300, color: C.green)),
