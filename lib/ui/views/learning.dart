@@ -930,7 +930,8 @@ class _LessonScreenState extends State<LessonScreen> {
                     else
                       ReadingBody(content,
                           courseId: widget.course,
-                          baseUrl: services.api.baseUrl),
+                          baseUrl: services.api.baseUrl,
+                          token: services.api.token),
                     _LessonNotes(course: widget.course, file: widget.file),
                     if (_computedNextLesson != null)
                       Padding(

@@ -25,14 +25,19 @@ class Markdown extends StatelessWidget {
       this.baseStyle,
       this.variant = MarkdownVariant.compact,
       this.courseId = '',
-      this.baseUrl = ''});
+      this.baseUrl = '',
+      this.token = ''});
   final String source;
   final TextStyle? baseStyle;
   final MarkdownVariant variant;
   /// If set, `![alt](_assets/file.ext)` paths resolve to
-  /// `$baseUrl/api/learning/asset?course=$courseId&file=file.ext`.
+  /// `$baseUrl/api/learning/asset?course=$courseId&file=file.ext&token=$token`.
   final String courseId;
   final String baseUrl;
+  /// The session's bearer token -- Image.network can't send an
+  /// Authorization header, so it goes on the URL as a query param instead
+  /// (the same fallback hub's checkAuth accepts for any /api/* route).
+  final String token;
 
   bool get _reading => variant == MarkdownVariant.reading;
 
@@ -419,13 +424,18 @@ class Markdown extends StatelessWidget {
     );
   }
 
-  // BL26083105: resolve _assets/ path to the hub's /api/learning/asset endpoint.
+  // BL26083105: resolve _assets/ path to the hub's /api/learning/asset
+  // endpoint. `token` appended as a query param -- Image.network can't
+  // send an Authorization header, and this route sits behind the same
+  // auth as every other /api/* route (found live 6 Sep 2026: every
+  // lesson image was silently 401ing without this).
   String _resolveImageUrl(String raw) {
     if (raw.startsWith('_assets/') && courseId.isNotEmpty && baseUrl.isNotEmpty) {
       final base = baseUrl.trimRight().replaceAll(RegExp(r'/$'), '');
       final file = Uri.encodeComponent(raw.substring(8));
       final cid  = Uri.encodeComponent(courseId);
-      return '$base/api/learning/asset?course=$cid&file=$file';
+      final tok  = Uri.encodeComponent(token);
+      return '$base/api/learning/asset?course=$cid&file=$file&token=$tok';
     }
     return raw;
   }

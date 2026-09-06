@@ -56,11 +56,17 @@ class ReadingSurface extends StatelessWidget {
 /// paragraph is quote it.
 class ReadingBody extends StatelessWidget {
   const ReadingBody(this.markdown,
-      {super.key, this.courseId = '', this.baseUrl = ''});
+      {super.key, this.courseId = '', this.baseUrl = '', this.token = ''});
   final String markdown;
   /// Passed to [Markdown] so `_assets/` image paths resolve to the hub API.
   final String courseId;
   final String baseUrl;
+  /// The session's bearer token, appended as `?token=` on the resolved
+  /// image URL -- Image.network can't send an Authorization header, and
+  /// /api/learning/asset sits behind the same auth as every other /api/*
+  /// route (found live 6 Sep 2026: every lesson image was silently
+  /// 401ing on both web and mobile for exactly this reason).
+  final String token;
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +74,8 @@ class ReadingBody extends StatelessWidget {
       child: Markdown(markdown,
           variant: MarkdownVariant.reading,
           courseId: courseId,
-          baseUrl: baseUrl),
+          baseUrl: baseUrl,
+          token: token),
     );
   }
 }
