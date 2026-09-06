@@ -44,7 +44,7 @@ void main() {
       'Personal',
       'Circle',
       'Projects & Spaces',
-      'System',
+      'Systems',
     ]);
   });
 }

@@ -29,10 +29,11 @@ import 'views/media_view.dart';
 import 'views/notifications.dart';
 import 'views/ops.dart';
 import 'views/outbox_view.dart';
-import 'views/personal_home.dart';
 import 'views/planning.dart';
+import 'views/portfolio.dart';
 import 'views/projects.dart';
 import 'views/rhythm.dart';
+import 'views/security.dart';
 import 'views/settings.dart';
 import 'views/social.dart';
 import 'views/spaces.dart';
@@ -71,20 +72,26 @@ const _commandSubs = [
 // Channels & Personal subs are constructed dynamically (need onNavigate callback).
 // They're wired inside _ShellState.
 
+// BN26090606: Portfolio is now the hub-style sub (real PortfolioView --
+// Sconl's curated CV/resume links, not the venture-category filter that
+// used to sit here), reordered to Portfolio, Corporate, Products,
+// Platforms per Sconl's explicit target order.
 const _projectsSubs = [
-  _SubTab('Portfolio', ProjectsView(cat: 'portfolio')),
+  _SubTab('Portfolio', PortfolioView()),
+  _SubTab('Corporate', CorporateView()),
   _SubTab('Products',  ProjectsView(cat: 'product')),
   _SubTab('Platforms', ProjectsView(cat: 'platform')),
-  _SubTab('Corporate', CorporateView()),
 ];
 
+// BN26090606: target confirmed by Sconl -- Settings, Files, Ops, Security.
+// Media/Audit/Outbox drop from this bottom-nav row (still reachable via
+// the hamburger menu, which keeps every tool regardless of this tab's
+// 4-item limit).
 const _settingsSubs = [
   _SubTab('Settings', SettingsView()),
-  _SubTab('Ops',      OpsView()),
-  _SubTab('Media',    MediaView()),
-  _SubTab('Audit',    AuditView()),
   _SubTab('Files',    FilesView()),
-  _SubTab('Outbox',   OutboxView()),
+  _SubTab('Ops',      OpsView()),
+  _SubTab('Security', SecurityView()),
 ];
 
 class _ShellState extends State<Shell> {
@@ -99,20 +106,25 @@ class _ShellState extends State<Shell> {
     if (_sub != s) setState(() => _sub = s);
   }
 
+  // BN26090606: Buffer dropped to hit the 4-sub-tab target -- still
+  // reachable via the hamburger menu (Sconl's explicit call, 6 Sep 2026).
   List<_SubTab> get _channelSubs => [
     _SubTab('Channels', ChannelsHomeView(onNavigate: _switchSub)),
     const _SubTab('Teams',   TeamsView()),
     const _SubTab('Inbox',   InboxView()),
-    const _SubTab('Buffer',  SocialView()),
     const _SubTab('Kanban',  JiraView()),
   ];
 
+  // BN26090606: hub-style sub swapped from PersonalHomeView to RhythmView
+  // (was built but never wired into this tab) and relabeled Personal ->
+  // Rhythm, matching the webconsole's own Personal-space nav exactly.
+  // Ideas dropped to hit the 4-sub-tab target -- still reachable via the
+  // hamburger menu (Sconl's explicit call, 6 Sep 2026).
   List<_SubTab> get _personalSubs => [
-    _SubTab('Personal', PersonalHomeView(onNavigate: _switchSub)),
-    const _SubTab('Finance',   FinanceView()),
-    const _SubTab('Ideas',     IdeasView()),
-    const _SubTab('Journal',   JournalView()),
+    const _SubTab('Rhythm',    RhythmView()),
     const _SubTab('Academia',  LearningView()),
+    const _SubTab('Finance',   FinanceView()),
+    const _SubTab('Journal',   JournalView()),
   ];
 
   List<_SubTab> _subsFor(int tab) => switch (tab) {
@@ -248,7 +260,15 @@ class _SubTabBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: selected ? C.greenBg : Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
+                // BN26090606: rounded-rectangle, matching the webconsole's
+                // own standard small-button radius (--r-sm: 5px == Sz.rSm)
+                // -- was a fully-rounded pill (circular(20) against a 36px
+                // strip). Sconl's ask was specifically about the Calendar
+                // sub-tab, but this is the ONE shared component every
+                // sub-tab across every bottom-nav tab renders through, so
+                // the fix lands everywhere that style is reused, not just
+                // Calendar's own button.
+                borderRadius: BorderRadius.circular(Sz.rSm),
                 border: selected ? Border.all(color: C.greenDim) : null,
               ),
               child: Center(
@@ -605,7 +625,7 @@ class MenuSheet extends StatelessWidget {
           // ── PROJECTS ─────────────────────────────────────────
           const SectionLabel('Projects'),
           _item(ctx, Icons.rocket_launch_rounded, 'Portfolio',
-              () => go(const ProjectsView(cat: 'portfolio'), 'Portfolio')),
+              () => go(const PortfolioView(), 'Portfolio')),
           _item(ctx, Icons.inventory_2_rounded, 'Products',
               () => go(const ProjectsView(cat: 'product'), 'Products')),
           _item(ctx, Icons.layers_rounded, 'Platforms',
@@ -658,6 +678,8 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Systems'),
           _item(ctx, Icons.dns_rounded, 'Ops',
               () => go(const OpsView(), 'Ops')),
+          _item(ctx, Icons.shield_outlined, 'Security',
+              () => go(const SecurityView(), 'Security')),
           _item(ctx, Icons.apps_rounded, 'Services',
               () => go(const HostedServicesView(), 'Services')),
           _item(ctx, Icons.folder_rounded, 'Files',
