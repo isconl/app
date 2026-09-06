@@ -41,6 +41,11 @@ dependencies:
   flutter_tts: ^4.2.0
   just_audio: ^0.9.42
   sqflite_common_ffi_web: ^1.1.2
+  # BN26090603: renders the two custom nav-bar SVGs (nav_bar.dart's own
+  # "no dependency added" comment was about not pulling in a third-party
+  # nav-bar package, not a blanket stance -- Sconl's own custom icons need
+  # real SVG rendering, which Icon()/IconData can't do).
+  flutter_svg: ^2.0.10
 
 dev_dependencies:
   flutter_test:
@@ -72,3 +77,6 @@ flutter:
           weight: 400
         - asset: assets/fonts/JetBrainsMono-Medium.ttf
           weight: 500
+
+  assets:
+    - assets/icons/

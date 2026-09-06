@@ -60,16 +60,40 @@ class _LearningViewState extends State<LearningView> {
           }
           final lib = services.modules;
 
-          // Group courses by CLASSROOM track (matching the web UI organization)
-          final Map<String, List<Map<String, dynamic>>> byTrack = {};
+          // BN26090604: groups come straight from /api/learning's own
+          // `groups` array -- the same live 8-track taxonomy the web
+          // renders from, matched to courses via each course's real
+          // GROUP_ID. Zero hardcoded track names/order/color on this side;
+          // a rename/reorder on the web needs no mobile code change.
+          final apiGroups = fmt.lm(fmt.m(data)['groups'])
+              .map(_LearningGroup.fromApi)
+              .toList()
+            ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+          final groupsById = {for (final g in apiGroups) g.id: g};
+
+          final Map<String, List<Map<String, dynamic>>> byGroup = {};
+          final ungrouped = <Map<String, dynamic>>[];
           for (final c in courses) {
-            final track = fmt.s(c['CLASSROOM']).isEmpty
-                ? 'Other'
-                : fmt.s(c['CLASSROOM']);
-            byTrack.putIfAbsent(track, () => []).add(c);
+            final groupId = fmt.s(c['GROUP_ID']);
+            if (groupId.isNotEmpty && groupsById.containsKey(groupId)) {
+              byGroup.putIfAbsent(groupId, () => []).add(c);
+            } else {
+              // A course with no real GROUP_ID is a genuine data problem
+              // (per OI26090601 -- every course should resolve to a real
+              // group now) -- surfaced visibly, never silently folded into
+              // a fabricated "Other" bucket.
+              ungrouped.add(c);
+            }
           }
-          // Preserve the natural order tracks appear in the data
-          final tracks = byTrack.keys.toList();
+          final tracks = [
+            for (final g in apiGroups)
+              if (byGroup[g.id]?.isNotEmpty ?? false) g,
+            if (ungrouped.isNotEmpty) _LearningGroup.ungrouped,
+          ];
+          final coursesForTrack = {
+            for (final g in apiGroups) g.id: byGroup[g.id] ?? const [],
+            _LearningGroup.ungrouped.id: ungrouped,
+          };
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -96,13 +120,12 @@ class _LearningViewState extends State<LearningView> {
                 ),
 
               // ── landing: one card per track, not a flat course/module list ──
-              for (final track in tracks)
+              for (final group in tracks)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: _TrackCard(
-                    track: track,
-                    courses: byTrack[track]!,
-                    accent: _trackAccent(tracks.indexOf(track)),
+                    group: group,
+                    courses: coursesForTrack[group.id]!,
                   ),
                 ),
 
@@ -137,26 +160,71 @@ class _LearningViewState extends State<LearningView> {
   }
 }
 
-/// Cycles the four callout accents across tracks so each has a stable colour
-/// without hardcoding to specific track names - new tracks just fall in line.
-Color _trackAccent(int index) =>
-    const [C.green, C.cyan, C.violet, C.amber][index % 4];
+/// BN26090604: one entry from /api/learning's `groups` array -- label, icon
+/// (a plain emoji; the web's SVG_ICONS reassignment is a rendering
+/// choice on that side only and never reaches this API payload, confirmed
+/// live this session), color, sort order and the API's own aggregate counts,
+/// so the track card never has to recompute what the server already sent.
+class _LearningGroup {
+  const _LearningGroup({
+    required this.id,
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.sortOrder,
+    required this.courseCount,
+    required this.moduleCount,
+    required this.progressPct,
+  });
 
-/// Per-track aggregate: courses started, module progress, offline coverage.
+  factory _LearningGroup.fromApi(Map<String, dynamic> g) => _LearningGroup(
+        id: fmt.s(g['id']),
+        label: fmt.s(g['label']).isEmpty ? fmt.s(g['id']) : fmt.s(g['label']),
+        icon: fmt.s(g['icon']).isEmpty ? '📚' : fmt.s(g['icon']),
+        color: _hexColor(fmt.s(g['color'])),
+        sortOrder: (g['sortOrder'] is num) ? (g['sortOrder'] as num).toInt() : 99,
+        courseCount: (g['courseCount'] is num) ? (g['courseCount'] as num).toInt() : 0,
+        moduleCount: (g['moduleCount'] is num) ? (g['moduleCount'] as num).toInt() : 0,
+        progressPct: (g['progressPct'] is num) ? (g['progressPct'] as num).toInt() : 0,
+      );
+
+  /// A real data problem, not a track: courses whose GROUP_ID doesn't match
+  /// any live group. Visibly flagged (amber, distinct label) rather than
+  /// silently folded into a fabricated "Other" bucket.
+  static const ungrouped = _LearningGroup(
+    id: '_ungrouped', label: 'Ungrouped — needs a GROUP_ID', icon: '⚠️',
+    color: C.amber, sortOrder: 999, courseCount: 0, moduleCount: 0, progressPct: 0,
+  );
+
+  final String id;
+  final String label;
+  final String icon;
+  final Color color;
+  final int sortOrder;
+  final int courseCount;
+  final int moduleCount;
+  final int progressPct;
+}
+
+Color _hexColor(String hex, {Color fallback = C.green}) {
+  final h = hex.replaceFirst('#', '').trim();
+  if (h.length != 6) return fallback;
+  final v = int.tryParse(h, radix: 16);
+  return v == null ? fallback : Color(0xFF000000 | v);
+}
+
+/// Offline coverage only -- courseCount/moduleCount/doneCount now come
+/// straight from the API's own group aggregate (_LearningGroup), never
+/// recomputed here, so the two can't drift out of sync with each other.
 class _TrackStats {
   _TrackStats(List<Map<String, dynamic>> courses, ModuleLibrary lib) {
-    courseCount = courses.length;
     for (final c in courses) {
       final lessons = fmt.lm(c['lessons']);
-      final done =
-          lessons.where((l) => fmt.s(l['status']).toLowerCase() == 'done').length;
-      if (done > 0) coursesStarted++;
-      totalModules += lessons.length;
-      doneModules += done;
       final courseId = fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID']);
       for (final l in lessons) {
         final file = fmt.s(l['file']);
         if (file.isEmpty) continue;
+        totalModules++;
         final st = lib.status(courseId, file);
         if (st.downloaded) offlineModules++;
         if (st.state == ModuleState.stale) staleModules++;
@@ -164,10 +232,7 @@ class _TrackStats {
     }
   }
 
-  int courseCount = 0;
-  int coursesStarted = 0;
   int totalModules = 0;
-  int doneModules = 0;
   int offlineModules = 0;
   int staleModules = 0;
 }
@@ -177,22 +242,22 @@ class _TrackStats {
 /// overwhelm. Tap to drill into the track's course list.
 class _TrackCard extends StatelessWidget {
   const _TrackCard({
-    required this.track,
+    required this.group,
     required this.courses,
-    required this.accent,
   });
 
-  final String track;
+  final _LearningGroup group;
   final List<Map<String, dynamic>> courses;
-  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     final lib = AppScope.of(context).modules;
+    // Offline coverage is a phone-specific fact the API can't know -- the
+    // only thing still computed locally. Everything else (courseCount,
+    // moduleCount, progressPct) comes straight from `group`, the API's own
+    // aggregate, so it can never drift out of sync with the web.
     final stats = _TrackStats(courses, lib);
-    final pct = stats.totalModules == 0
-        ? 0.0
-        : stats.doneModules / stats.totalModules;
+    final pct = group.progressPct / 100;
     final allOffline = stats.totalModules > 0 &&
         stats.offlineModules == stats.totalModules &&
         stats.staleModules == 0;
@@ -201,7 +266,8 @@ class _TrackCard extends StatelessWidget {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => _TrackDetailScreen(track: track, courses: courses),
+          builder: (_) =>
+              _TrackDetailScreen(track: '${group.icon} ${group.label}', courses: courses),
         ),
       ),
       child: Column(
@@ -209,13 +275,9 @@ class _TrackCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-              ),
+              Text(group.icon, style: const TextStyle(fontSize: 14)),
               const SizedBox(width: 8),
-              Expanded(child: Text(track, style: T.title)),
+              Expanded(child: Text(group.label, style: T.title)),
               const Icon(Icons.chevron_right_rounded, size: 18, color: C.text3),
             ],
           ),
@@ -226,7 +288,7 @@ class _TrackCard extends StatelessWidget {
               value: pct,
               minHeight: 4,
               backgroundColor: C.surface,
-              valueColor: AlwaysStoppedAnimation(accent),
+              valueColor: AlwaysStoppedAnimation(group.color),
             ),
           ),
           const SizedBox(height: 9),
@@ -234,9 +296,9 @@ class _TrackCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '${stats.coursesStarted} of ${stats.courseCount} '
-                  '${stats.courseCount == 1 ? 'course' : 'courses'} started · '
-                  '${stats.doneModules}/${stats.totalModules} modules',
+                  '${group.courseCount} '
+                  '${group.courseCount == 1 ? 'course' : 'courses'} · '
+                  '${group.moduleCount} modules · ${group.progressPct}%',
                   style: T.small,
                 ),
               ),
@@ -713,10 +775,7 @@ class _LessonScreenState extends State<LessonScreen> {
               backgroundColor: C.surface,
               foregroundColor: C.text,
               elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(Sz.rSm),
-                side: const BorderSide(color: C.border),
-              ),
+              shape: const CircleBorder(side: BorderSide(color: C.border)),
               onPressed: () => _scroll.jumpTo(0),
               tooltip: 'Scroll to top',
               child: const Icon(Icons.arrow_upward_rounded, size: 18),
@@ -795,9 +854,10 @@ class _LessonScreenState extends State<LessonScreen> {
                       Padding(
                         padding: const EdgeInsets.only(top: 24, bottom: 20),
                         child: Center(
-                          child: OutlinedButton.icon(
+                          child: OutlinedButton(
                             style: OutlinedButton.styleFrom(
-                              shape: const StadiumBorder(),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(Sz.rSm)),
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 20, vertical: 12),
                               side: const BorderSide(color: C.greenDim),
@@ -814,12 +874,18 @@ class _LessonScreenState extends State<LessonScreen> {
                                 ),
                               ),
                             ),
-                            icon: const Icon(Icons.arrow_forward_rounded,
-                                size: 16, color: C.green),
-                            label: Text(
-                              'Next: ${fmt.s(_computedNextLesson!['title']).isEmpty ? fmt.s(_computedNextLesson!['file']) : fmt.s(_computedNextLesson!['title'])}',
-                              style: T.small.copyWith(
-                                  color: C.green, fontWeight: FontWeight.w600),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Next: ${fmt.s(_computedNextLesson!['title']).isEmpty ? fmt.s(_computedNextLesson!['file']) : fmt.s(_computedNextLesson!['title'])}',
+                                  style: T.small.copyWith(
+                                      color: C.green, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.chevron_right_rounded,
+                                    size: 18, color: C.green),
+                              ],
                             ),
                           ),
                         ),

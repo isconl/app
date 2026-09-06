@@ -35,24 +35,7 @@ class ListenBar extends StatefulWidget {
 }
 
 class _ListenBarState extends State<ListenBar> {
-  bool _requesting = false;
-  String? _refusal;
-
   String get _key => Narrator.key(widget.course, widget.file);
-
-  Future<void> _requestNarration() async {
-    setState(() { _requesting = true; _refusal = null; });
-    final services = AppScope.of(context);
-    final reason = await services.narrator.requestNarration(widget.course, widget.file);
-    if (!mounted) return;
-    setState(() { _requesting = false; _refusal = reason; });
-    if (reason == null) {
-      await services.modules.check(force: true);
-      if (!mounted) return;
-      toast(context, 'Narration ready');
-      await services.narrator.playAgent(course: widget.course, file: widget.file);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -180,46 +163,6 @@ class _ListenBarState extends State<ListenBar> {
                 ],
               ),
 
-              if (!hasNarration || staleNarration) ...[
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: _requesting ? null : _requestNarration,
-                    icon: _requesting
-                        ? const MiniSpinner()
-                        : const Icon(Icons.record_voice_over_rounded, size: 15),
-                    label: Text(_requesting
-                        ? 'The agent is reading it...'
-                        : staleNarration
-                            ? 'Re-record for the new version'
-                            : 'Have the agent read it properly'),
-                  ),
-                ),
-              ],
-
-              if (_refusal != null) ...[
-                const SizedBox(height: 10),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.shield_rounded, size: 13, color: C.amber),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: Text(
-                        // Plane B is not an error. It is the system doing exactly
-                        // what it exists to do, so it reads as a decision.
-                        _refusal!.contains('plane')
-                            ? 'This module stays on your devices. ${_refusal!} '
-                                'The device voice above still reads it.'
-                            : _refusal!,
-                        style: T.tiny.copyWith(color: C.amber, height: 1.5),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-
               if (n.error != null && mine) ...[
                 const SizedBox(height: 8),
                 Text(n.error!, style: T.tiny.copyWith(color: C.red)),
@@ -250,7 +193,8 @@ class _PrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FilledButton.icon(
-      style: FilledButton.styleFrom(shape: const StadiumBorder()),
+      style: FilledButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Sz.rSm))),
       onPressed: loading ? null : onTap,
       icon: loading ? const MiniSpinner() : Icon(icon, size: 16),
       label: Text(label),

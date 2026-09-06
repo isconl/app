@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../theme.dart';
 
@@ -28,10 +29,19 @@ class PillNavItem {
     this.isTab = true,
     this.restingColor,
     this.badge,
+    this.svgAsset,
   });
 
   final IconData icon;
   final String label;
+
+  /// BN26090603: when set, rendered instead of [icon] via flutter_svg,
+  /// tinted the same resting/active colours as every other item -- lets a
+  /// custom SVG (Sconl's own icon, not a font glyph) sit in the same nav
+  /// row as everything else. [icon] still has to be supplied (kept
+  /// `IconData`-typed, non-nullable, per the item's existing const API) as
+  /// the fallback if the asset ever fails to load.
+  final String? svgAsset;
 
   /// Tabs keep the pill. Actions flash it and let go.
   final bool isTab;
@@ -87,7 +97,6 @@ class _PillNavBarState extends State<PillNavBar> {
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xEB0D1117),
-        border: Border(top: BorderSide(color: C.border)),
       ),
       child: SafeArea(
         top: false,
@@ -134,7 +143,14 @@ class _NavPill extends StatelessWidget {
     final resting = item.restingColor ?? C.text3;
     final tint = active ? C.greenBright : resting;
 
-    Widget icon = Icon(item.icon, size: 21, color: tint);
+    Widget icon = item.svgAsset != null
+        ? SvgPicture.asset(
+            item.svgAsset!,
+            width: 21,
+            height: 21,
+            colorFilter: ColorFilter.mode(tint, BlendMode.srcIn),
+          )
+        : Icon(item.icon, size: 21, color: tint);
     if (item.badge != null) {
       icon = Stack(
         clipBehavior: Clip.none,
