@@ -413,7 +413,7 @@ class _SettingsViewState extends State<SettingsView> {
           Field(
               label: 'URL',
               controller: controller,
-              hint: 'http://192.168.1.10:8888',
+              hint: 'https://isconl.acexoft.com',
               keyboardType: TextInputType.url),
           FilledButton(
             onPressed: () async {

@@ -6,7 +6,14 @@ publish_to: 'none'
 # minor bump: the client caught up with three days of agent work (Ideas, Rhythm,
 # Files, Buffer, Articles, PIN sign-in, agent-served updates), which is more than
 # a patch admits to.
-version: 0.2.1+9
+#
+# 6 Sep 2026, another hand minor bump: full UI-parity BUILD session -- Ops
+# screen, hamburger menu parity, real Inbox chat redesign, 4-sub-tab
+# restructure (Portfolio rebuilt against the real /api/portfolio, not the
+# stale venture-category filter), masonry track grid + icon-standard fix.
+# Build number advanced past both branches' prior values (main's own stale
+# CI bump to +9, dev's independent +9) to stay unambiguous.
+version: 0.3.0+10
 
 environment:
   sdk: ^3.12.0
@@ -41,6 +48,16 @@ dependencies:
   flutter_tts: ^4.2.0
   just_audio: ^0.9.42
   sqflite_common_ffi_web: ^1.1.2
+  # BN26090603: renders the two custom nav-bar SVGs (nav_bar.dart's own
+  # "no dependency added" comment was about not pulling in a third-party
+  # nav-bar package, not a blanket stance -- Sconl's own custom icons need
+  # real SVG rendering, which Icon()/IconData can't do).
+  flutter_svg: ^2.0.10
+  # BN26090604/BL26090601: the varied-size masonry tile grid for the
+  # Learning track landing -- the same "grid_auto_flow:dense" visual the
+  # web console builds in CSS, ported here since Flutter has no native
+  # masonry grid.
+  flutter_staggered_grid_view: ^0.7.0
 
 dev_dependencies:
   flutter_test:
@@ -72,3 +89,6 @@ flutter:
           weight: 400
         - asset: assets/fonts/JetBrainsMono-Medium.ttf
           weight: 500
+
+  assets:
+    - assets/icons/

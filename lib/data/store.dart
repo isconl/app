@@ -136,6 +136,11 @@ class Store {
   Snapshot get spaces => of('spaces', '/api/spaces');
   Snapshot get plans => of('plans', '/api/plans');
   Snapshot get projects => of('projects', '/api/projects');
+  // BN26090606: Sconl's own curated CVs/resumes/portfolio-document links --
+  // NOT ProjectsView(cat:'portfolio') (a venture-category filter that was
+  // never the real Portfolio feature; confirmed reading web's own
+  // renderPortfolio()/fetchPortfolio(), a completely separate view/API).
+  Snapshot get portfolio => of('portfolio', '/api/portfolio');
   Snapshot get github => of('github', '/api/github/snapshot');
   Snapshot get ventures => of('ventures', '/api/ventures');
 

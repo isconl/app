@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app_scope.dart';
 import '../../data/modules.dart';
@@ -60,16 +61,40 @@ class _LearningViewState extends State<LearningView> {
           }
           final lib = services.modules;
 
-          // Group courses by CLASSROOM track (matching the web UI organization)
-          final Map<String, List<Map<String, dynamic>>> byTrack = {};
+          // BN26090604: groups come straight from /api/learning's own
+          // `groups` array -- the same live 8-track taxonomy the web
+          // renders from, matched to courses via each course's real
+          // GROUP_ID. Zero hardcoded track names/order/color on this side;
+          // a rename/reorder on the web needs no mobile code change.
+          final apiGroups = fmt.lm(fmt.m(data)['groups'])
+              .map(_LearningGroup.fromApi)
+              .toList()
+            ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+          final groupsById = {for (final g in apiGroups) g.id: g};
+
+          final Map<String, List<Map<String, dynamic>>> byGroup = {};
+          final ungrouped = <Map<String, dynamic>>[];
           for (final c in courses) {
-            final track = fmt.s(c['CLASSROOM']).isEmpty
-                ? 'Other'
-                : fmt.s(c['CLASSROOM']);
-            byTrack.putIfAbsent(track, () => []).add(c);
+            final groupId = fmt.s(c['GROUP_ID']);
+            if (groupId.isNotEmpty && groupsById.containsKey(groupId)) {
+              byGroup.putIfAbsent(groupId, () => []).add(c);
+            } else {
+              // A course with no real GROUP_ID is a genuine data problem
+              // (per OI26090601 -- every course should resolve to a real
+              // group now) -- surfaced visibly, never silently folded into
+              // a fabricated "Other" bucket.
+              ungrouped.add(c);
+            }
           }
-          // Preserve the natural order tracks appear in the data
-          final tracks = byTrack.keys.toList();
+          final tracks = [
+            for (final g in apiGroups)
+              if (byGroup[g.id]?.isNotEmpty ?? false) g,
+            if (ungrouped.isNotEmpty) _LearningGroup.ungrouped,
+          ];
+          final coursesForTrack = {
+            for (final g in apiGroups) g.id: byGroup[g.id] ?? const [],
+            _LearningGroup.ungrouped.id: ungrouped,
+          };
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -95,16 +120,32 @@ class _LearningViewState extends State<LearningView> {
                   ),
                 ),
 
-              // ── landing: one card per track, not a flat course/module list ──
-              for (final track in tracks)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _TrackCard(
-                    track: track,
-                    courses: byTrack[track]!,
-                    accent: _trackAccent(tracks.indexOf(track)),
-                  ),
-                ),
+              // ── landing: masonry tile grid, not a flat card list ──────────
+              // BL26090601/BN26090604: tile size is a deterministic function
+              // of real track data (_LearningGroup.tier), not literal
+              // randomness -- a re-render never reshuffles sizes.
+              MasonryGridView.count(
+                crossAxisCount: 2,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: tracks.length,
+                itemBuilder: (context, i) {
+                  final group = tracks[i];
+                  // .fit (not .count): height comes from the card's own
+                  // content, not a fixed aspect-locked cell -- avoids
+                  // overflow risk entirely while still varying real estate
+                  // by tier (wide tiers show more, e.g. the description).
+                  return StaggeredGridTile.fit(
+                    crossAxisCellCount: group.span.$1,
+                    child: _TrackCard(
+                      group: group,
+                      courses: coursesForTrack[group.id]!,
+                    ),
+                  );
+                },
+              ),
 
               // ── low-emphasis library-wide action, moved off the top ──────
               if (!lib.prefetching &&
@@ -137,26 +178,124 @@ class _LearningViewState extends State<LearningView> {
   }
 }
 
-/// Cycles the four callout accents across tracks so each has a stable colour
-/// without hardcoding to specific track names - new tracks just fall in line.
-Color _trackAccent(int index) =>
-    const [C.green, C.cyan, C.violet, C.amber][index % 4];
+/// BN26090604 + the fleet's standing icon rule (`STANDING-RULES.md` #7:
+/// "every icon in the UI comes from the unified icon set. No emojis for UI
+/// chrome") -- the API's `icon` field is a raw emoji (`g.icon`, vault-side
+/// data), meant only as a fallback for surfaces with no real icon set of
+/// their own. The web console never renders that emoji directly either;
+/// it maps each group id through its own `learnGroupIcon()` to a proper
+/// monochrome SVG. This mirrors that same id->icon mapping on the Material
+/// side, so mobile stops rendering raw emoji as track icons.
+IconData _groupIconData(String id) => switch (id) {
+      'corporate-mandate' => Icons.business_center_rounded,
+      'sales-persuasion' => Icons.sell_rounded,
+      'medicine-surgery' => Icons.shield_rounded,
+      'markets-economics' => Icons.layers_rounded,
+      'wealth-finance' => Icons.bolt_rounded,
+      'platforms-systems' => Icons.grid_view_rounded,
+      'profiles-psychology' => Icons.groups_rounded,
+      'systems-architecture' => Icons.settings_rounded,
+      '_ungrouped' => Icons.warning_amber_rounded,
+      _ => Icons.folder_rounded,
+    };
 
-/// Per-track aggregate: courses started, module progress, offline coverage.
+/// One entry from /api/learning's `groups` array -- label, icon (resolved
+/// via `_groupIconData`, never the API's raw emoji), color, sort order and
+/// the API's own aggregate counts, so the track card never has to
+/// recompute what the server already sent.
+class _LearningGroup {
+  const _LearningGroup({
+    required this.id,
+    required this.label,
+    required this.description,
+    required this.icon,
+    required this.color,
+    required this.sortOrder,
+    required this.courseCount,
+    required this.moduleCount,
+    required this.progressPct,
+    required this.status,
+  });
+
+  factory _LearningGroup.fromApi(Map<String, dynamic> g) => _LearningGroup(
+        id: fmt.s(g['id']),
+        label: fmt.s(g['label']).isEmpty ? fmt.s(g['id']) : fmt.s(g['label']),
+        description: fmt.s(g['description']),
+        icon: _groupIconData(fmt.s(g['id'])),
+        color: _hexColor(fmt.s(g['color'])),
+        sortOrder: (g['sortOrder'] is num) ? (g['sortOrder'] as num).toInt() : 99,
+        courseCount: (g['courseCount'] is num) ? (g['courseCount'] as num).toInt() : 0,
+        moduleCount: (g['moduleCount'] is num) ? (g['moduleCount'] as num).toInt() : 0,
+        progressPct: (g['progressPct'] is num) ? (g['progressPct'] as num).toInt() : 0,
+        status: fmt.s(g['status']),
+      );
+
+  /// A real data problem, not a track: courses whose GROUP_ID doesn't match
+  /// any live group. Visibly flagged (amber, distinct label) rather than
+  /// silently folded into a fabricated "Other" bucket.
+  static const ungrouped = _LearningGroup(
+    id: '_ungrouped', label: 'Ungrouped — needs a GROUP_ID', description: '',
+    icon: Icons.warning_amber_rounded,
+    color: C.amber, sortOrder: 999, courseCount: 0, moduleCount: 0, progressPct: 0,
+    status: '',
+  );
+
+  final String id;
+  final String label;
+  final String description;
+  final IconData icon;
+  final Color color;
+  final int sortOrder;
+  final int courseCount;
+  final int moduleCount;
+  final int progressPct;
+  final String status;
+
+  /// BL26090601/BN26090604: deterministic masonry tier -- a function of
+  /// real track data, not literal randomness (a re-render would otherwise
+  /// reshuffle sizes for no reason). Mirrors the web console's own
+  /// `learnTileTier()` exactly: 4=2x2 (large or actively-worked), 2=2x1
+  /// (wide, long description), 3=1x2 (tall, mid-size + untouched), 1=1x1
+  /// (everything else). Archived tracks are always 1x1, regardless.
+  int get tier {
+    if (status == 'archived') return 1;
+    if (courseCount >= 5 ||
+        (progressPct > 0 && progressPct < 100 && courseCount >= 3)) {
+      return 4;
+    }
+    if (description.length > 90) return 2;
+    if (courseCount >= 2 && courseCount <= 4 && progressPct == 0) return 3;
+    return 1;
+  }
+
+  /// (crossAxisCellCount, mainAxisCellCount) for StaggeredGridTile.
+  (int, int) get span => switch (tier) {
+        4 => (2, 2),
+        2 => (2, 1),
+        3 => (1, 2),
+        _ => (1, 1),
+      };
+}
+
+Color _hexColor(String hex, {Color fallback = C.green}) {
+  final h = hex.replaceFirst('#', '').trim();
+  if (h.length != 6) return fallback;
+  final v = int.tryParse(h, radix: 16);
+  return v == null ? fallback : Color(0xFF000000 | v);
+}
+
+/// Offline coverage only -- courseCount/moduleCount/doneCount now come
+/// straight from the API's own group aggregate (_LearningGroup), never
+/// recomputed here, so the two can't drift out of sync with each other.
 class _TrackStats {
   _TrackStats(List<Map<String, dynamic>> courses, ModuleLibrary lib) {
-    courseCount = courses.length;
     for (final c in courses) {
       final lessons = fmt.lm(c['lessons']);
-      final done =
-          lessons.where((l) => fmt.s(l['status']).toLowerCase() == 'done').length;
-      if (done > 0) coursesStarted++;
-      totalModules += lessons.length;
-      doneModules += done;
       final courseId = fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID']);
       for (final l in lessons) {
         final file = fmt.s(l['file']);
         if (file.isEmpty) continue;
+        totalModules++;
         final st = lib.status(courseId, file);
         if (st.downloaded) offlineModules++;
         if (st.state == ModuleState.stale) staleModules++;
@@ -164,10 +303,7 @@ class _TrackStats {
     }
   }
 
-  int courseCount = 0;
-  int coursesStarted = 0;
   int totalModules = 0;
-  int doneModules = 0;
   int offlineModules = 0;
   int staleModules = 0;
 }
@@ -177,22 +313,22 @@ class _TrackStats {
 /// overwhelm. Tap to drill into the track's course list.
 class _TrackCard extends StatelessWidget {
   const _TrackCard({
-    required this.track,
+    required this.group,
     required this.courses,
-    required this.accent,
   });
 
-  final String track;
+  final _LearningGroup group;
   final List<Map<String, dynamic>> courses;
-  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     final lib = AppScope.of(context).modules;
+    // Offline coverage is a phone-specific fact the API can't know -- the
+    // only thing still computed locally. Everything else (courseCount,
+    // moduleCount, progressPct) comes straight from `group`, the API's own
+    // aggregate, so it can never drift out of sync with the web.
     final stats = _TrackStats(courses, lib);
-    final pct = stats.totalModules == 0
-        ? 0.0
-        : stats.doneModules / stats.totalModules;
+    final pct = group.progressPct / 100;
     final allOffline = stats.totalModules > 0 &&
         stats.offlineModules == stats.totalModules &&
         stats.staleModules == 0;
@@ -201,7 +337,7 @@ class _TrackCard extends StatelessWidget {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => _TrackDetailScreen(track: track, courses: courses),
+          builder: (_) => _TrackDetailScreen(track: group.label, courses: courses),
         ),
       ),
       child: Column(
@@ -209,16 +345,24 @@ class _TrackCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-              ),
+              Icon(group.icon, size: 15, color: group.color),
               const SizedBox(width: 8),
-              Expanded(child: Text(track, style: T.title)),
+              Expanded(child: Text(group.label, style: T.title)),
               const Icon(Icons.chevron_right_rounded, size: 18, color: C.text3),
             ],
           ),
+          // BL26090601: description shown in full on wider tiers; the
+          // smallest tier truncates rather than dropping it entirely --
+          // every field stays on every card, only the treatment changes.
+          if (group.description.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              group.description,
+              style: T.small.copyWith(color: C.text3),
+              maxLines: group.tier == 1 ? 1 : 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
           const SizedBox(height: 9),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
@@ -226,7 +370,7 @@ class _TrackCard extends StatelessWidget {
               value: pct,
               minHeight: 4,
               backgroundColor: C.surface,
-              valueColor: AlwaysStoppedAnimation(accent),
+              valueColor: AlwaysStoppedAnimation(group.color),
             ),
           ),
           const SizedBox(height: 9),
@@ -234,9 +378,9 @@ class _TrackCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '${stats.coursesStarted} of ${stats.courseCount} '
-                  '${stats.courseCount == 1 ? 'course' : 'courses'} started · '
-                  '${stats.doneModules}/${stats.totalModules} modules',
+                  '${group.courseCount} '
+                  '${group.courseCount == 1 ? 'course' : 'courses'} · '
+                  '${group.moduleCount} modules · ${group.progressPct}%',
                   style: T.small,
                 ),
               ),
@@ -713,10 +857,7 @@ class _LessonScreenState extends State<LessonScreen> {
               backgroundColor: C.surface,
               foregroundColor: C.text,
               elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(Sz.rSm),
-                side: const BorderSide(color: C.border),
-              ),
+              shape: const CircleBorder(side: BorderSide(color: C.border)),
               onPressed: () => _scroll.jumpTo(0),
               tooltip: 'Scroll to top',
               child: const Icon(Icons.arrow_upward_rounded, size: 18),
@@ -795,9 +936,10 @@ class _LessonScreenState extends State<LessonScreen> {
                       Padding(
                         padding: const EdgeInsets.only(top: 24, bottom: 20),
                         child: Center(
-                          child: OutlinedButton.icon(
+                          child: OutlinedButton(
                             style: OutlinedButton.styleFrom(
-                              shape: const StadiumBorder(),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(Sz.rSm)),
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 20, vertical: 12),
                               side: const BorderSide(color: C.greenDim),
@@ -814,12 +956,18 @@ class _LessonScreenState extends State<LessonScreen> {
                                 ),
                               ),
                             ),
-                            icon: const Icon(Icons.arrow_forward_rounded,
-                                size: 16, color: C.green),
-                            label: Text(
-                              'Next: ${fmt.s(_computedNextLesson!['title']).isEmpty ? fmt.s(_computedNextLesson!['file']) : fmt.s(_computedNextLesson!['title'])}',
-                              style: T.small.copyWith(
-                                  color: C.green, fontWeight: FontWeight.w600),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Next: ${fmt.s(_computedNextLesson!['title']).isEmpty ? fmt.s(_computedNextLesson!['file']) : fmt.s(_computedNextLesson!['title'])}',
+                                  style: T.small.copyWith(
+                                      color: C.green, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.chevron_right_rounded,
+                                    size: 18, color: C.green),
+                              ],
                             ),
                           ),
                         ),

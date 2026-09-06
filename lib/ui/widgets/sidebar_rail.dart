@@ -90,9 +90,9 @@ final List<NavGroup> navGroups = [
     NavItem('decisions', Icons.gavel_rounded, 'Decisions & Risks', () => const DecisionsView()),
     NavItem('hosted-services', Icons.dns_rounded, 'Services', () => const HostedServicesView()),
   ]),
-  NavGroup('System', [
+  NavGroup('Systems', [
     NavItem('media', Icons.play_circle_filled_rounded, 'Media', () => const MediaView()),
-    NavItem('audit', Icons.link_rounded, 'Audit Chain', () => const AuditView()),
+    NavItem('audit', Icons.link_rounded, 'Audit', () => const AuditView()),
     NavItem('outbox', Icons.outbox_rounded, 'Outbox', () => const OutboxView()),
     NavItem('settings', Icons.settings_rounded, 'Settings',
         () => const SettingsView(showIntegrations: true)),
@@ -132,7 +132,7 @@ class SidebarRail extends StatefulWidget {
 }
 
 /// One group open, ever - whichever holds the active view. Ported from the
-/// web console's sidebar (see webconsole/static/app.js's navOpenOnly): no
+/// web console's sidebar (see web/static/app.js's navOpenOnly): no
 /// group is pinned, so the rail never shows more than the single group
 /// holding the view currently on screen.
 class _SidebarRailState extends State<SidebarRail> {
@@ -171,7 +171,7 @@ class _SidebarRailState extends State<SidebarRail> {
                           style: T.headline.copyWith(
                               fontSize: 17, letterSpacing: -0.3,
                               fontWeight: FontWeight.w700)),
-                      TextSpan(text: 'Architect',
+                      TextSpan(text: 'Sconl',
                           style: T.headline.copyWith(
                               fontSize: 17, letterSpacing: -0.3,
                               fontWeight: FontWeight.w300, color: C.green)),

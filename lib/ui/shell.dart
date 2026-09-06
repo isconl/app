@@ -27,16 +27,19 @@ import 'views/journal.dart';
 import 'views/learning.dart';
 import 'views/media_view.dart';
 import 'views/notifications.dart';
+import 'views/ops.dart';
 import 'views/outbox_view.dart';
-import 'views/personal_home.dart';
 import 'views/planning.dart';
+import 'views/portfolio.dart';
 import 'views/projects.dart';
 import 'views/rhythm.dart';
+import 'views/security.dart';
 import 'views/settings.dart';
 import 'views/social.dart';
 import 'views/spaces.dart';
 import 'views/tasks.dart';
 import 'views/teams.dart';
+import 'widgets/command_palette.dart';
 import 'widgets/common.dart';
 import 'widgets/nav_bar.dart';
 import 'widgets/system_status.dart';
@@ -69,19 +72,26 @@ const _commandSubs = [
 // Channels & Personal subs are constructed dynamically (need onNavigate callback).
 // They're wired inside _ShellState.
 
+// BN26090606: Portfolio is now the hub-style sub (real PortfolioView --
+// Sconl's curated CV/resume links, not the venture-category filter that
+// used to sit here), reordered to Portfolio, Corporate, Products,
+// Platforms per Sconl's explicit target order.
 const _projectsSubs = [
-  _SubTab('Portfolio', ProjectsView(cat: 'portfolio')),
+  _SubTab('Portfolio', PortfolioView()),
+  _SubTab('Corporate', CorporateView()),
   _SubTab('Products',  ProjectsView(cat: 'product')),
   _SubTab('Platforms', ProjectsView(cat: 'platform')),
-  _SubTab('Corporate', CorporateView()),
 ];
 
+// BN26090606: target confirmed by Sconl -- Settings, Files, Ops, Security.
+// Media/Audit/Outbox drop from this bottom-nav row (still reachable via
+// the hamburger menu, which keeps every tool regardless of this tab's
+// 4-item limit).
 const _settingsSubs = [
   _SubTab('Settings', SettingsView()),
-  _SubTab('Media',    MediaView()),
-  _SubTab('Audit',    AuditView()),
   _SubTab('Files',    FilesView()),
-  _SubTab('Outbox',   OutboxView()),
+  _SubTab('Ops',      OpsView()),
+  _SubTab('Security', SecurityView()),
 ];
 
 class _ShellState extends State<Shell> {
@@ -96,20 +106,25 @@ class _ShellState extends State<Shell> {
     if (_sub != s) setState(() => _sub = s);
   }
 
+  // BN26090606: Buffer dropped to hit the 4-sub-tab target -- still
+  // reachable via the hamburger menu (Sconl's explicit call, 6 Sep 2026).
   List<_SubTab> get _channelSubs => [
     _SubTab('Channels', ChannelsHomeView(onNavigate: _switchSub)),
     const _SubTab('Teams',   TeamsView()),
     const _SubTab('Inbox',   InboxView()),
-    const _SubTab('Buffer',  SocialView()),
     const _SubTab('Kanban',  JiraView()),
   ];
 
+  // BN26090606: hub-style sub swapped from PersonalHomeView to RhythmView
+  // (was built but never wired into this tab) and relabeled Personal ->
+  // Rhythm, matching the webconsole's own Personal-space nav exactly.
+  // Ideas dropped to hit the 4-sub-tab target -- still reachable via the
+  // hamburger menu (Sconl's explicit call, 6 Sep 2026).
   List<_SubTab> get _personalSubs => [
-    _SubTab('Personal', PersonalHomeView(onNavigate: _switchSub)),
-    const _SubTab('Finance',   FinanceView()),
-    const _SubTab('Ideas',     IdeasView()),
-    const _SubTab('Journal',   JournalView()),
+    const _SubTab('Rhythm',    RhythmView()),
     const _SubTab('Academia',  LearningView()),
+    const _SubTab('Finance',   FinanceView()),
+    const _SubTab('Journal',   JournalView()),
   ];
 
   List<_SubTab> _subsFor(int tab) => switch (tab) {
@@ -228,7 +243,6 @@ class _SubTabBar extends StatelessWidget {
     return Container(
       height: 36,
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: C.border)),
         color: C.bg,
       ),
       child: ListView.builder(
@@ -246,7 +260,15 @@ class _SubTabBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: selected ? C.greenBg : Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
+                // BN26090606: rounded-rectangle, matching the webconsole's
+                // own standard small-button radius (--r-sm: 5px == Sz.rSm)
+                // -- was a fully-rounded pill (circular(20) against a 36px
+                // strip). Sconl's ask was specifically about the Calendar
+                // sub-tab, but this is the ONE shared component every
+                // sub-tab across every bottom-nav tab renders through, so
+                // the fix lands everywhere that style is reused, not just
+                // Calendar's own button.
+                borderRadius: BorderRadius.circular(Sz.rSm),
                 border: selected ? Border.all(color: C.greenDim) : null,
               ),
               child: Center(
@@ -356,7 +378,6 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
           const SyncIndicator(),
         const SizedBox(width: 4),
       ],
-      shape: const Border(bottom: BorderSide(color: C.border)),
     );
   }
 }
@@ -474,8 +495,8 @@ class _BottomBar extends StatelessWidget {
           items: [
             const PillNavItem(icon: Icons.bolt_rounded,         label: 'Command'),
             const PillNavItem(icon: Icons.dynamic_feed_rounded, label: 'Channels'),
-            const PillNavItem(icon: Icons.folder_rounded,       label: 'Projects'),
-            const PillNavItem(icon: Icons.person_rounded,        label: 'Personal'),
+            const PillNavItem(icon: Icons.folder_rounded, label: 'Projects', svgAsset: 'assets/icons/nav_projects.svg'),
+            const PillNavItem(icon: Icons.person_rounded, label: 'Personal', svgAsset: 'assets/icons/nav_personal.svg'),
             PillNavItem(
               icon: Icons.settings_rounded,
               label: 'Settings',
@@ -553,6 +574,29 @@ class MenuSheet extends StatelessWidget {
               ),
             ),
           ),
+          // ── SETTINGS + SEARCH (top row) ───────────────────────
+          // BN26090611: matches the web panel's own Settings-left/
+          // Search-right single row, moved out of the bottom of Systems.
+          // "Search" on web (`#cmd-trigger`) is the command palette
+          // (Ctrl+K), not a text-search feature -- this app already has
+          // one (`command_palette.dart`, desktop-only until now), so this
+          // wires an existing widget in rather than building new search.
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _topRowButton(ctx, Icons.settings_rounded, 'Settings',
+                      () => go(const SettingsView(), 'Settings')),
+                ),
+                const SizedBox(width: 8),
+                _topRowButton(ctx, Icons.search_rounded, null,
+                    () => showCommandPalette(
+                        ctx, (item) => go(item.builder(), item.label)),
+                    square: true),
+              ],
+            ),
+          ),
           // ── COMMAND ──────────────────────────────────────────
           const SectionLabel('Command'),
           _item(ctx, Icons.bolt_rounded, 'Hub',
@@ -572,16 +616,16 @@ class MenuSheet extends StatelessWidget {
           _item(ctx, Icons.inbox_rounded, 'Inbox',
               () => go(const InboxView(), 'Inbox'),
               badge: inboxCount > 0 ? '$inboxCount' : null),
-          _item(ctx, Icons.share_rounded, 'Social',
-              () => go(const SocialView(), 'Social')),
-          _item(ctx, Icons.view_kanban_rounded, 'Jira',
-              () => go(const JiraView(), 'Jira')),
+          _item(ctx, Icons.share_rounded, 'Buffer',
+              () => go(const SocialView(), 'Buffer')),
+          _item(ctx, Icons.view_kanban_rounded, 'Kanban',
+              () => go(const JiraView(), 'Kanban')),
           _item(ctx, Icons.code_rounded, 'GitHub',
               () => go(const GithubView(), 'GitHub')),
           // ── PROJECTS ─────────────────────────────────────────
           const SectionLabel('Projects'),
           _item(ctx, Icons.rocket_launch_rounded, 'Portfolio',
-              () => go(const ProjectsView(cat: 'portfolio'), 'Portfolio')),
+              () => go(const PortfolioView(), 'Portfolio')),
           _item(ctx, Icons.inventory_2_rounded, 'Products',
               () => go(const ProjectsView(cat: 'product'), 'Products')),
           _item(ctx, Icons.layers_rounded, 'Platforms',
@@ -596,21 +640,21 @@ class MenuSheet extends StatelessWidget {
               () => go(const LearningView(), 'Academia')),
           _item(ctx, Icons.account_balance_wallet_rounded, 'Finance',
               () => go(const FinanceView(), 'Finance')),
+          _item(ctx, Icons.auto_stories_rounded, 'Journal',
+              () => go(const JournalView(), 'Journal')),
           _item(ctx, Icons.lightbulb_rounded, 'Ideas',
               () => go(const IdeasView(), 'Ideas'),
               badge: ideasCount > 0 ? '$ideasCount' : null),
-          _item(ctx, Icons.auto_stories_rounded, 'Journal',
-              () => go(const JournalView(), 'Journal')),
           // ── CIRCLE ───────────────────────────────────────────
           const SectionLabel('Circle'),
-          _item(ctx, Icons.contacts_rounded, 'All Contacts',
-              () => go(const ContactsView(), 'Contacts')),
           _item(ctx, Icons.favorite_rounded, 'Family',
               () => go(const CircleView(ring: 'family'), 'Family')),
           _item(ctx, Icons.work_rounded, 'Professional',
               () => go(const CircleView(ring: 'professional'), 'Professional')),
           _item(ctx, Icons.celebration_rounded, 'Social',
               () => go(const CircleView(ring: 'social'), 'Social')),
+          _item(ctx, Icons.contacts_rounded, 'Contacts',
+              () => go(const ContactsView(), 'Contacts')),
           // ── SPACES ───────────────────────────────────────────
           const SectionLabel('Spaces'),
           _item(ctx, Icons.hub_rounded, 'All Spaces',
@@ -621,25 +665,36 @@ class MenuSheet extends StatelessWidget {
               () => go(const SpacesView(axis: 'INN'), 'Innovator')),
           _item(ctx, Icons.palette_rounded, 'Creator',
               () => go(const SpacesView(axis: 'CRE'), 'Creator')),
-          // ── SYSTEM ───────────────────────────────────────────
-          const SectionLabel('System'),
-          _item(ctx, Icons.play_circle_filled_rounded, 'Media',
-              () => go(const MediaView(), 'Media')),
+          // ── SYSTEMS ──────────────────────────────────────────
+          // BN26090611: "System" -> "Systems", matching the web panel's
+          // own rename (RG26090501). Ops added (new this session, wasn't
+          // reachable from the drawer before). Articles/Decisions & Risks/
+          // Services/Outbox have no literal web left-panel counterpart
+          // (Outbox is a mobile-only offline-queue concept; Services
+          // overlaps with the new Ops view but isn't identical -- kept as
+          // real, working mobile features rather than dropped to force a
+          // 1:1 match with a panel that doesn't have a slot for them) --
+          // flagged rather than guessed, see build.md's BN26090611 note.
+          const SectionLabel('Systems'),
+          _item(ctx, Icons.dns_rounded, 'Ops',
+              () => go(const OpsView(), 'Ops')),
+          _item(ctx, Icons.shield_outlined, 'Security',
+              () => go(const SecurityView(), 'Security')),
+          _item(ctx, Icons.apps_rounded, 'Services',
+              () => go(const HostedServicesView(), 'Services')),
           _item(ctx, Icons.folder_rounded, 'Files',
               () => go(const FilesView(), 'Files')),
+          _item(ctx, Icons.play_circle_filled_rounded, 'Media',
+              () => go(const MediaView(), 'Media')),
+          _item(ctx, Icons.link_rounded, 'Audit',
+              () => go(const AuditView(), 'Audit')),
           _item(ctx, Icons.article_rounded, 'Articles',
               () => go(const ArticlesView(), 'Articles')),
           _item(ctx, Icons.gavel_rounded, 'Decisions & Risks',
               () => go(const DecisionsView(), 'Decisions & Risks')),
-          _item(ctx, Icons.dns_rounded, 'Services',
-              () => go(const HostedServicesView(), 'Services')),
-          _item(ctx, Icons.link_rounded, 'Audit Chain',
-              () => go(const AuditView(), 'Audit Chain')),
           _item(ctx, Icons.outbox_rounded, 'Outbox',
               () => go(const OutboxView(), 'Outbox'),
               badgeListenable: services.outbox),
-          _item(ctx, Icons.settings_rounded, 'Settings',
-              () => go(const SettingsView(), 'Settings')),
           const SizedBox(height: 18),
           const Divider(),
           const SizedBox(height: 10),
@@ -686,6 +741,41 @@ class MenuSheet extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           child: row,
+        ),
+      ),
+    );
+  }
+
+  /// BN26090611: Settings/Search top row. `label == null` renders an
+  /// icon-only square button (the Search/command-palette side, matching
+  /// the web panel's own icon-only Ctrl+K trigger); otherwise a labeled
+  /// pill filling the available width (the Settings side).
+  Widget _topRowButton(
+      BuildContext context, IconData icon, String? label, VoidCallback onTap,
+      {bool square = false}) {
+    return Material(
+      color: C.surface,
+      borderRadius: BorderRadius.circular(Sz.rMd),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Sz.rMd),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: Padding(
+          padding: square
+              ? const EdgeInsets.all(12)
+              : const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: label == null
+              ? Icon(icon, size: 18, color: C.text2)
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 17, color: C.text2),
+                    const SizedBox(width: 10),
+                    Text(label, style: T.w500(T.body2)),
+                  ],
+                ),
         ),
       ),
     );

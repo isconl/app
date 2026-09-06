@@ -104,6 +104,7 @@ class _IdeasViewState extends State<IdeasView> {
           child: FloatingActionButton(
             backgroundColor: C.greenDim,
             foregroundColor: Colors.white,
+            shape: const CircleBorder(),
             onPressed: () => _captureSheet(context),
             child: const Icon(Icons.add_rounded),
           ),
