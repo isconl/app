@@ -12,13 +12,13 @@ import 'learning_export_stub.dart'
 
 /// BN26082504: which grid this view renders. Gregorian is the existing
 /// month grid (unchanged); Equicycle is Architect's own 28-day cycle, ported
-/// from the webconsole's renderEqCalendar(). Planner (the webconsole's
+/// from the web's renderEqCalendar(). Planner (the web's
 /// week/hour grid, renderPlannerCalendar()) is NOT built here -- a real,
 /// separate UI-canvas effort, not a small addition; flagged rather than
 /// faked, see fix.md.
 enum _CalMode { gregorian, equicycle }
 
-/// Ported from the webconsole's getEquicycleContext() -- the year anchors on
+/// Ported from the web's getEquicycleContext() -- the year anchors on
 /// the first Sunday of June, so a 28-day cycle divides evenly into 4 true
 /// weeks. Pure function, no state, easy to keep in sync with the web version
 /// if the anchor rule ever changes there.
