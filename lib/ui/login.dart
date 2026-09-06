@@ -431,9 +431,9 @@ class _LoginScreenState extends State<LoginScreen> {
         Field(
           label: 'Server URL',
           controller: _server,
-          // The hint teaches. It used to read the Render address, which is a
-          // layout instance holding demo data - so it taught the wrong thing.
-          hint: 'http://192.168.1.10:8888',
+          // The hint teaches - it now points at the real production domain
+          // rather than a LAN example, matching `Session.defaultServer`.
+          hint: 'https://isconl.acexoft.com',
           keyboardType: TextInputType.url,
         ),
         Row(

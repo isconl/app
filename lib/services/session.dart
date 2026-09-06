@@ -41,7 +41,12 @@ class SessionService extends ChangeNotifier {
    * chrome`, served by Flutter's own tooling, not hub) the detected origin
    * will be wrong; the server field stays editable either way, same as native.
    */
-  static final defaultServer = kIsWeb ? _webOrigin() : '';
+  // `isconl.acexoft.com` is the fleet's real production domain (Cloudflare
+  // in front of the local relay-hosted `hub`), not the retired Render box
+  // the 7 Aug 2026 doctrine above was written against - safe as a native
+  // default. The field stays editable either way.
+  static final defaultServer =
+      kIsWeb ? _webOrigin() : 'https://isconl.acexoft.com';
 
   static String _webOrigin() {
     try {
