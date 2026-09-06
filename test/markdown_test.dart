@@ -59,10 +59,10 @@ Some **bold** text and *italic*.
       '**Book quote:** The user needs to know what state the system is in.',
     ].join('\n'));
 
-    expect(find.text('WHAT YOU WILL LEARN'), findsOneWidget);
+    expect(find.text('OBJECTIVE'), findsOneWidget);
     expect(find.text('JARGON'), findsOneWidget);
-    expect(find.text('WHAT TO WATCH FOR'), findsOneWidget);
-    expect(find.text('IN A BOOK'), findsOneWidget);
+    expect(find.text('FAILURE'), findsOneWidget);
+    expect(find.text('BOOK'), findsOneWidget);
     expect(find.text('BOOK QUOTE'), findsOneWidget);
   });
 
@@ -75,9 +75,9 @@ Some **bold** text and *italic*.
       '**Watch for:** another one.',
     ].join('\n'));
 
-    expect(find.text('WHAT YOU WILL LEARN'), findsOneWidget);
+    expect(find.text('OBJECTIVE'), findsOneWidget);
     expect(find.text('JARGON'), findsOneWidget);
-    expect(find.text('WHAT TO WATCH FOR'), findsOneWidget);
+    expect(find.text('FAILURE'), findsOneWidget);
   });
 
   testWidgets('a book citation is split onto its own line', (tester) async {
