@@ -32,6 +32,14 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# flutter_local_notifications_windows and local_auth_windows both include
+# <experimental/coroutine>, which newer MSVC/STL releases hard-error on
+# (C2338) instead of just warning -- found live in CI 6 Sep 2026 once the
+# runner's Visual Studio moved past the version that still allowed it.
+# Microsoft's own documented escape hatch, not a real fix upstream (the
+# plugins need to move to <coroutine>/<generator>) -- revisit once they do.
+add_definitions(-D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
