@@ -33,7 +33,6 @@ import 'views/planning.dart';
 import 'views/portfolio.dart';
 import 'views/projects.dart';
 import 'views/rhythm.dart';
-import 'views/security.dart';
 import 'views/settings.dart';
 import 'views/social.dart';
 import 'views/spaces.dart';
@@ -87,12 +86,13 @@ const _projectsSubs = [
 // BN26090606: target confirmed by Sconl -- Settings, Files, Ops, Security.
 // Media/Audit/Outbox drop from this bottom-nav row (still reachable via
 // the hamburger menu, which keeps every tool regardless of this tab's
-// 4-item limit).
+// 4-item limit). BG26091020: Ops + Security merged into one "Opsec" tab --
+// Security's stub content now renders as a section inside OpsView, so this
+// row is down to 3 sub-tabs instead of 4.
 const _settingsSubs = [
   _SubTab('Settings', SettingsView()),
   _SubTab('Files',    FilesView()),
-  _SubTab('Ops',      OpsView()),
-  _SubTab('Security', SecurityView()),
+  _SubTab('Opsec',    OpsView()),
 ];
 
 class _ShellState extends State<Shell> {
@@ -697,10 +697,10 @@ class MenuSheet extends StatelessWidget {
           // 1:1 match with a panel that doesn't have a slot for them) --
           // flagged rather than guessed, see build.md's BN26090611 note.
           const SectionLabel('Systems'),
-          _item(ctx, Icons.dns_rounded, 'Ops',
-              () => go(const OpsView(), 'Ops')),
-          _item(ctx, Icons.shield_outlined, 'Security',
-              () => go(const SecurityView(), 'Security')),
+          // BG26091020: Ops + Security merged into one "Opsec" entry --
+          // Security's stub content now renders as a section inside OpsView.
+          _item(ctx, Icons.dns_rounded, 'Opsec',
+              () => go(const OpsView(), 'Opsec')),
           _item(ctx, Icons.apps_rounded, 'Services',
               () => go(const HostedServicesView(), 'Services')),
           _item(ctx, Icons.folder_rounded, 'Files',

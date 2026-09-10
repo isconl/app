@@ -5,12 +5,12 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 
-/// Ops: the live control surface for the fleet + the OCI VM (BI26090502),
-/// mobile port of the web's renderOps()/loadOpsStatus() (`PS26090501`
-/// nav position). Status/VM-stats/deploy-status are read-only polls;
-/// restart/stop/start/logs hit the ops engine through hub's existing
-/// `/api/ops/*` proxy -- no backend work needed, the routes already exist
-/// and the app already talks to the same base URL the web does.
+/// Opsec: the live control surface for the fleet + the OCI VM (BI26090502),
+/// mobile port of the web's renderOps()/loadOpsStatus(). Status/VM-stats/
+/// deploy-status are read-only polls; restart/stop/start/logs hit the ops
+/// engine through hub's existing `/api/ops/*` proxy -- no backend work
+/// needed, the routes already exist and the app already talks to the same
+/// base URL the web does.
 ///
 /// Destroy is a real, destructive infrastructure control (stops and removes
 /// a container -- image/data untouched, but the running instance is gone),
@@ -23,6 +23,17 @@ import '../widgets/common.dart';
 /// Deliberately NOT cached through Store/Snapshot's offline-blob mechanism
 /// (BN26090601's finding) -- live infrastructure state going stale in a
 /// local cache would be actively misleading here, unlike a course list.
+///
+/// BG26091020: merged with the former standalone `SecurityView` into one
+/// "Opsec" space -- Security's stub content (`PS26090501`, dead-hand remote
+/// wipe + future hardening, still not yet scoped) now renders as a section
+/// at the bottom of this same view instead of its own bottom-nav sub-tab,
+/// matching the equivalent web-side merge into `renderOps()`. Class kept
+/// named `OpsView` (not renamed to `OpsecView`) since the file/class rename
+/// carries no functional weight and every other reference in this repo
+/// already keys off the old name -- only the sub-tab label + nav wiring
+/// (`shell.dart`) needed to change for this to read as "Opsec" everywhere
+/// a user sees it.
 class OpsView extends StatefulWidget {
   const OpsView({super.key});
 
@@ -201,7 +212,30 @@ class _OpsViewState extends State<OpsView> {
               const SizedBox(height: 10),
               _logsCard(),
             ],
+            const SizedBox(height: 10),
+            _securityCard(),
           ],
+        ],
+      ),
+    );
+  }
+
+  // BG26091020: folded in from the former standalone SecurityView -- same
+  // placeholder content, now a section of Opsec rather than its own tab.
+  Widget _securityCard() {
+    return const Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Security', style: T.title),
+          SizedBox(height: 6),
+          EmptyState(
+            'Coming later',
+            'Flagship item: dead-hand remote wipe of data from any '
+                'logged-in device. Needs its own design pass before this '
+                'section has real content.',
+            icon: Icons.shield_outlined,
+          ),
         ],
       ),
     );
