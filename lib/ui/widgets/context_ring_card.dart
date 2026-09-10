@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
+import '../../util/day_blocks.dart';
 import '../../util/fmt.dart' as fmt;
 import 'common.dart';
 
@@ -211,22 +212,7 @@ class _ContextRingCardState extends State<ContextRingCard>
     final now = DateTime.now();
     final mins = now.hour * 60.0 + now.minute + now.second / 60.0;
 
-    final defaultBlocks = [
-      {'start': 300, 'end': 360, 'name': 'Protected', 'axis': 'protected', 'third': 'Ground', 'slots': 0, 'placeable': false},
-      {'start': 360, 'end': 420, 'name': 'Academia', 'axis': 'learning', 'third': 'Ground', 'slots': 1, 'placeable': true},
-      {'start': 420, 'end': 480, 'name': 'Flex', 'axis': 'flex', 'third': 'Ground', 'slots': 0, 'placeable': false},
-      {'start': 480, 'end': 600, 'name': 'Innovator', 'axis': 'innovator', 'third': 'Work', 'slots': 4, 'placeable': true},
-      {'start': 600, 'end': 660, 'name': 'Flex', 'axis': 'flex', 'third': 'Work', 'slots': 0, 'placeable': false},
-      {'start': 660, 'end': 780, 'name': 'Visionary', 'axis': 'visionary', 'third': 'Work', 'slots': 4, 'placeable': true},
-      {'start': 780, 'end': 840, 'name': 'Lunch', 'axis': 'lunch', 'third': 'Work', 'slots': 0, 'placeable': false},
-      {'start': 840, 'end': 960, 'name': 'Creator', 'axis': 'creator', 'third': 'Work', 'slots': 4, 'placeable': true},
-      {'start': 960, 'end': 1020, 'name': 'Connection', 'axis': 'connection', 'third': 'Work', 'slots': 2, 'placeable': true},
-      {'start': 1020, 'end': 1080, 'name': 'Flex', 'axis': 'flex', 'third': 'Ground', 'slots': 0, 'placeable': false},
-      {'start': 1080, 'end': 1260, 'name': 'Hearth', 'axis': 'home', 'third': 'Ground', 'slots': 0, 'placeable': false},
-      {'start': 1260, 'end': 300, 'name': 'Rest', 'axis': 'rest', 'third': 'Rest', 'slots': 0, 'placeable': false},
-    ];
-
-    final blockList = rawBlocks.isNotEmpty ? rawBlocks : defaultBlocks;
+    final blockList = rawBlocks.isNotEmpty ? rawBlocks : kDefaultDayBlocks;
     final List<_BlockInfo> parsed = [];
 
     for (final b in blockList) {
