@@ -89,7 +89,8 @@ class InboxView extends StatelessWidget {
           child: FloatingActionButton(
             backgroundColor: C.greenDim,
             foregroundColor: Colors.white,
-            shape: const CircleBorder(),
+            // BG26091015: app-wide, no full-circle edge buttons.
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Sz.rLg)),
             onPressed: () => _captureSheet(context),
             child: const Icon(Icons.add_rounded),
           ),

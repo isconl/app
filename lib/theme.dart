@@ -117,7 +117,12 @@ class T {
 /// Shape and spacing.
 class Sz {
   static const rSm = 5.0;
-  static const rMd = 8.0;
+  // BG26091015: bumped 8->10 ("ever so slightly increased"), the most
+  // widely-used radius token across buttons/cards app-wide. Not visually
+  // confirmed against a running device this session (no emulator/device
+  // connected) -- flagged, not silently assumed right; revisit if it
+  // reads as more than "ever so slight" once checked live.
+  static const rMd = 10.0;
   static const rLg = 12.0;
   static const rXl = 16.0;
   static const pad = 14.0; // card padding

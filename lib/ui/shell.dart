@@ -62,11 +62,12 @@ class _SubTab {
   final Widget view;
 }
 
+// BN26091012: reordered Calendar before Planning, per Sconl.
 const _commandSubs = [
   _SubTab('Hub',       HubView()),
   _SubTab('Tasks',     TasksView()),
-  _SubTab('Planning',  PlanningView()),
   _SubTab('Calendar',  CalendarView()),
+  _SubTab('Planning',  PlanningView()),
 ];
 
 // Channels & Personal subs are constructed dynamically (need onNavigate callback).
@@ -108,11 +109,17 @@ class _ShellState extends State<Shell> {
 
   // BN26090606: Buffer dropped to hit the 4-sub-tab target -- still
   // reachable via the hamburger menu (Sconl's explicit call, 6 Sep 2026).
+  // BN26091013: Inbox is now the default/landing sub-tab, order Inbox,
+  // Teams, Kanban, Buffer -- ChannelsHomeView's masonry-tile dashboard
+  // drops OUT of the 4-tab bottom row (still reachable via the hamburger
+  // menu), same precedent BN26090606 already set for Personal
+  // (PersonalHomeView -> RhythmView, a real content view replacing a
+  // generic dashboard landing).
   List<_SubTab> get _channelSubs => [
-    _SubTab('Channels', ChannelsHomeView(onNavigate: _switchSub)),
-    const _SubTab('Teams',   TeamsView()),
     const _SubTab('Inbox',   InboxView()),
+    const _SubTab('Teams',   TeamsView()),
     const _SubTab('Kanban',  JiraView()),
+    const _SubTab('Buffer',  SocialView()),
   ];
 
   // BN26090606: hub-style sub swapped from PersonalHomeView to RhythmView
@@ -196,7 +203,8 @@ class _ShellState extends State<Shell> {
           heroTag: 'fab_chat',
           backgroundColor: C.green,
           foregroundColor: C.textInverse,
-          shape: const CircleBorder(),
+          // BG26091015: app-wide, no full-circle edge buttons.
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Sz.rLg)),
           child: const Icon(Icons.forum_rounded),
           onPressed: () => openChatSheet(context),
         ),
@@ -259,7 +267,13 @@ class _SubTabBar extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: selected ? C.greenBg : Colors.transparent,
+                // BN26091003: index 0 (the default view for every bottom-nav
+                // tab) gets a solid fill when selected -- C.greenDim, the
+                // app's existing solid-green-fill convention (same color
+                // filledButtonTheme uses). Every other tab keeps the
+                // existing tint+border treatment unchanged; this is a
+                // "default view" signal, not "more selected."
+                color: selected ? (i == 0 ? C.greenDim : C.greenBg) : Colors.transparent,
                 // BN26090606: rounded-rectangle, matching the webconsole's
                 // own standard small-button radius (--r-sm: 5px == Sz.rSm)
                 // -- was a fully-rounded pill (circular(20) against a 36px
@@ -269,13 +283,15 @@ class _SubTabBar extends StatelessWidget {
                 // the fix lands everywhere that style is reused, not just
                 // Calendar's own button.
                 borderRadius: BorderRadius.circular(Sz.rSm),
-                border: selected ? Border.all(color: C.greenDim) : null,
+                border: selected && i != 0 ? Border.all(color: C.greenDim) : null,
               ),
               child: Center(
                 child: Text(
                   subs[i].label,
                   style: (selected
-                          ? T.body2.copyWith(color: C.greenBright, fontWeight: FontWeight.w600)
+                          ? T.body2.copyWith(
+                              color: i == 0 ? Colors.white : C.greenBright,
+                              fontWeight: FontWeight.w600)
                           : T.body2)
                       .copyWith(fontSize: 12),
                 ),
@@ -611,6 +627,11 @@ class MenuSheet extends StatelessWidget {
               () => go(const NotificationsView(), 'Alerts')),
           // ── CHANNELS ─────────────────────────────────────────
           const SectionLabel('Channels'),
+          // BN26091013: ChannelsHomeView dropped out of the bottom-nav
+          // 4-tab row (Inbox is now the landing tab) -- kept reachable
+          // here, same pattern as Buffer/Ideas/Media/Audit/Outbox.
+          _item(ctx, Icons.dashboard_rounded, 'Channels',
+              () => go(const ChannelsHomeView(), 'Channels')),
           _item(ctx, Icons.groups_rounded, 'Teams',
               () => go(const TeamsView(), 'Teams')),
           _item(ctx, Icons.inbox_rounded, 'Inbox',

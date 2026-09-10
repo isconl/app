@@ -553,7 +553,9 @@ class _ChatSheetState extends State<ChatSheet> {
                     child: FilledButton(
                       style: FilledButton.styleFrom(
                         padding: EdgeInsets.zero,
-                        shape: const CircleBorder(),
+                        // BG26091015: app-wide, no full-circle edge buttons.
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(Sz.rLg)),
                       ),
                       onPressed:
                           online && !_busy ? () => _send(_input.text) : null,

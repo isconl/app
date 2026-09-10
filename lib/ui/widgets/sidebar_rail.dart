@@ -254,7 +254,8 @@ class _SidebarRailState extends State<SidebarRail> {
                   icon: const Icon(Icons.search_rounded, size: 18),
                   style: IconButton.styleFrom(
                     side: const BorderSide(color: C.border),
-                    shape: const CircleBorder(),
+                    // BG26091015: app-wide, no full-circle edge buttons.
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Sz.rLg)),
                   ),
                 ),
               ],
