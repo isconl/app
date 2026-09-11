@@ -754,6 +754,17 @@ class _LessonScreenState extends State<LessonScreen> {
     return null;
   }
 
+  // BL26091028: mirrors _computedNextLesson for the Previous direction --
+  // mobile had no Previous nav at all before this (web has both).
+  Map<String, dynamic>? get _computedPrevLesson {
+    if (widget.allLessons.isNotEmpty) {
+      final idx = widget.allLessons
+          .indexWhere((l) => fmt.s(l['file']) == widget.file);
+      if (idx > 0) return widget.allLessons[idx - 1];
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -882,14 +893,19 @@ class _LessonScreenState extends State<LessonScreen> {
               // thumb, not for a nav bar - this screen is pushed, not tabbed.
               padding: const EdgeInsets.fromLTRB(0, 0, 0, 56),
               builder: (context, data) {
-                final content = fmt.s(fmt.m(data)['content']);
+                final lessonMap = fmt.m(data);
+                final content = fmt.s(lessonMap['content']);
+                final updatedAt = fmt.s(lessonMap['updatedAt']);
                 _maybeRestoreResume();
                 return ReadingSurface(
                   children: [
                     ReadingHeader(
                       title: heading,
                       kicker: widget.course,
-                      meta: content.isEmpty ? null : readingMeta(content),
+                      meta: content.isEmpty
+                          ? null
+                          : readingMeta(content,
+                              updatedAt: updatedAt.isEmpty ? null : updatedAt),
                       trailing: Row(
                         children: [
                           for (final st in ['new', 'learning', 'done']) ...[
@@ -933,60 +949,70 @@ class _LessonScreenState extends State<LessonScreen> {
                           baseUrl: services.api.baseUrl,
                           token: services.api.token),
                     _LessonNotes(course: widget.course, file: widget.file),
-                    if (_computedNextLesson != null)
+                    if (_computedNextLesson != null || _computedPrevLesson != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 24, bottom: 20),
-                        child: Center(
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(Sz.rSm)),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 20, vertical: 12),
-                              side: const BorderSide(color: C.greenDim),
-                            ),
-                            onPressed: () => Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => LessonScreen(
-                                  course: widget.course,
-                                  file: fmt.s(_computedNextLesson!['file']),
-                                  title: fmt.s(_computedNextLesson!['title']),
-                                  status: fmt.s(_computedNextLesson!['status']),
-                                  allLessons: widget.allLessons,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            if (_computedPrevLesson != null)
+                              _LessonNavButton(
+                                icon: Icons.chevron_left_rounded,
+                                iconTrailing: false,
+                                label: lessonNavLabel('Previous',
+                                    fmt.s(_computedPrevLesson!['title']).isEmpty
+                                        ? fmt.s(_computedPrevLesson!['file'])
+                                        : fmt.s(_computedPrevLesson!['title'])),
+                                onTap: () => Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => LessonScreen(
+                                      course: widget.course,
+                                      file: fmt.s(_computedPrevLesson!['file']),
+                                      title: fmt.s(_computedPrevLesson!['title']),
+                                      status: fmt.s(_computedPrevLesson!['status']),
+                                      allLessons: widget.allLessons,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Next: ${fmt.s(_computedNextLesson!['title']).isEmpty ? fmt.s(_computedNextLesson!['file']) : fmt.s(_computedNextLesson!['title'])}',
-                                  style: T.small.copyWith(
-                                      color: C.green, fontWeight: FontWeight.w600),
+                              )
+                            else
+                              const SizedBox.shrink(),
+                            if (_computedNextLesson != null)
+                              _LessonNavButton(
+                                icon: Icons.chevron_right_rounded,
+                                iconTrailing: true,
+                                label: lessonNavLabel('Next',
+                                    fmt.s(_computedNextLesson!['title']).isEmpty
+                                        ? fmt.s(_computedNextLesson!['file'])
+                                        : fmt.s(_computedNextLesson!['title'])),
+                                onTap: () => Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => LessonScreen(
+                                      course: widget.course,
+                                      file: fmt.s(_computedNextLesson!['file']),
+                                      title: fmt.s(_computedNextLesson!['title']),
+                                      status: fmt.s(_computedNextLesson!['status']),
+                                      allLessons: widget.allLessons,
+                                    ),
+                                  ),
                                 ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.chevron_right_rounded,
-                                    size: 18, color: C.green),
-                              ],
-                            ),
-                          ),
-                        ),
-                      )
-                    else if (widget.allLessons.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 24, bottom: 20),
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.check_circle_rounded,
-                                  size: 16, color: C.green),
-                              const SizedBox(width: 8),
-                              Text('Course complete',
-                                  style: T.small.copyWith(color: C.text3)),
-                            ],
-                          ),
+                              )
+                            else if (widget.allLessons.isNotEmpty)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.check_circle_rounded,
+                                      size: 16, color: C.green),
+                                  const SizedBox(width: 8),
+                                  Text('Course complete',
+                                      style: T.small.copyWith(color: C.text3)),
+                                ],
+                              )
+                            else
+                              const SizedBox.shrink(),
+                          ],
                         ),
                       ),
                   ],
@@ -1067,6 +1093,43 @@ class _ExportPdfButtonState extends State<_ExportPdfButton> {
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2))
           : const Icon(Icons.download_rounded, size: 20),
+    );
+  }
+}
+
+/// BL26091006/BL26091028: shared Next/Previous nav button -- an outlined
+/// pill with the 3-word-lead-in label and a chevron on whichever side
+/// matches the direction (leading for Previous, trailing for Next).
+class _LessonNavButton extends StatelessWidget {
+  const _LessonNavButton({
+    required this.icon,
+    required this.iconTrailing,
+    required this.label,
+    required this.onTap,
+  });
+  final IconData icon;
+  final bool iconTrailing;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconWidget = Icon(icon, size: 18, color: C.green);
+    final labelWidget = Text(label,
+        style: T.small.copyWith(color: C.green, fontWeight: FontWeight.w600));
+    return OutlinedButton(
+      style: OutlinedButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Sz.rSm)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        side: const BorderSide(color: C.greenDim),
+      ),
+      onPressed: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: iconTrailing
+            ? [labelWidget, const SizedBox(width: 4), iconWidget]
+            : [iconWidget, const SizedBox(width: 4), labelWidget],
+      ),
     );
   }
 }

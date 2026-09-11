@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import '../../util/fmt.dart' as fmt;
 import '../../util/markdown.dart';
 
 /// A reading surface.
@@ -220,12 +221,30 @@ class ReadingSection extends StatelessWidget {
 
 /// Rough reading time, for the meta line. 220 wpm is a sensible middle for
 /// dense technical prose read on a phone.
-String readingMeta(String markdown) {
+///
+/// BL26091005: `updatedAt` (ISO, from the lesson's own file mtime) adds a
+/// third "Updated" segment (formatted date) when present -- omitted entirely if the
+/// server had no date for this lesson, rather than showing a blank/"Updated".
+String readingMeta(String markdown, {String? updatedAt}) {
   final words = markdown
       .split(RegExp(r'\s+'))
       .where((w) => w.trim().isNotEmpty)
       .length;
   if (words == 0) return '';
   final minutes = (words / 220).ceil();
-  return '$words words · $minutes min read';
+  final base = '$words words · $minutes min read';
+  if (updatedAt == null || updatedAt.isEmpty) return base;
+  final date = fmt.shortDate(updatedAt);
+  return '$base · Updated $date';
+}
+
+/// BL26091006/BL26091028: `Next: 3-word lead-in — open topic` format,
+/// ported verbatim from the web's lessonNavLabel() (app.js) so both
+/// platforms produce the identical label from the same lesson title.
+String lessonNavLabel(String prefix, String title) {
+  final words = title.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return prefix;
+  final lead = words.take(3).join(' ');
+  final rest = words.skip(3).join(' ');
+  return rest.isEmpty ? '$prefix: $lead' : '$prefix: $lead — $rest';
 }
