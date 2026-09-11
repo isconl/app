@@ -82,7 +82,10 @@ class _DesktopShellState extends State<DesktopShell> {
                   children: [
                     _DesktopHeader(title: findNavItem(_selected).label),
                     const VaultSyncBanner(),
-                    OfflineBanner(services: services),
+                    // BN26091004: banner now Settings-only -- every other
+                    // nav item already shows connectivity via the header's
+                    // own always-present SyncIndicator.
+                    if (_selected == 'settings') OfflineBanner(services: services),
                     Expanded(child: _current),
                   ],
                 ),

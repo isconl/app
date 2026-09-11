@@ -99,7 +99,26 @@ class _ShellState extends State<Shell> {
   int _tab = 0;          // 0=Command 1=Channels 2=Projects 3=Personal 4=Settings
   int _sub = 0;          // sub-tab index within current tab
 
+  // BN26091002: horizontal swipe between the 5 bottom-nav tabs, in the
+  // bottom bar's own left-to-right order. Tapping the bottom bar animates
+  // this same controller instead of jumping state directly, so tap and
+  // swipe always agree on position; _onPageChanged is the single place
+  // that actually commits a new _tab (covers both paths).
+  final PageController _pageController = PageController();
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
   void _switchTab(int t) {
+    if (_tab == t) return;
+    _pageController.animateToPage(t,
+        duration: const Duration(milliseconds: 240), curve: Curves.easeOut);
+  }
+
+  void _onPageChanged(int t) {
     if (_tab != t) setState(() { _tab = t; _sub = 0; });
   }
 
@@ -161,11 +180,36 @@ class _ShellState extends State<Shell> {
     });
   }
 
+  Widget _tabBody(BuildContext context, int tab, AppServices services) {
+    final subs = _subsFor(tab);
+    // Only the currently-active tab's sub-index applies here -- a
+    // neighbour tab PageView pre-builds while swiping always lands on its
+    // own default (index 0), never the active tab's unrelated sub-index.
+    final safeSubIndex = tab == _tab ? _sub.clamp(0, subs.length - 1) : 0;
+    return Column(
+      children: [
+        // BN26091004: the amber offline banner now mounts in Settings only
+        // (index 4) -- every other tab relies on the compact SyncIndicator
+        // beside the hamburger instead (see ShellAppBar's actions below).
+        if (tab == 4) OfflineBanner(services: services),
+        _SubTabBar(
+          subs: subs,
+          index: safeSubIndex,
+          onSelect: _switchSub,
+        ),
+        Expanded(
+          child: IndexedStack(
+            index: safeSubIndex,
+            children: subs.map((s) => s.view).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
-    final subs = _subsFor(_tab);
-    final safeSubIndex = _sub.clamp(0, subs.length - 1);
     return PopScope(
       // Allow the system to pop only when we are already at the root position
       // (tab 0, sub 0). Otherwise step back within the app ourselves.
@@ -175,29 +219,23 @@ class _ShellState extends State<Shell> {
         if (_sub > 0) {
           setState(() => _sub = 0);
         } else if (_tab > 0) {
-          setState(() { _tab = 0; _sub = 0; });
+          _switchTab(0);
         }
       },
       child: Scaffold(
         appBar: ShellAppBar(
           title: _tabLabels[_tab],
+          // BN26091004: compact network-status indicator immediately left
+          // of the hamburger on every tab except Settings, which shows the
+          // full OfflineBanner instead.
+          actions: [if (_tab != 4) const SyncIndicator()],
           onMenu: () => _openMenu(context),
         ),
-        body: Column(
-          children: [
-            OfflineBanner(services: services),
-            _SubTabBar(
-              subs: subs,
-              index: safeSubIndex,
-              onSelect: _switchSub,
-            ),
-            Expanded(
-              child: IndexedStack(
-                index: safeSubIndex,
-                children: subs.map((s) => s.view).toList(),
-              ),
-            ),
-          ],
+        body: PageView.builder(
+          controller: _pageController,
+          itemCount: _tabLabels.length,
+          onPageChanged: _onPageChanged,
+          itemBuilder: (context, i) => _tabBody(context, i, services),
         ),
         floatingActionButton: FloatingActionButton(
           heroTag: 'fab_chat',
@@ -812,15 +850,13 @@ class SecondaryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final services = AppScope.of(context);
+    // BN26091004: no OfflineBanner here -- ShellAppBar already renders the
+    // compact SyncIndicator in this slot whenever onMenu is unset (every
+    // pushed secondary screen), so connectivity is already visible without
+    // the amber banner duplicating it.
     return Scaffold(
       appBar: ShellAppBar(title: title, showBrand: false),
-      body: Column(
-        children: [
-          OfflineBanner(services: services),
-          Expanded(child: child),
-        ],
-      ),
+      body: child,
     );
   }
 }
