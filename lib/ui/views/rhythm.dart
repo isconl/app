@@ -143,7 +143,10 @@ class _HabitTile extends StatelessWidget {
       color: done ? C.greenBg2 : C.panel,
       child: Row(
         children: [
-          Text(fmt.s(habit['icon']), style: const TextStyle(fontSize: 17)),
+          // BN26091026/BG26091017: never render a raw, user-authored
+          // icon/emoji field straight from data -- one fixed monochrome
+          // glyph for every habit, matching web's svgIcon('pin', ...) fix.
+          Icon(Icons.push_pin_outlined, size: 17, color: C.text2),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
