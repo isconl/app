@@ -25,17 +25,27 @@ enum _CalMode { gregorian, equicycle, planner }
 class _EqContext {
   _EqContext(DateTime today)
       : cycleStart = _computeCycleStart(today),
-        dayInCycle = _computeDayInCycle(today) {
+        dayInCycle = _computeDayInCycle(today),
+        eqYear = today.month < 6 ? today.year - 1 : today.year {
     cycleNum = ((today.difference(cycleStart).inDays) ~/ 28) + 1;
   }
   late final DateTime cycleStart;
   late final int dayInCycle;
   late final int cycleNum;
+  final int eqYear;
   static const _themes = [
     'Plant', 'Push', 'Climb', 'Reap', 'Dig', 'Weave', 'Mend', 'Scout',
     'Scale', 'Make', 'Run', 'Stock', 'Audit',
   ];
+  /// Local fallback only -- BN26091025: the real source of truth is now
+  /// GET /api/cycle-theme, which can override a cycle's theme (e.g. this
+  /// cycle's "Leverage" override on what would otherwise be "Reap"'s slot).
+  /// _CalendarViewState._loadServerTheme fetches it and falls back to this
+  /// array when the server has no override for the cycle (theme: null).
   String get theme => _themes[(cycleNum - 1).clamp(0, 12)];
+
+  /// Key the server's scope/cycle_themes.tsv is keyed on: `eqYear-cycleNum`.
+  String get cycleKey => '$eqYear-$cycleNum';
 
   static DateTime _eqStart(DateTime today) {
     final eqYear = today.month < 6 ? today.year - 1 : today.year;
@@ -73,6 +83,26 @@ class _CalendarViewState extends State<CalendarView> {
   DateTime? _selected;
   _CalMode _mode = _CalMode.gregorian;
   bool _busy = false;
+
+  // BN26091025: server-driven cycle theme (GET /api/cycle-theme), keyed by
+  // the cycle it was fetched for so a new cycle triggers a fresh fetch
+  // rather than showing a stale one. Null theme = no override, fall back to
+  // _EqContext's local 13-name array.
+  String? _serverThemeKey;
+  String? _serverTheme;
+
+  void _maybeLoadServerTheme(String cycleKey) {
+    if (_serverThemeKey == cycleKey) return;
+    _serverThemeKey = cycleKey;
+    final services = AppScope.of(context);
+    services.api.getJson('/api/cycle-theme?cycleKey=$cycleKey').then((res) {
+      if (!mounted || _serverThemeKey != cycleKey) return;
+      final theme = res is Map ? res['theme'] : null;
+      setState(() => _serverTheme = theme is String && theme.isNotEmpty ? theme : null);
+    }).catchError((_) {
+      // Offline or server error: silently keep the local fallback theme.
+    });
+  }
 
   @override
   void initState() {
@@ -314,6 +344,11 @@ class _CalendarViewState extends State<CalendarView> {
   Widget _equicycleGrid(Map<String, List<Map<String, dynamic>>> byDay) {
     final today = DateTime.now();
     final ctx = _EqContext(today);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _maybeLoadServerTheme(ctx.cycleKey));
+    final displayTheme = _serverThemeKey == ctx.cycleKey && _serverTheme != null
+        ? _serverTheme!
+        : ctx.theme;
     final weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
     final cells = <Widget>[
       for (final wd in weekdayLabels)
@@ -370,7 +405,7 @@ class _CalendarViewState extends State<CalendarView> {
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: Text('Cycle ${ctx.cycleNum} · Day ${ctx.dayInCycle} · ${ctx.theme}',
+          child: Text('Cycle ${ctx.cycleNum} · Day ${ctx.dayInCycle} · $displayTheme',
               style: T.title),
         ),
         GridView.count(
