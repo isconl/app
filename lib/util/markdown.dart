@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../theme.dart';
@@ -561,6 +563,11 @@ class Markdown extends StatelessWidget {
   /// which requires a `(url)` immediately after `]` a jargon marker never has.
   TextSpan _inline(String text, TextStyle style) {
     final spans = <InlineSpan>[];
+    // BL26091115: the jargon marker grew from `[[term|definition]]` to
+    // `[[term|definition|etymology|example]]`. Etymology and example are
+    // optional, so group 3 stays greedy over the remaining pipes and is split
+    // afterwards -- that keeps every existing two-field marker matching
+    // exactly as before rather than needing a second pattern.
     final pattern = RegExp(
         r'(\[\[([^|\]]+)\|([^\]]+)\]\])|(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))');
     var pos = 0;
@@ -569,7 +576,14 @@ class Markdown extends StatelessWidget {
         spans.add(TextSpan(text: text.substring(pos, match.start)));
       }
       if (match.group(1) != null) {
-        spans.add(_jargonTermSpan(match.group(2)!.trim(), match.group(3)!.trim(), style));
+        final parts = match.group(3)!.split('|');
+        spans.add(_jargonTermSpan(
+          match.group(2)!.trim(),
+          parts[0].trim(),
+          style,
+          etymology: parts.length > 1 ? parts[1].trim() : null,
+          example: parts.length > 2 ? parts[2].trim() : null,
+        ));
       } else if (match.group(4) != null) {
         spans.add(TextSpan(
             text: match.group(5),
@@ -618,12 +632,14 @@ class Markdown extends StatelessWidget {
   /// `BuildContext` bound right here (rather than threading `context`
   /// through every `_inline` call site above), which is all
   /// `showJargonDefinition` below needs to find the enclosing Navigator.
-  WidgetSpan _jargonTermSpan(String term, String definition, TextStyle style) {
+  WidgetSpan _jargonTermSpan(String term, String definition, TextStyle style,
+      {String? etymology, String? example}) {
     return WidgetSpan(
       alignment: PlaceholderAlignment.middle,
       child: Builder(
         builder: (context) => GestureDetector(
-          onTap: () => showJargonDefinition(context, term, definition),
+          onTap: () => showJargonDefinition(context, term, definition,
+              etymology: etymology, example: example),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(
@@ -646,48 +662,151 @@ class Markdown extends StatelessWidget {
   }
 }
 
-/// BL26083104: the definition popup for an inline jargon term -- a small
-/// dismissible bottom sheet (tap-outside or the close button dismisses,
-/// same "never lose the reader's place" principle as everywhere else this
-/// pattern is used in the app), not the full `showFormSheet` title-heavy
-/// scaffold, since this is a couple of sentences, not a form.
+/// BL26083104 / BL26091115: the definition popup for an inline jargon term.
+///
+/// Was a bottom sheet. Now a centred floating dialog, per Sconl: "no bottom
+/// modal on mobile, floating modal, center of the screen." A bottom sheet
+/// pushes the reader's eye to the edge of the screen and away from the word
+/// they just tapped; a centred card keeps attention where the reading is.
+///
+/// Etymology and example are optional and simply absent from the card when the
+/// marker does not supply them, so every existing two-field
+/// `[[term|definition]]` renders exactly as before.
 Future<void> showJargonDefinition(
-    BuildContext context, String term, String definition) {
-  return showModalBottomSheet<void>(
+  BuildContext context,
+  String term,
+  String definition, {
+  String? etymology,
+  String? example,
+}) {
+  final copyText = [
+    term,
+    definition,
+    if (etymology != null && etymology.isNotEmpty) 'Origin: $etymology',
+    if (example != null && example.isNotEmpty) 'Example: $example',
+  ].join('
+
+');
+
+  return showDialog<void>(
     context: context,
-    backgroundColor: C.panel,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
-      side: BorderSide(color: C.border),
-    ),
-    builder: (ctx) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    barrierDismissible: true,
+    builder: (ctx) => Dialog(
+      backgroundColor: C.panel,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Sz.rXl),
+        side: const BorderSide(color: C.border),
+      ),
+      child: ConstrainedBox(
+        // A definition can run long once etymology and an example are in it.
+        // Bounded and scrollable rather than allowed to grow off-screen.
+        constraints: const BoxConstraints(maxWidth: 460, maxHeight: 520),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(term,
-                      style: T.title.copyWith(
-                          color: C.violet, fontFamily: T.mono.fontFamily)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(term,
+                          style: T.title.copyWith(
+                              color: C.violet, fontFamily: T.mono.fontFamily)),
+                    ),
+                    _JargonCopyButton(text: copyText),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20, color: C.text3),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      tooltip: 'Close',
+                    ),
+                  ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 20, color: C.text3),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  tooltip: 'Close',
-                ),
+                const SizedBox(height: 6),
+                Text(definition, style: T.body.copyWith(color: C.text, height: 1.5)),
+                if (etymology != null && etymology.isNotEmpty)
+                  _JargonSection(label: 'Origin', body: etymology),
+                if (example != null && example.isNotEmpty)
+                  _JargonSection(label: 'In a sentence', body: example, italic: true),
               ],
             ),
-            const SizedBox(height: 6),
-            Text(definition, style: T.body.copyWith(color: C.text, height: 1.5)),
-          ],
+          ),
         ),
       ),
     ),
   );
+}
+
+/// A labelled sub-section of the jargon card. Same shape for origin and
+/// example so the eye learns it once.
+class _JargonSection extends StatelessWidget {
+  const _JargonSection({required this.label, required this.body, this.italic = false});
+  final String label;
+  final String body;
+  final bool italic;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label.toUpperCase(),
+              style: T.tiny.copyWith(
+                  color: C.text3, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+          const SizedBox(height: 4),
+          Text(body,
+              style: T.body2.copyWith(
+                  color: C.text2,
+                  height: 1.5,
+                  fontStyle: italic ? FontStyle.italic : FontStyle.normal)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Copy the whole definition to the clipboard, confirming in place rather than
+/// with a SnackBar -- the dialog is centred and modal, so a bar at the bottom
+/// of the screen is exactly where the reader is not looking.
+class _JargonCopyButton extends StatefulWidget {
+  const _JargonCopyButton({required this.text});
+  final String text;
+
+  @override
+  State<_JargonCopyButton> createState() => _JargonCopyButtonState();
+}
+
+class _JargonCopyButtonState extends State<_JargonCopyButton> {
+  bool _copied = false;
+  Timer? _reset;
+
+  @override
+  void dispose() {
+    _reset?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(_copied ? Icons.check_rounded : Icons.copy_rounded,
+          size: 18, color: _copied ? C.green : C.text3),
+      tooltip: _copied ? 'Copied' : 'Copy definition',
+      onPressed: () async {
+        await Clipboard.setData(ClipboardData(text: widget.text));
+        if (!mounted) return;
+        setState(() => _copied = true);
+        _reset?.cancel();
+        _reset = Timer(const Duration(seconds: 2), () {
+          if (mounted) setState(() => _copied = false);
+        });
+      },
+    );
+  }
 }
 
 enum _Kind { paragraph, heading, code, quote, rule, listItem, table, callout, chart, map, equation, image }
