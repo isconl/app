@@ -192,7 +192,7 @@ IconData _groupIconData(String id) => switch (id) {
       'medicine-surgery' => Icons.shield_rounded,
       'markets-economics' => Icons.layers_rounded,
       'wealth-finance' => Icons.bolt_rounded,
-      'platforms-systems' => Icons.grid_view_rounded,
+      'platforms-experience' => Icons.grid_view_rounded,
       'profiles-psychology' => Icons.groups_rounded,
       'systems-architecture' => Icons.settings_rounded,
       // BL26091203. Mirrors web's learnGroupIcon() branch, which uses svgIcon('list').
