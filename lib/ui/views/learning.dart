@@ -121,9 +121,21 @@ class _LearningViewState extends State<LearningView> {
                 ),
 
               // ── landing: masonry tile grid, not a flat card list ──────────
-              // BL26090601/BN26090604: tile size is a deterministic function
+              // BL26090601/BN26090604: tile size was a deterministic function
               // of real track data (_LearningGroup.tier), not literal
               // randomness -- a re-render never reshuffles sizes.
+              //
+              // BL26091009 changes what drives the SPAN, per Sconl: a strict
+              // alternating landscape / two-small-side-by-side rhythm, so the
+              // grid reads as a designed layout rather than as whatever the
+              // data happened to produce. Position decides width now
+              // (_spanForIndex), matching the web console's own move to
+              // position-driven tiering.
+              //
+              // The data-driven tier is NOT discarded -- it still decides how
+              // much each card SAYS (_TrackCard's description maxLines keys off
+              // group.tier). Position governs the shape, data governs the
+              // content. That is the reconciliation the row asked for.
               MasonryGridView.count(
                 crossAxisCount: 2,
                 mainAxisSpacing: 8,
@@ -138,7 +150,7 @@ class _LearningViewState extends State<LearningView> {
                   // overflow risk entirely while still varying real estate
                   // by tier (wide tiers show more, e.g. the description).
                   return StaggeredGridTile.fit(
-                    crossAxisCellCount: group.span.$1,
+                    crossAxisCellCount: _spanForIndex(i),
                     child: _TrackCard(
                       group: group,
                       courses: coursesForTrack[group.id]!,
@@ -177,6 +189,19 @@ class _LearningViewState extends State<LearningView> {
     );
   }
 }
+
+/// BL26091009: how wide the tile at [i] is, in a 2-column grid.
+///
+/// The rhythm repeats every three tracks: one full-width landscape, then two
+/// small tiles side by side. So 0 spans both columns, 1 and 2 take one column
+/// each, 3 spans both again, and so on.
+///
+/// Position, not data. Two tracks that happen to have identical course counts
+/// no longer render identically just because of that, and the page keeps the
+/// same visual cadence however the library grows. A trailing track left over at
+/// the end of a cycle simply takes one column, which the masonry layout absorbs
+/// without a gap.
+int _spanForIndex(int i) => i % 3 == 0 ? 2 : 1;
 
 /// BN26090604 + the fleet's standing icon rule (`STANDING-RULES.md` #7:
 /// "every icon in the UI comes from the unified icon set. No emojis for UI
@@ -269,13 +294,10 @@ class _LearningGroup {
     return 1;
   }
 
-  /// (crossAxisCellCount, mainAxisCellCount) for StaggeredGridTile.
-  (int, int) get span => switch (tier) {
-        4 => (2, 2),
-        2 => (2, 1),
-        3 => (1, 2),
-        _ => (1, 1),
-      };
+  // BL26091009 removed `span`. Tile width is now positional (_spanForIndex),
+  // so mapping tier -> a grid span had no remaining caller and would have sat
+  // here looking authoritative while nothing read it. `tier` itself stays:
+  // it still decides how much each card says (see _TrackCard's maxLines).
 }
 
 Color _hexColor(String hex, {Color fallback = C.green}) {
