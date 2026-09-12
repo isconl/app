@@ -195,6 +195,8 @@ IconData _groupIconData(String id) => switch (id) {
       'platforms-systems' => Icons.grid_view_rounded,
       'profiles-psychology' => Icons.groups_rounded,
       'systems-architecture' => Icons.settings_rounded,
+      // BL26091203. Mirrors web's learnGroupIcon() branch, which uses svgIcon('list').
+      'practice-fieldwork' => Icons.checklist_rounded,
       '_ungrouped' => Icons.warning_amber_rounded,
       _ => Icons.folder_rounded,
     };
