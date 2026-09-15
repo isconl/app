@@ -221,6 +221,9 @@ IconData _groupIconData(String id) => switch (id) {
       'profiles-psychology' => Icons.groups_rounded,
       'systems-architecture' => Icons.settings_rounded,
       'projects-memory' => Icons.menu_book_rounded,
+      'legal-compliance' => Icons.gavel_rounded,
+      'identity-self' => Icons.explore_rounded,
+      'brands-ventures' => Icons.storefront_rounded,
       '_ungrouped' => Icons.warning_amber_rounded,
       _ => Icons.folder_rounded,
     };
