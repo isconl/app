@@ -220,7 +220,7 @@ IconData _groupIconData(String id) => switch (id) {
       'platforms-experience' => Icons.grid_view_rounded,
       'profiles-psychology' => Icons.groups_rounded,
       'systems-architecture' => Icons.settings_rounded,
-      'practice-fieldwork' => Icons.menu_book_rounded,
+      'projects-memory' => Icons.menu_book_rounded,
       '_ungrouped' => Icons.warning_amber_rounded,
       _ => Icons.folder_rounded,
     };
