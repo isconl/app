@@ -148,7 +148,6 @@ class _IntegrationsSectionState extends State<IntegrationsSection> {
   static const _statusRows = [
     ('Anthropic Claude', 'anthropic'),
     ('Groq AI Engine', 'groq'),
-    ('ElevenLabs Voice', 'elevenlabs'),
     ('GitHub CLI', 'github'),
     ('Jira Cloud', 'jira'),
     ('WhatsApp', 'whatsapp'),
