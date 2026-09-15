@@ -152,7 +152,7 @@ class _ShellState extends State<Shell> {
   // hamburger menu (Sconl's explicit call, 6 Sep 2026).
   List<_SubTab> get _personalSubs => [
     const _SubTab('Rhythm',    RhythmView()),
-    const _SubTab('Grove',  LearningView()),
+    const _SubTab('Study',  LearningView()),
     const _SubTab('Holdings',   FinanceView()),
     const _SubTab('Journal',   JournalView()),
   ];
@@ -699,8 +699,8 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Personal'),
           _item(ctx, Icons.local_fire_department_rounded, 'Rhythm',
               () => go(const RhythmView(), 'Rhythm')),
-          _item(ctx, Icons.school_rounded, 'Grove',
-              () => go(const LearningView(), 'Grove')),
+          _item(ctx, Icons.school_rounded, 'Study',
+              () => go(const LearningView(), 'Study')),
           _item(ctx, Icons.account_balance_wallet_rounded, 'Holdings',
               () => go(const FinanceView(), 'Holdings')),
           _item(ctx, Icons.auto_stories_rounded, 'Journal',

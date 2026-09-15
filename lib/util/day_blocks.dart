@@ -5,7 +5,7 @@
 /// when nothing has been customized yet.
 const List<Map<String, dynamic>> kDefaultDayBlocks = [
   {'start': 300, 'end': 360, 'name': 'Protected', 'axis': 'protected', 'third': 'Ground', 'slots': 0, 'placeable': false},
-  {'start': 360, 'end': 420, 'name': 'Grove', 'axis': 'learning', 'third': 'Ground', 'slots': 1, 'placeable': true},
+  {'start': 360, 'end': 420, 'name': 'Study', 'axis': 'learning', 'third': 'Ground', 'slots': 1, 'placeable': true},
   {'start': 420, 'end': 480, 'name': 'Flex', 'axis': 'flex', 'third': 'Ground', 'slots': 0, 'placeable': false},
   {'start': 480, 'end': 600, 'name': 'Innovator', 'axis': 'innovator', 'third': 'Work', 'slots': 4, 'placeable': true},
   {'start': 600, 'end': 660, 'name': 'Flex', 'axis': 'flex', 'third': 'Work', 'slots': 0, 'placeable': false},
