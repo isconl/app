@@ -42,7 +42,10 @@ class OpsView extends StatefulWidget {
 }
 
 class _OpsViewState extends State<OpsView> {
-  List<Map<String, dynamic>> _services = [];
+  Map<String, List<Map<String, dynamic>>> _groups = {};
+  List<Map<String, dynamic>> _ungrouped = [];
+  bool _discoveryOk = true;
+  String? _discoveryError;
   List<Map<String, dynamic>> _deploy = [];
   Map<String, dynamic>? _vmStats;
   bool _loading = true;
@@ -50,6 +53,8 @@ class _OpsViewState extends State<OpsView> {
   String? _logsFor;
   String _logsText = '';
   final Set<String> _busy = {};
+
+  bool get _hasAnyService => _groups.isNotEmpty || _ungrouped.isNotEmpty;
 
   @override
   void initState() {
@@ -60,7 +65,7 @@ class _OpsViewState extends State<OpsView> {
   Future<void> _load() async {
     final api = AppScope.of(context).api;
     setState(() {
-      _loading = _services.isEmpty;
+      _loading = !_hasAnyService;
       _error = null;
     });
     try {
@@ -70,8 +75,13 @@ class _OpsViewState extends State<OpsView> {
         api.getJson('/api/ops/deploy-status'),
       ]);
       if (!mounted) return;
+      final status = fmt.m(results[0]);
+      final rawGroups = fmt.m(status['groups']);
       setState(() {
-        _services = fmt.lm(fmt.m(results[0])['services']);
+        _groups = {for (final e in rawGroups.entries) e.key: fmt.lm(e.value)};
+        _ungrouped = fmt.lm(status['ungrouped']);
+        _discoveryOk = status['discoveryOk'] != false;
+        _discoveryError = fmt.s(status['discoveryError']).isEmpty ? null : fmt.s(status['discoveryError']);
         _vmStats = fmt.m(results[1]);
         _deploy = fmt.lm(fmt.m(results[2])['services']);
         _loading = false;
@@ -207,7 +217,17 @@ class _OpsViewState extends State<OpsView> {
             if (_error != null) ErrorRetry(_error!, onRetry: _load),
             _vmCard(),
             const SizedBox(height: 10),
-            _servicesCard(),
+            if (!_discoveryOk)
+              _discoveryErrorCard()
+            else if (!_hasAnyService)
+              const Panel(child: EmptyState('Loading…', 'Pull down to refresh.'))
+            else ...[
+              for (final key in (_groups.keys.toList()..sort())) ...[
+                _servicesCard(key, _groups[key]!),
+                const SizedBox(height: 10),
+              ],
+              if (_ungrouped.isNotEmpty) _servicesCard('Ungrouped', _ungrouped),
+            ],
             if (_logsFor != null) ...[
               const SizedBox(height: 10),
               _logsCard(),
@@ -263,18 +283,28 @@ class _OpsViewState extends State<OpsView> {
     );
   }
 
-  Widget _servicesCard() {
+  Widget _discoveryErrorCard() {
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Service discovery failed', style: T.title.copyWith(color: C.red)),
+          const SizedBox(height: 6),
+          Text(_discoveryError ?? 'docker compose config could not be read', style: T.small.copyWith(color: C.text2)),
+        ],
+      ),
+    );
+  }
+
+  Widget _servicesCard(String label, List<Map<String, dynamic>> services) {
     final deployByService = {for (final d in _deploy) fmt.s(d['service']): d};
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Services', style: T.title),
+          Text(label, style: T.title),
           const SizedBox(height: 8),
-          if (_services.isEmpty)
-            const EmptyState('No services reported', 'Pull down to refresh.')
-          else
-            for (final svc in _services) _serviceRow(svc, deployByService[fmt.s(svc['service'])]),
+          for (final svc in services) _serviceRow(svc, deployByService[fmt.s(svc['service'])]),
         ],
       ),
     );
