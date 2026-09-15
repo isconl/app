@@ -149,7 +149,7 @@ class _ShellState extends State<Shell> {
   List<_SubTab> get _personalSubs => [
     const _SubTab('Rhythm',    RhythmView()),
     const _SubTab('Grove',  LearningView()),
-    const _SubTab('Finance',   FinanceView()),
+    const _SubTab('Holdings',   FinanceView()),
     const _SubTab('Journal',   JournalView()),
   ];
 
@@ -697,8 +697,8 @@ class MenuSheet extends StatelessWidget {
               () => go(const RhythmView(), 'Rhythm')),
           _item(ctx, Icons.school_rounded, 'Grove',
               () => go(const LearningView(), 'Grove')),
-          _item(ctx, Icons.account_balance_wallet_rounded, 'Finance',
-              () => go(const FinanceView(), 'Finance')),
+          _item(ctx, Icons.account_balance_wallet_rounded, 'Holdings',
+              () => go(const FinanceView(), 'Holdings')),
           _item(ctx, Icons.auto_stories_rounded, 'Journal',
               () => go(const JournalView(), 'Journal')),
           _item(ctx, Icons.lightbulb_rounded, 'Ideas',
