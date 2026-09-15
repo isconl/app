@@ -972,9 +972,38 @@ class _LessonScreenState extends State<LessonScreen> {
                           baseUrl: services.api.baseUrl,
                           token: services.api.token),
                     _LessonNotes(course: widget.course, file: widget.file),
+                    // BL26091404: a "Done" action belongs at the very bottom
+                    // of the reader -- below all content, including the
+                    // closing quiz/Essentials section -- since that's where
+                    // a reader naturally lands once they've actually
+                    // finished, not a toolbar button up top. Reuses the same
+                    // _status state/mutation the top pills already use.
+                    Padding(
+                      padding: const EdgeInsets.only(top: 24, bottom: 8),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            final next =
+                                _status.toLowerCase() == 'done' ? 'learning' : 'done';
+                            setState(() => _status = next);
+                            final res = await services.mutations
+                                .lessonProgress(widget.course, widget.file, next);
+                            if (!context.mounted) return;
+                            if (!res.ok) {
+                              toast(context, res.error!, error: true);
+                            } else if (res.queued) {
+                              toast(context, 'Progress queued - will sync');
+                            }
+                          },
+                          child: Text(
+                              _status.toLowerCase() == 'done' ? 'Still learning' : 'Done'),
+                        ),
+                      ),
+                    ),
                     if (_computedNextLesson != null || _computedPrevLesson != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 24, bottom: 20),
+                        padding: const EdgeInsets.only(top: 8, bottom: 20),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
