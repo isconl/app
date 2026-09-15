@@ -314,6 +314,7 @@ class _OpsViewState extends State<OpsView> {
     final name = fmt.s(svc['service']);
     final running = svc['running'] == true;
     final exists = svc['exists'] == true;
+    final controllable = svc['controllable'] == true;
     final busy = _busy.contains(name);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -344,11 +345,17 @@ class _OpsViewState extends State<OpsView> {
             spacing: 6,
             runSpacing: 4,
             children: [
-              _actionChip('Restart', () => _act(name, 'restart'), busy),
-              _actionChip('Stop', () => _act(name, 'stop'), busy),
-              _actionChip('Start', () => _act(name, 'start'), busy),
+              // BI26091501 follow-up: a service with no ops.control compose
+              // label is read-only server-side now -- hide the write chips
+              // rather than offer a tap the server will refuse anyway.
+              if (controllable) ...[
+                _actionChip('Restart', () => _act(name, 'restart'), busy),
+                _actionChip('Stop', () => _act(name, 'stop'), busy),
+                _actionChip('Start', () => _act(name, 'start'), busy),
+                _actionChip('Destroy', () => _act(name, 'destroy'), busy, color: C.red),
+              ] else
+                Text('Read-only', style: T.tiny.copyWith(color: C.text3)),
               _actionChip('Logs', () => _showLogs(name), busy),
-              _actionChip('Destroy', () => _act(name, 'destroy'), busy, color: C.red),
             ],
           ),
         ],
