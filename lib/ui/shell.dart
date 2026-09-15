@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../util/fmt.dart' as fmt;
 import 'views/articles.dart';
 import 'views/audit.dart';
+import 'views/backlog.dart';
 import 'views/calendar.dart';
 import 'views/channels_home.dart';
 import 'views/chat.dart';
@@ -86,17 +87,20 @@ const _projectsSubs = [
 // BN26090606: target confirmed by Sconl -- Settings, Files, Ops, Security.
 // Media/Audit/Outbox drop from this bottom-nav row (still reachable via
 // the hamburger menu, which keeps every tool regardless of this tab's
-// 4-item limit). BG26091020: Ops + Security merged into one "Opsec" tab --
-// Security's stub content now renders as a section inside OpsView, so this
-// row is down to 3 sub-tabs instead of 4.
+// 4-item limit). BG26091020: Ops + Security merged into one tab (later
+// relabelled back to "Ops", BG26091406) -- Security's stub content now
+// renders as a section inside OpsView, so this row was down to 3
+// sub-tabs. BG26091303: Backlog added as the 4th, and the tab itself
+// relabelled Settings -> Systems (SettingsView() stays index 0/default).
 const _settingsSubs = [
   _SubTab('Settings', SettingsView()),
   _SubTab('Files',    FilesView()),
   _SubTab('Ops',      OpsView()),
+  _SubTab('Backlog',  BacklogView()),
 ];
 
 class _ShellState extends State<Shell> {
-  int _tab = 0;          // 0=Command 1=Channels 2=Projects 3=Personal 4=Settings
+  int _tab = 0;          // 0=Command 1=Channels 2=Projects 3=Personal 4=Systems
   int _sub = 0;          // sub-tab index within current tab
 
   // BN26091002: horizontal swipe between the 5 bottom-nav tabs, in the
@@ -162,7 +166,7 @@ class _ShellState extends State<Shell> {
     _ => _commandSubs,
   };
 
-  static const _tabLabels = ['Command', 'Channels', 'Projects', 'Personal', 'Settings'];
+  static const _tabLabels = ['Command', 'Channels', 'Projects', 'Personal', 'Systems'];
 
   @override
   void initState() {
@@ -553,7 +557,7 @@ class _BottomBar extends StatelessWidget {
             const PillNavItem(icon: Icons.person_rounded, label: 'Personal', svgAsset: 'assets/icons/nav_personal.svg'),
             PillNavItem(
               icon: Icons.settings_rounded,
-              label: 'Settings',
+              label: 'Systems',
               badge: n > 0 ? _AlertCount(n) : null,
             ),
           ],

@@ -121,6 +121,7 @@ class Store {
   Snapshot get notifications =>
       of('notifications', '/api/notifications?limit=200');
   Snapshot get audit => of('audit', '/api/audit');
+  Snapshot get backlog => of('backlog', '/api/backlog');
   Snapshot get refs => of('refs', '/api/refs');
   Snapshot get tags => of('tags', '/api/tags');
   Snapshot get dataHealth => of('dataHealth', '/api/health/data');
