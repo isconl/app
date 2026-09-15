@@ -92,7 +92,7 @@ const _projectsSubs = [
 const _settingsSubs = [
   _SubTab('Settings', SettingsView()),
   _SubTab('Files',    FilesView()),
-  _SubTab('Opsec',    OpsView()),
+  _SubTab('Ops',      OpsView()),
 ];
 
 class _ShellState extends State<Shell> {
@@ -737,8 +737,8 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Systems'),
           // BG26091020: Ops + Security merged into one "Opsec" entry --
           // Security's stub content now renders as a section inside OpsView.
-          _item(ctx, Icons.dns_rounded, 'Opsec',
-              () => go(const OpsView(), 'Opsec')),
+          _item(ctx, Icons.dns_rounded, 'Ops',
+              () => go(const OpsView(), 'Ops')),
           _item(ctx, Icons.apps_rounded, 'Services',
               () => go(const HostedServicesView(), 'Services')),
           _item(ctx, Icons.folder_rounded, 'Files',
