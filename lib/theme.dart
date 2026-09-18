@@ -54,6 +54,10 @@ class C {
   static const callResearchBg = Color(0x1A6EA6D9);
   static const callFact = Color(0xFFD9C15C);
   static const callFactBg = Color(0x1AD9C15C);
+  // BL26091008: "Check yourself" / "Open questions" quiz callout -- ported
+  // from web's --lb-quiz token.
+  static const callQuiz = Color(0xFF4FB0A5);
+  static const callQuizBg = Color(0x1A4FB0A5);
 
   static Color forPriority(String p) => switch (p.toLowerCase()) {
         'high' => red,

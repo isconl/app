@@ -15,8 +15,8 @@ import '../util/fmt.dart' as fmt;
 ///     including the plane-B ones, because nothing leaves the phone. The OS
 ///     voice is adequate for review and poor for a first read.
 ///
-///   AGENT   the agent's ElevenLabs narration, synthesised once per module
-///     revision and cached server-side. Audiobook quality, paid for once. The
+///   AGENT   the agent's Chatterbox narration (self-hosted, open-source),
+///     synthesised once per module revision and cached server-side. The
 ///     agent REFUSES to narrate a module that declares its own plane, so this
 ///     tier is simply unavailable for those - which is correct, not a fault, and
 ///     the UI says so in those words.

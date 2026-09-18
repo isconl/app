@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../util/fmt.dart' as fmt;
 import 'views/articles.dart';
 import 'views/audit.dart';
+import 'views/backlog.dart';
 import 'views/calendar.dart';
 import 'views/channels_home.dart';
 import 'views/chat.dart';
@@ -86,17 +87,20 @@ const _projectsSubs = [
 // BN26090606: target confirmed by Sconl -- Settings, Files, Ops, Security.
 // Media/Audit/Outbox drop from this bottom-nav row (still reachable via
 // the hamburger menu, which keeps every tool regardless of this tab's
-// 4-item limit). BG26091020: Ops + Security merged into one "Opsec" tab --
-// Security's stub content now renders as a section inside OpsView, so this
-// row is down to 3 sub-tabs instead of 4.
+// 4-item limit). BG26091020: Ops + Security merged into one tab (later
+// relabelled back to "Ops", BG26091406) -- Security's stub content now
+// renders as a section inside OpsView, so this row was down to 3
+// sub-tabs. BG26091303: Backlog added as the 4th, and the tab itself
+// relabelled Settings -> Systems (SettingsView() stays index 0/default).
 const _settingsSubs = [
   _SubTab('Settings', SettingsView()),
   _SubTab('Files',    FilesView()),
-  _SubTab('Opsec',    OpsView()),
+  _SubTab('Ops',      OpsView()),
+  _SubTab('Backlog',  BacklogView()),
 ];
 
 class _ShellState extends State<Shell> {
-  int _tab = 0;          // 0=Command 1=Channels 2=Projects 3=Personal 4=Settings
+  int _tab = 0;          // 0=Command 1=Channels 2=Projects 3=Personal 4=Systems
   int _sub = 0;          // sub-tab index within current tab
 
   // BN26091002: horizontal swipe between the 5 bottom-nav tabs, in the
@@ -148,8 +152,8 @@ class _ShellState extends State<Shell> {
   // hamburger menu (Sconl's explicit call, 6 Sep 2026).
   List<_SubTab> get _personalSubs => [
     const _SubTab('Rhythm',    RhythmView()),
-    const _SubTab('Academia',  LearningView()),
-    const _SubTab('Finance',   FinanceView()),
+    const _SubTab('Study',  LearningView()),
+    const _SubTab('Holdings',   FinanceView()),
     const _SubTab('Journal',   JournalView()),
   ];
 
@@ -162,7 +166,7 @@ class _ShellState extends State<Shell> {
     _ => _commandSubs,
   };
 
-  static const _tabLabels = ['Command', 'Channels', 'Projects', 'Personal', 'Settings'];
+  static const _tabLabels = ['Command', 'Channels', 'Projects', 'Personal', 'Systems'];
 
   @override
   void initState() {
@@ -553,7 +557,7 @@ class _BottomBar extends StatelessWidget {
             const PillNavItem(icon: Icons.person_rounded, label: 'Personal', svgAsset: 'assets/icons/nav_personal.svg'),
             PillNavItem(
               icon: Icons.settings_rounded,
-              label: 'Settings',
+              label: 'Systems',
               badge: n > 0 ? _AlertCount(n) : null,
             ),
           ],
@@ -695,10 +699,10 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Personal'),
           _item(ctx, Icons.local_fire_department_rounded, 'Rhythm',
               () => go(const RhythmView(), 'Rhythm')),
-          _item(ctx, Icons.school_rounded, 'Academia',
-              () => go(const LearningView(), 'Academia')),
-          _item(ctx, Icons.account_balance_wallet_rounded, 'Finance',
-              () => go(const FinanceView(), 'Finance')),
+          _item(ctx, Icons.school_rounded, 'Study',
+              () => go(const LearningView(), 'Study')),
+          _item(ctx, Icons.account_balance_wallet_rounded, 'Holdings',
+              () => go(const FinanceView(), 'Holdings')),
           _item(ctx, Icons.auto_stories_rounded, 'Journal',
               () => go(const JournalView(), 'Journal')),
           _item(ctx, Icons.lightbulb_rounded, 'Ideas',
@@ -737,8 +741,8 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Systems'),
           // BG26091020: Ops + Security merged into one "Opsec" entry --
           // Security's stub content now renders as a section inside OpsView.
-          _item(ctx, Icons.dns_rounded, 'Opsec',
-              () => go(const OpsView(), 'Opsec')),
+          _item(ctx, Icons.dns_rounded, 'Ops',
+              () => go(const OpsView(), 'Ops')),
           _item(ctx, Icons.apps_rounded, 'Services',
               () => go(const HostedServicesView(), 'Services')),
           _item(ctx, Icons.folder_rounded, 'Files',
