@@ -164,6 +164,8 @@ class Markdown extends StatelessWidget {
         );
       case _Kind.callout:
         return _callout(block, style);
+      case _Kind.quiz:
+        return _quizCallout(block, style);
       case _Kind.table:
         return _table(block, style);
       case _Kind.chart:
@@ -234,6 +236,56 @@ class Markdown extends StatelessWidget {
                 fontSize: 10.5, height: 1.5, color: C.text3),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// `## Check yourself` / `## Open questions` (BL26091008/FN26091027):
+  /// checkmark-accented callout whose answer content is hidden until
+  /// revealed. Mirrors web's `.lesson-quiz` (checkmark `::before`,
+  /// `counter(quiz-q)` numbering, `.quiz-reveal-btn`) via `_QuizReveal`.
+  Widget _quizCallout(_Block block, TextStyle style) {
+    final sub = _parseBlocks(block.quizBody);
+    final children = <Widget>[];
+    var qNum = 0;
+    for (final b in sub) {
+      if (b.kind == _Kind.listItem) {
+        qNum++;
+        children.add(_quizListItem(b, style, qNum));
+        continue;
+      }
+      final w = _renderBlock(b, style);
+      if (w != null) children.add(w);
+    }
+    return _QuizReveal(
+      title: block.text,
+      reading: _reading,
+      children: children,
+    );
+  }
+
+  /// A quiz's list item ignores its source ordered/bullet marker and uses a
+  /// running counter instead -- mirrors web's `counter(quiz-q)`, which
+  /// numbers every `.md-li` inside `.lesson-quiz` regardless of how the
+  /// source marked it up.
+  Widget _quizListItem(_Block block, TextStyle style, int number) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: (_reading ? 2.0 : 4.0) + block.level * (_reading ? 18 : 14),
+        top: _reading ? 4 : 2,
+        bottom: _reading ? 4 : 2,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: _reading ? 22 : 18,
+            child: Text('$number.',
+                style: style.copyWith(
+                    color: C.callQuiz, fontWeight: FontWeight.w600)),
+          ),
+          Expanded(child: Text.rich(_inline(block.text, style))),
         ],
       ),
     );
@@ -684,9 +736,7 @@ Future<void> showJargonDefinition(
     definition,
     if (etymology != null && etymology.isNotEmpty) 'Origin: $etymology',
     if (example != null && example.isNotEmpty) 'Example: $example',
-  ].join('
-
-');
+  ].join('\n\n');
 
   return showDialog<void>(
     context: context,
@@ -809,7 +859,91 @@ class _JargonCopyButtonState extends State<_JargonCopyButton> {
   }
 }
 
-enum _Kind { paragraph, heading, code, quote, rule, listItem, table, callout, chart, map, equation, image }
+/// BL26091008/FN26091027: the answer body of a `## Check yourself` /
+/// `## Open questions` block, collapsed by default -- mirrors web's
+/// `toggleQuizReveal()` (a `.quiz-body.hidden` class toggle). Header is a
+/// checkmark-in-circle + title + a Reveal/Hide toggle; the body only renders
+/// once revealed.
+class _QuizReveal extends StatefulWidget {
+  const _QuizReveal(
+      {required this.title, required this.reading, required this.children});
+  final String title;
+  final bool reading;
+  final List<Widget> children;
+
+  @override
+  State<_QuizReveal> createState() => _QuizRevealState();
+}
+
+class _QuizRevealState extends State<_QuizReveal> {
+  bool _revealed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final pad = widget.reading ? 14.0 : 10.0;
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.symmetric(vertical: widget.reading ? 14 : 6),
+      padding: EdgeInsets.fromLTRB(pad, pad * 0.8, pad, pad * 0.8),
+      decoration: BoxDecoration(
+        color: C.callQuizBg,
+        border: const Border(left: BorderSide(color: C.callQuiz, width: 3)),
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(Sz.rMd),
+          bottomRight: Radius.circular(Sz.rMd),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 15,
+                height: 15,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: C.callQuiz,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_rounded, size: 11, color: C.bgRaised),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  widget.title.toUpperCase(),
+                  style: T.mono.copyWith(
+                    fontSize: 9.5,
+                    letterSpacing: 1.1,
+                    fontWeight: FontWeight.w600,
+                    color: C.callQuiz,
+                  ),
+                ),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  foregroundColor: C.callQuiz,
+                ),
+                onPressed: () => setState(() => _revealed = !_revealed),
+                child: Text(_revealed ? 'Hide' : 'Reveal',
+                    style: T.mono.copyWith(fontSize: 9.5, color: C.callQuiz)),
+              ),
+            ],
+          ),
+          if (_revealed) ...[
+            const SizedBox(height: 5),
+            ...widget.children,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+enum _Kind { paragraph, heading, code, quote, rule, listItem, table, callout, chart, map, equation, image, quiz }
 
 /// The five lesson callouts.
 class _Callout {
@@ -884,6 +1018,12 @@ class _Block {
   String imageUrl = '';
   String imageAlt = '';
   String imageCaption = '';
+
+  /// BL26091008/FN26091027: raw markdown body of a `## Check yourself` /
+  /// `## Open questions` quiz block -- re-parsed and rendered recursively
+  /// rather than flattened at parse time, same reasoning as every other
+  /// block that contains prose.
+  String quizBody = '';
 }
 
 List<_Block> _parseBlocks(String source) {
@@ -1004,6 +1144,26 @@ List<_Block> _parseBlocks(String source) {
         idx++;
       }
       blocks.add(_Block(_Kind.table, rows: rows));
+      continue;
+    }
+
+    // FN26091027: `## Check yourself` / `## Open questions` is a quiz
+    // callout, not a plain heading -- claimed before the generic heading
+    // match below so it doesn't fall through to a bare heading + paragraphs.
+    // Mirrors web's learnMd() `/^## (Check yourself|Open questions)/i` branch.
+    final quizHeading =
+        RegExp(r'^##\s+((?:Check yourself|Open questions).*)$', caseSensitive: false)
+            .firstMatch(trimmed);
+    if (quizHeading != null) {
+      flushPara();
+      final title = quizHeading.group(1)!.trim();
+      idx++;
+      final buf = <String>[];
+      while (idx < lines.length && !RegExp(r'^#{1,6}\s').hasMatch(lines[idx].trimLeft())) {
+        buf.add(lines[idx]);
+        idx++;
+      }
+      blocks.add(_Block(_Kind.quiz, text: title)..quizBody = buf.join('\n'));
       continue;
     }
 

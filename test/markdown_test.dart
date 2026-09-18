@@ -134,4 +134,75 @@ Some **bold** text and *italic*.
     expect(find.text('JARGON'), findsOneWidget);
     expect(find.textContaining('work crossing between portals'), findsOneWidget);
   });
+
+  // ── FN26091027: quiz callout ("Check yourself" / "Open questions") ─────────
+  // Mirrors web's .lesson-quiz (checkmark + counter(quiz-q) numbering) and
+  // toggleQuizReveal() -- hidden by default, revealed on tap.
+
+  testWidgets('a Check yourself heading renders as a quiz callout, answer hidden by default',
+      (tester) async {
+    await pump(tester, [
+      '## Check yourself',
+      '',
+      '1. What is a handoff?',
+      '2. Why does state matter?',
+    ].join('\n'));
+
+    expect(find.textContaining('CHECK YOURSELF'), findsOneWidget);
+    expect(find.text('Reveal'), findsOneWidget);
+    expect(find.textContaining('What is a handoff?'), findsNothing);
+  });
+
+  testWidgets('an Open questions heading renders as a quiz callout too',
+      (tester) async {
+    await pump(tester, [
+      '## Open questions',
+      '',
+      '- Why did the retry storm happen?',
+    ].join('\n'));
+
+    expect(find.textContaining('OPEN QUESTIONS'), findsOneWidget);
+    expect(find.text('Reveal'), findsOneWidget);
+  });
+
+  testWidgets('tapping Reveal shows the quiz body, numbered sequentially, then Hide re-collapses it',
+      (tester) async {
+    await pump(tester, [
+      '## Check yourself',
+      '',
+      '1. First question?',
+      '2. Second question?',
+    ].join('\n'));
+
+    await tester.tap(find.text('Reveal'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('First question?'), findsOneWidget);
+    expect(find.textContaining('Second question?'), findsOneWidget);
+    expect(find.text('1.'), findsOneWidget);
+    expect(find.text('2.'), findsOneWidget);
+    expect(find.text('Hide'), findsOneWidget);
+
+    await tester.tap(find.text('Hide'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('First question?'), findsNothing);
+    expect(find.text('Reveal'), findsOneWidget);
+  });
+
+  testWidgets('a quiz block does not swallow a following heading section',
+      (tester) async {
+    await pump(tester, [
+      '## Check yourself',
+      '',
+      '1. A question?',
+      '',
+      '## Next Section',
+      'Some prose after.',
+    ].join('\n'));
+
+    expect(find.textContaining('CHECK YOURSELF'), findsOneWidget);
+    expect(find.textContaining('Next Section'), findsOneWidget);
+    expect(find.textContaining('Some prose after'), findsOneWidget);
+  });
 }
