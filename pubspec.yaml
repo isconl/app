@@ -1,0 +1,94 @@
+name: isconl
+description: "iSconl - sovereign personal agent, native client for Android, Windows and Linux. Offline-first mirror of the web dashboard."
+publish_to: 'none'
+
+# Version is auto-bumped by CI on every build (patch +1). This one is a hand
+# minor bump: the client caught up with three days of agent work (Ideas, Rhythm,
+# Files, Buffer, Articles, PIN sign-in, agent-served updates), which is more than
+# a patch admits to.
+#
+# 6 Sep 2026, another hand minor bump: full UI-parity BUILD session -- Ops
+# screen, hamburger menu parity, real Inbox chat redesign, 4-sub-tab
+# restructure (Portfolio rebuilt against the real /api/portfolio, not the
+# stale venture-category filter), masonry track grid + icon-standard fix.
+# Build number advanced past both branches' prior values (main's own stale
+# CI bump to +9, dev's independent +9) to stay unambiguous.
+version: 0.3.4+14
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.5.0
+  sqflite: ^2.4.2
+  path_provider: ^2.1.5
+  # BN26082504: .ics import needs a file picker; export reuses the existing
+  # saveAndOpenExport/openFile native bridge, no new dependency for that half.
+  # BN26082504 follow-up: 8.1.4's bundled Android module compiled against
+  # android-34, tripping flutter_plugin_android_lifecycle's compileSdk>=36
+  # requirement at release-build time. 12.x fixes this but its Windows
+  # sub-package needs win32 ^6.3.0, conflicting with flutter_secure_storage's
+  # win32 ^5.0.0 pin -- 8.3.7 is the highest version still resolvable here.
+  file_picker: ^8.3.7
+  path: ^1.9.1
+  connectivity_plus: ^7.0.0
+  flutter_secure_storage: ^9.2.4
+  package_info_plus: ^9.0.0
+  url_launcher: ^6.3.2
+  image_picker: ^1.2.1
+  local_auth: ^2.3.0
+  flutter_local_notifications: ^19.0.0
+  # Course audio. flutter_tts is the free, offline, always-available default and
+  # works on every module including the plane-B ones, because nothing leaves the
+  # device. just_audio plays the agent's Chatterbox narration - chosen over
+  # audioplayers because it supports auth headers and HTTP range requests, and
+  # /api/learning/audio is Bearer-gated and seekable.
+  flutter_tts: ^4.2.0
+  just_audio: ^0.9.42
+  sqflite_common_ffi_web: ^1.1.2
+  # BN26090603: renders the two custom nav-bar SVGs (nav_bar.dart's own
+  # "no dependency added" comment was about not pulling in a third-party
+  # nav-bar package, not a blanket stance -- Sconl's own custom icons need
+  # real SVG rendering, which Icon()/IconData can't do).
+  flutter_svg: ^2.0.10
+  # BN26090604/BL26090601: the varied-size masonry tile grid for the
+  # Learning track landing -- the same "grid_auto_flow:dense" visual the
+  # web console builds in CSS, ported here since Flutter has no native
+  # masonry grid.
+  flutter_staggered_grid_view: ^0.7.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # BN26083107: real sqlite (not a fake/mock) for db.dart/vault_mirror.dart
+  # unit tests -- `flutter test` runs on the host, not a device/emulator,
+  # so the plugin's real platform channel isn't available; this ffi
+  # backend is a real SQLite engine, just reached without one.
+  sqflite_common_ffi: ^2.3.6
+
+flutter:
+  uses-material-design: true
+
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/JetBrainsMono-Medium.ttf
+          weight: 500
+
+  assets:
+    - assets/icons/
