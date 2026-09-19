@@ -54,6 +54,14 @@ class _Msg {
   List<Map<String, String>>? actionOptions;
   Map<String, dynamic>? actionPlan;
   String? actionDescribe;
+
+  // BI26091902: chat's OWN tool-calling loop's Tier 2 gate, reached via
+  // /api/chat/stream's `confirmation-needed` event (BI26091901) rather than
+  // /api/act's `plan`/`confirm` shape -- kept as its own field rather than
+  // reusing [actionPlan] because confirming it re-calls a different
+  // endpoint with a different body/response shape. Shares [actionDescribe]
+  // for the text since that part is identical.
+  Map<String, dynamic>? chatToolCall;
 }
 
 class _ChatSheetState extends State<ChatSheet> {
@@ -165,16 +173,30 @@ class _ChatSheetState extends State<ChatSheet> {
                 reply.via = 'error';
               }
             });
+          case 'confirmation-needed':
+            // BI26091902: a Tier 2 write chat's own tool-calling loop wants
+            // to make -- reuse the pending reply bubble as the confirm
+            // card instead of leaving it stuck on "thinking".
+            setState(() {
+              reply.pending = false;
+              reply.actionDescribe = fmt.s(data['describe']);
+              reply.chatToolCall = fmt.m(data['toolCall']);
+            });
+            _jumpToEnd();
         }
       }
-      if (reply.text.isEmpty) {
-        // Stream ended silently - fall back to the plain endpoint.
+      if (reply.text.isEmpty && reply.chatToolCall == null) {
+        // Stream ended silently - fall back to the plain endpoint. Not for
+        // a confirmation card (BI26091902): that ends the stream by design,
+        // with no text yet because the user hasn't answered it.
         final res = await services.api.postJson('/api/chat', {'message': text});
         reply.text = fmt.s(fmt.m(res)['response']);
         reply.pending = false;
         setState(() {});
       }
-      await services.db.addChat('agent', reply.text);
+      if (reply.chatToolCall == null) {
+        await services.db.addChat('agent', reply.text);
+      }
     } on OfflineException {
       setState(() {
         reply.pending = false;
@@ -610,12 +632,14 @@ class _ChatSheetState extends State<ChatSheet> {
                   ? const _Thinking()
                   : msg.actionPlan != null
                       ? _actionConfirmCard(msg)
-                      : msg.actionOptions != null
-                          ? _actionClarifyCard(msg)
-                          : Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (isUser)
+                      : msg.chatToolCall != null
+                          ? _chatToolConfirmCard(msg)
+                          : msg.actionOptions != null
+                              ? _actionClarifyCard(msg)
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (isUser)
                                   Text(msg.text, style: T.body2)
                                 else
                                   Markdown(msg.text),
@@ -635,6 +659,74 @@ class _ChatSheetState extends State<ChatSheet> {
         ],
       ),
     );
+  }
+
+  /// BI26091902: the same "Do it"/"Leave it" surface as [_actionConfirmCard],
+  /// for a Tier 2 write chat's OWN tool-calling loop (BI26091505/BI26091901)
+  /// wants to make -- kept separate because confirming it re-calls
+  /// /api/chat with confirmToolCall, a different endpoint and response
+  /// shape than /api/act's plan/confirm.
+  Widget _chatToolConfirmCard(_Msg msg) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(fmt.s(msg.actionDescribe), style: T.body2),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FilledButton(
+              onPressed: () => _confirmChatTool(msg),
+              child: const Text('Do it'),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: () => _declineChatTool(msg),
+              child: const Text('Leave it'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmChatTool(_Msg msg) async {
+    if (msg.chatToolCall == null) return;
+    final toolCall = msg.chatToolCall!;
+    setState(() {
+      msg.chatToolCall = null;
+      msg.actionDescribe = null;
+      msg.text = '';
+    });
+    final services = AppScope.of(context);
+    try {
+      final res = await services.api
+          .postJson('/api/chat', {'confirmToolCall': toolCall});
+      final d = fmt.m(res);
+      final tr = fmt.m(d['toolResult']);
+      final ok = tr['ok'] == null ? true : fmt.b(tr['ok']);
+      final message = fmt.s(tr[ok ? 'message' : 'error']).isEmpty
+          ? (ok ? 'Done.' : 'That did not work.')
+          : fmt.s(tr[ok ? 'message' : 'error']);
+      setState(() {
+        msg.text = message;
+        if (!ok) msg.via = 'error';
+      });
+      await services.db.addChat('agent', message);
+    } catch (e) {
+      setState(() => msg.text = 'Could not complete that.');
+      msg.via = 'error';
+    }
+    _jumpToEnd();
+  }
+
+  void _declineChatTool(_Msg msg) {
+    setState(() {
+      msg.chatToolCall = null;
+      msg.actionDescribe = null;
+      msg.text = 'Left alone.';
+    });
   }
 
   /// A gated action awaiting yes/no (dashboard/app.js's renderActionConfirm(),
