@@ -609,74 +609,92 @@ class Markdown extends StatelessWidget {
   }
 
 
-  /// Inline markdown: **bold**, *italic*, `code`, [text](url), and (BL26083104)
-  /// the `[[term|definition]]` jargon marker -- matched first so its double
-  /// brackets are never mistaken for the `[text](url)` link group below,
-  /// which requires a `(url)` immediately after `]` a jargon marker never has.
+  /// Inline markdown: **bold**, *italic*, `code`, [text](url), (BL26083104)
+  /// the `[[term|definition]]` jargon marker, and (BI26091928)
+  /// `[[link:text|https://...]]` -- the link-marker alternative is matched
+  /// FIRST, ahead of the jargon marker, or its `|` makes it match jargon
+  /// instead: course-standards.md §8.2 (v3.0.0) distinguishes the two by
+  /// rendering (a jargon marker opens a popup in place; a link marker opens
+  /// externally, matching the same `[text](url)` link style below), and
+  /// this was the one live gap -- `structural-leverage` module 07 rendered
+  /// its `[[link:...]]` as a jargon popup showing a bare URL until this fix.
   TextSpan _inline(String text, TextStyle style) {
     final spans = <InlineSpan>[];
     // BL26091115: the jargon marker grew from `[[term|definition]]` to
     // `[[term|definition|etymology|example]]`. Etymology and example are
-    // optional, so group 3 stays greedy over the remaining pipes and is split
+    // optional, so group 6 stays greedy over the remaining pipes and is split
     // afterwards -- that keeps every existing two-field marker matching
     // exactly as before rather than needing a second pattern.
     final pattern = RegExp(
-        r'(\[\[([^|\]]+)\|([^\]]+)\]\])|(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))');
+        r'(\[\[link:([^|\]]+)\|(https?://[^\]]+)\]\])|(\[\[([^|\]]+)\|([^\]]+)\]\])|(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))',
+        caseSensitive: false);
     var pos = 0;
     for (final match in pattern.allMatches(text)) {
       if (match.start > pos) {
         spans.add(TextSpan(text: text.substring(pos, match.start)));
       }
       if (match.group(1) != null) {
-        final parts = match.group(3)!.split('|');
+        spans.add(_externalLinkSpan(match.group(2)!.trim(), match.group(3)!));
+      } else if (match.group(4) != null) {
+        final parts = match.group(6)!.split('|');
         spans.add(_jargonTermSpan(
-          match.group(2)!.trim(),
+          match.group(5)!.trim(),
           parts[0].trim(),
           style,
           etymology: parts.length > 1 ? parts[1].trim() : null,
           example: parts.length > 2 ? parts[2].trim() : null,
         ));
-      } else if (match.group(4) != null) {
+      } else if (match.group(7) != null) {
         spans.add(TextSpan(
-            text: match.group(5),
+            text: match.group(8),
             style: const TextStyle(fontWeight: FontWeight.w600)));
-      } else if (match.group(6) != null) {
+      } else if (match.group(9) != null) {
         spans.add(TextSpan(
-            text: match.group(7),
+            text: match.group(10),
             style: const TextStyle(fontStyle: FontStyle.italic)));
-      } else if (match.group(8) != null) {
+      } else if (match.group(11) != null) {
         spans.add(TextSpan(
-            text: match.group(9),
+            text: match.group(12),
             style: const TextStyle(fontStyle: FontStyle.italic)));
-      } else if (match.group(10) != null) {
+      } else if (match.group(13) != null) {
         spans.add(TextSpan(
-          text: match.group(11),
+          text: match.group(14),
           style: T.mono.copyWith(
               color: C.greenBright,
               fontSize: (style.fontSize ?? 13) - 1,
               backgroundColor: C.surface),
         ));
-      } else if (match.group(12) != null) {
-        final url = match.group(14)!;
-        spans.add(TextSpan(
-          text: match.group(13),
-          style: const TextStyle(
-              color: C.cyan, decoration: TextDecoration.underline,
-              decorationColor: C.cyan),
-          recognizer: TapGestureRecognizer()
-            ..onTap = () {
-              final uri = Uri.tryParse(url);
-              if (uri != null) {
-                launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
-            },
-        ));
+      } else if (match.group(15) != null) {
+        spans.add(_externalLinkSpan(match.group(16)!, match.group(17)!));
       }
       pos = match.end;
     }
     if (pos < text.length) spans.add(TextSpan(text: text.substring(pos)));
     return TextSpan(style: style, children: spans);
   }
+
+  /// Shared by both external-link forms -- `[text](url)` and (BI26091928)
+  /// `[[link:text|url]]` -- so the two markers stay visually and
+  /// behaviourally identical rather than drifting into two different link
+  /// styles by accident. Same `TextSpan` + `TapGestureRecognizer` shape the
+  /// existing `[text](url)` handling already used before this row, kept
+  /// unchanged rather than rebuilt around a `WidgetSpan` -- there is no
+  /// context-dependent popup here the way the jargon span needs, so the
+  /// simpler mechanism that was already working is the right one to reuse.
+  TextSpan _externalLinkSpan(String text, String url) => TextSpan(
+        text: text,
+        style: const TextStyle(
+            color: C.cyan,
+            decoration: TextDecoration.underline,
+            decorationColor: C.cyan),
+        recognizer: TapGestureRecognizer()
+          ..onTap = () {
+            final uri = Uri.tryParse(url);
+            if (uri != null) {
+              launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+      );
 
   /// BL26083104: a purple, code-styled inline span for a jargon term,
   /// wherever it appears in flowing text -- replaces the old full-width
