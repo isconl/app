@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/cycle_mix.dart';
 
 /// Goals by horizon, with their linked tasks.
 class PlanningView extends StatelessWidget {
@@ -23,11 +24,18 @@ class PlanningView extends StatelessWidget {
           builder: (context, data) {
             final plans = fmt.lm(fmt.m(data)['plans']);
             if (plans.isEmpty) {
-              return const EmptyState(
-                'No plans yet',
-                'Set a goal per horizon - cycle, sprint, year - and the '
-                    'agent helps distill it into tasks.',
-                icon: Icons.flag_rounded,
+              return const Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  CycleMixCard(),
+                  SizedBox(height: 12),
+                  EmptyState(
+                    'No plans yet',
+                    'Set a goal per horizon - cycle, sprint, year - and the '
+                        'agent helps distill it into tasks.',
+                    icon: Icons.flag_rounded,
+                  ),
+                ],
               );
             }
             final byHorizon = <String, List<Map<String, dynamic>>>{};
@@ -46,6 +54,8 @@ class PlanningView extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const CycleMixCard(),
+                const SizedBox(height: 12),
                 for (final horizon in keys) ...[
                   SectionLabel(horizon),
                   for (final plan in byHorizon[horizon]!)

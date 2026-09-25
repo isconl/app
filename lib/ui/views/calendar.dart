@@ -38,8 +38,9 @@ class _EqContext {
     'Scale', 'Make', 'Run', 'Stock', 'Audit',
   ];
   /// Local fallback only -- BN26091025: the real source of truth is now
-  /// GET /api/cycle-theme, which can override a cycle's theme (e.g. this
-  /// cycle's "Leverage" override on what would otherwise be "Reap"'s slot).
+  /// GET /api/cycle-theme, which can override a cycle's theme. (BI26092508,
+  /// 25 Sep 2026: this comment used to cite a cycle-4 "Leverage" override.
+  /// None was ever stored on the server, which is why cycle 4 shows Reap.)
   /// _CalendarViewState._loadServerTheme fetches it and falls back to this
   /// array when the server has no override for the cycle (theme: null).
   String get theme => _themes[(cycleNum - 1).clamp(0, 12)];
