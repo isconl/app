@@ -445,6 +445,26 @@ class Mutations {
         }),
       );
 
+  /// BI26092515: replace the habit list (add or edit a keystone habit). The
+  /// server refuses a second NEW habit per focus word per cycle with a 400 and
+  /// a plain message, which surfaces here as `res.error`. `stage` and
+  /// `cycleKey` are derived by the server on read and are never sent back.
+  Future<MutationResult> saveHabits(List<Map<String, dynamic>> habits) =>
+      _write(
+        path: '/api/personal/rhythm',
+        body: {
+          'habits': [
+            for (final h in habits)
+              {...h}
+                ..remove('stage')
+                ..remove('cycleKey'),
+          ],
+        },
+        label: 'Habits',
+        view: 'rhythm',
+        refresh: _store.rhythm,
+      );
+
   // ---------- finance: wishlist ----------
 
   Future<MutationResult> saveWishlistItem(Map<String, dynamic> item) => _write(

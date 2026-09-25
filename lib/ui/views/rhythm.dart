@@ -48,7 +48,12 @@ class RhythmView extends StatelessWidget {
                     child: _stat('YEAR', '${_activeDays(days)}d', C.violet)),
               ],
             ),
-            const SectionLabel('Today'),
+            SectionLabel('Today',
+                trailing: TextButton.icon(
+                  onPressed: () => _editHabit(context, services, habits, null),
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text('Habit'),
+                )),
             ...habits.map((h) {
               final id = fmt.s(h['id']);
               final auto = _autoHabits.contains(id);
@@ -59,6 +64,7 @@ class RhythmView extends StatelessWidget {
                   habit: h,
                   done: done,
                   auto: auto,
+                  onEdit: () => _editHabit(context, services, habits, h),
                   onToggle: auto
                       ? null
                       : () async {
@@ -85,6 +91,77 @@ class RhythmView extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  /// BI26092515: add or edit a habit, with its focus word, minimum version and
+  /// anchor. The whole list is sent back (the server replaces it), including
+  /// the four derived habits when the store was still on its seeds.
+  Future<void> _editHabit(BuildContext context, dynamic services,
+      List<Map<String, dynamic>> habits, Map<String, dynamic>? existing) {
+    final title = TextEditingController(text: fmt.s(existing?['title']));
+    final word = TextEditingController(text: fmt.s(existing?['focusWord']));
+    final minimum =
+        TextEditingController(text: fmt.s(existing?['minimumVersion']));
+    final anchor = TextEditingController(text: fmt.s(existing?['anchor']));
+    return showFormSheet(
+      context,
+      title: existing == null ? 'New habit' : 'Edit habit',
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Field(label: 'Habit', controller: title, autofocus: existing == null),
+          Field(
+              label: 'Focus word',
+              controller: word,
+              hint: 'optional, e.g. Recovery: links it to a cycle focus'),
+          Field(
+              label: 'Minimum version',
+              controller: minimum,
+              hint: 'optional, e.g. 10-min walk after lunch'),
+          Field(
+              label: 'Anchor',
+              controller: anchor,
+              hint: 'optional: the when/where it is stacked on'),
+          const SizedBox(height: 4),
+          FilledButton(
+            onPressed: () async {
+              if (title.text.trim().isEmpty) return;
+              Navigator.pop(ctx);
+              final focus = word.text.trim();
+              final updated = <String, dynamic>{
+                ...?existing,
+                if (existing == null)
+                  'id': 'h-${DateTime.now().millisecondsSinceEpoch}',
+                'title': title.text.trim(),
+                'focusWord': focus,
+                'minimumVersion': minimum.text.trim(),
+                'anchor': anchor.text.trim(),
+                // A habit starts when it is first linked to a word; editing
+                // keeps its original start.
+                if (focus.isNotEmpty && fmt.s(existing?['startedAt']).isEmpty)
+                  'startedAt': fmt.isoDate(DateTime.now()),
+              };
+              // Blank optional fields are sent as empty text, which the
+              // server treats as "not set".
+              final next = existing == null
+                  ? [...habits, updated]
+                  : [
+                      for (final h in habits)
+                        fmt.s(h['id']) == fmt.s(existing['id']) ? updated : h,
+                    ];
+              final res = await services.mutations.saveHabits(next);
+              if (!context.mounted) return;
+              if (!res.ok) {
+                toast(context, res.error!, error: true);
+              } else if (res.queued) {
+                toast(context, 'Queued - will sync');
+              }
+            },
+            child: Text(existing == null ? 'Add' : 'Save'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -127,18 +204,42 @@ class _HabitTile extends StatelessWidget {
     required this.done,
     required this.auto,
     required this.onToggle,
+    required this.onEdit,
   });
 
   final Map<String, dynamic> habit;
   final bool done;
   final bool auto;
   final VoidCallback? onToggle;
+  final VoidCallback onEdit;
+
+  /// BI26092515: colour of a stage tag. The stage itself is derived by the
+  /// server from the cycle mix; this only paints it.
+  static Color _stageColor(String stage) {
+    switch (stage) {
+      case 'primary':
+        return C.greenBright;
+      case 'secondary':
+        return C.cyan;
+      case 'tertiary':
+        return C.violet;
+      case 'maintenance':
+        return C.text2;
+      default:
+        return C.text3;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final word = fmt.s(habit['focusWord']);
+    final stage = fmt.s(habit['stage']);
+    final minimum = fmt.s(habit['minimumVersion']);
+    final anchor = fmt.s(habit['anchor']);
     return Panel(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       onTap: onToggle,
+      onLongPress: onEdit,
       borderColor: done ? C.greenDim.withValues(alpha: 0.5) : C.border,
       color: done ? C.greenBg2 : C.panel,
       child: Row(
@@ -157,6 +258,34 @@ class _HabitTile extends StatelessWidget {
                         color: done ? C.text : C.text2))),
                 if (auto)
                   Text('tracked automatically', style: T.tiny),
+                if (word.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                                color: _stageColor(stage).withValues(alpha: 0.6)),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                              stage.isEmpty ? word : '$word · $stage',
+                              style: T.tiny
+                                  .copyWith(color: _stageColor(stage))),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (minimum.isNotEmpty || anchor.isNotEmpty)
+                  Text(
+                      [
+                        if (minimum.isNotEmpty) minimum,
+                        if (anchor.isNotEmpty) 'after: $anchor',
+                      ].join(' · '),
+                      style: T.tiny),
               ],
             ),
           ),
