@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -17,6 +17,8 @@ import 'vault_mirror.dart';
 /// conflict, not "the vault" this comment means when it says "truth."
 class AppDb {
   AppDb._(this._db);
+  @visibleForTesting
+  factory AppDb.forTesting(Database db) => AppDb._(db);
   final Database _db;
 
   static Future<AppDb> open() async {
@@ -28,6 +30,8 @@ class AppDb {
         : p.join((await getApplicationDocumentsDirectory()).path, 'isconl.db');
     final db = await openDatabase(
       path,
+      // v4 (BI26092614): added lesson_notes, local storage for module notes
+      // with paragraph/block anchor tracking.
       // v3 (BN26083103): added lesson_resume, an always-on local table for
       // offline-safe scroll-position tracking -- separate from the
       // server-side saveLessonResume() mutation (queueable:false, so an
@@ -39,7 +43,7 @@ class AppDb {
       // vault_schema.dart) alongside the pre-existing generic snapshot
       // cache, which stays as-is. onUpgrade only needs to ADD the new
       // tables for an existing install; onCreate covers both for a fresh one.
-      version: 3,
+      version: 4,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE snapshots (
@@ -75,6 +79,15 @@ class AppDb {
             updated_at INTEGER NOT NULL,
             PRIMARY KEY (course, file)
           )''');
+        await db.execute('''
+          CREATE TABLE lesson_notes (
+            course TEXT NOT NULL,
+            file TEXT NOT NULL,
+            text TEXT NOT NULL,
+            anchor INTEGER,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (course, file)
+          )''');
         await ensureVaultMirrorTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
@@ -85,6 +98,17 @@ class AppDb {
               course TEXT NOT NULL,
               file TEXT NOT NULL,
               scroll_pct INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (course, file)
+            )''');
+        }
+        if (oldVersion < 4) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS lesson_notes (
+              course TEXT NOT NULL,
+              file TEXT NOT NULL,
+              text TEXT NOT NULL,
+              anchor INTEGER,
               updated_at INTEGER NOT NULL,
               PRIMARY KEY (course, file)
             )''');
@@ -260,6 +284,44 @@ class AppDb {
     if (rows.isEmpty) return null;
     return rows.first['scroll_pct'] as int?;
   }
+
+  // ---- lesson notes (BI26092614) ----
+
+  /// Saves a lesson note locally with optional paragraph/block anchor.
+  Future<void> saveLessonNoteLocal({
+    required String course,
+    required String file,
+    required String text,
+    int? anchor,
+  }) async {
+    await _db.insert(
+      'lesson_notes',
+      {
+        'course': course,
+        'file': file,
+        'text': text,
+        'anchor': anchor,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// The locally-saved note for one lesson, or null if none saved yet.
+  Future<Map<String, dynamic>?> lessonNoteLocal({
+    required String course,
+    required String file,
+  }) async {
+    final rows = await _db.query(
+      'lesson_notes',
+      where: 'course = ? AND file = ?',
+      whereArgs: [course, file],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
 
   // ---- vault mirror (BN26083107) ----
 

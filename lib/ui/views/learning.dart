@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app_scope.dart';
+import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
@@ -767,6 +769,7 @@ class _LessonScreenState extends State<LessonScreen> {
   Timer? _resumeDebounce;
   bool _restoredResume = false;
   bool _showScrollTop = false;
+  String? _currentContent;
 
   Map<String, dynamic>? get _computedNextLesson {
     if (widget.nextLesson != null) return widget.nextLesson;
@@ -820,7 +823,8 @@ class _LessonScreenState extends State<LessonScreen> {
   // dropped server write is no longer a real data-loss risk.
   void _onScroll() {
     if (!_scroll.hasClients || _scroll.position.maxScrollExtent <= 0) return;
-    final show = _scroll.offset > (MediaQuery.of(context).size.height * 0.6);
+    // BI26092614: scroll-to-top appears only after scrolling past one screen height.
+    final show = _scroll.offset > MediaQuery.of(context).size.height;
     if (show != _showScrollTop) {
       setState(() => _showScrollTop = show);
     }
@@ -847,6 +851,68 @@ class _LessonScreenState extends State<LessonScreen> {
         );
       }
     });
+  }
+
+  /// BI26092614: calculates the index of the topmost visible block/paragraph.
+  int _computeTopmostBlockIndex() {
+    if (_currentContent == null || _currentContent!.isEmpty || !_scroll.hasClients) {
+      return 0;
+    }
+    final maxExtent = _scroll.position.maxScrollExtent;
+    if (maxExtent <= 0) return 0;
+    final paragraphs = _currentContent!
+        .split(RegExp(r'\n\s*\n'))
+        .where((p) => p.trim().isNotEmpty)
+        .toList();
+    if (paragraphs.isEmpty) return 0;
+    final progress = (_scroll.offset / maxExtent).clamp(0.0, 1.0);
+    return (progress * paragraphs.length).floor().clamp(0, paragraphs.length - 1);
+  }
+
+  /// BI26092614: opens the notes bottom sheet with block anchor context.
+  void _openNotesSheet(BuildContext context) {
+    HapticFeedback.selectionClick();
+    final anchor = _computeTopmostBlockIndex();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: C.panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
+        side: BorderSide(color: C.border),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: C.borderMid,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                _LessonNotes(
+                  course: widget.course,
+                  file: widget.file,
+                  anchor: anchor,
+                  inSheet: true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// Jumps to the locally-saved scroll position once the content has laid
@@ -889,17 +955,48 @@ class _LessonScreenState extends State<LessonScreen> {
     final heading = widget.title.isEmpty ? widget.file : widget.title;
 
     return Scaffold(
-      floatingActionButton: _showScrollTop
-          ? FloatingActionButton.small(
-              backgroundColor: C.surface,
-              foregroundColor: C.text,
-              elevation: 4,
-              shape: const CircleBorder(side: BorderSide(color: C.border)),
-              onPressed: () => _scroll.jumpTo(0),
-              tooltip: 'Scroll to top',
-              child: const Icon(Icons.arrow_upward_rounded, size: 18),
-            )
-          : null,
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          SquareFab(
+            heroTag: 'fab_lesson_notes',
+            tooltip: 'Notes',
+            icon: const Icon(Icons.edit_note_rounded),
+            onPressed: () => _openNotesSheet(context),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 160),
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SizeTransition(
+                sizeFactor: animation,
+                child: child,
+              ),
+            ),
+            child: _showScrollTop
+                ? Padding(
+                    key: const ValueKey('fab_scroll_top_visible'),
+                    padding: const EdgeInsets.only(top: 12),
+                    child: SquareFab(
+                      heroTag: 'fab_lesson_scroll_top',
+                      tooltip: 'Scroll to top',
+                      icon: const Icon(Icons.vertical_align_top_rounded),
+                      onPressed: () {
+                        if (_scroll.hasClients) {
+                          _scroll.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.easeOutCubic,
+                          );
+                        }
+                      },
+                    ),
+                  )
+                : const SizedBox.shrink(key: ValueKey('fab_scroll_top_hidden')),
+          ),
+        ],
+      ),
       appBar: ShellAppBar(
         title: heading,
         showBrand: false,
@@ -922,6 +1019,7 @@ class _LessonScreenState extends State<LessonScreen> {
                 final lessonMap = fmt.m(data);
                 final content = fmt.s(lessonMap['content']);
                 final updatedAt = fmt.s(lessonMap['updatedAt']);
+                _currentContent = content;
                 _maybeRestoreResume();
                 return ReadingSurface(
                   children: [
@@ -1189,22 +1287,52 @@ class _LessonNavButton extends StatelessWidget {
   }
 }
 
-class _LessonNotes extends StatefulWidget {
-  const _LessonNotes({required this.course, required this.file});
+typedef _LessonNotes = LessonNotes;
+
+/// Module notes widget. Keeps storage isolated behind LessonNotesRepository
+/// (Study-on-Canvas contract).
+class LessonNotes extends StatefulWidget {
+  const LessonNotes({
+    super.key,
+    required this.course,
+    required this.file,
+    this.anchor,
+    this.inSheet = false,
+    this.repository,
+  });
+
   final String course;
   final String file;
+  final int? anchor;
+  final bool inSheet;
+  final LessonNotesRepository? repository;
 
   @override
-  State<_LessonNotes> createState() => _LessonNotesState();
+  State<LessonNotes> createState() => _LessonNotesState();
 }
 
-class _LessonNotesState extends State<_LessonNotes> {
+class _LessonNotesState extends State<LessonNotes> {
   final _controller = TextEditingController();
-  bool _open = false;
+  late bool _open = widget.inSheet;
   bool _loading = false;
   bool _loaded = false;
   bool _saving = false;
   String? _error;
+  int? _anchor;
+
+  LessonNotesRepository _repo(BuildContext context) =>
+      widget.repository ?? AppScope.of(context).lessonNotes;
+
+  @override
+  void initState() {
+    super.initState();
+    _anchor = widget.anchor;
+    if (widget.inSheet) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -1219,12 +1347,15 @@ class _LessonNotesState extends State<_LessonNotes> {
       _error = null;
     });
     try {
-      final res = await AppScope.of(context).api.getJson(
-            '/api/learning/notes?course=${Uri.encodeQueryComponent(widget.course)}'
-            '&file=${Uri.encodeQueryComponent(widget.file)}',
-          );
+      final note = await _repo(context).getNote(
+        course: widget.course,
+        file: widget.file,
+      );
       if (!mounted) return;
-      _controller.text = fmt.s(fmt.m(res)['text']);
+      if (note != null) {
+        _controller.text = note.text;
+        _anchor ??= note.anchor;
+      }
       setState(() => _loaded = true);
     } catch (e) {
       if (mounted) {
@@ -1237,11 +1368,12 @@ class _LessonNotesState extends State<_LessonNotes> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final res = await AppScope.of(context).mutations.saveLessonNote(
-          course: widget.course,
-          file: widget.file,
-          text: _controller.text,
-        );
+    final res = await _repo(context).saveNote(
+      course: widget.course,
+      file: widget.file,
+      text: _controller.text,
+      anchor: _anchor,
+    );
     if (!mounted) return;
     setState(() => _saving = false);
     if (!res.ok) {
@@ -1255,6 +1387,70 @@ class _LessonNotesState extends State<_LessonNotes> {
 
   @override
   Widget build(BuildContext context) {
+    final noteBody = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_error != null)
+          ErrorRetry(_error!, onRetry: () {
+            _loaded = false;
+            _load();
+          }),
+        TextField(
+          controller: _controller,
+          maxLines: null,
+          minLines: 5,
+          style: T.body.copyWith(
+              fontSize: 15, height: 1.62, color: C.text),
+          decoration: InputDecoration(
+            filled: false,
+            contentPadding: const EdgeInsets.symmetric(vertical: 6),
+            hintText: 'Write it here.',
+            hintStyle: T.body2.copyWith(color: C.text3, fontSize: 15),
+            enabledBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: C.border)),
+            focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: C.green)),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const MiniSpinner()
+                  : const Icon(Icons.save_rounded, size: 16),
+              label: const Text('Save note'),
+            ),
+            if (_anchor != null)
+              Text(
+                'Anchored to paragraph ${_anchor! + 1}',
+                style: T.tiny.copyWith(color: C.text3),
+              ),
+          ],
+        ),
+      ],
+    );
+
+    if (widget.inSheet) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('NOTES', style: T.label.copyWith(color: C.text2)),
+              if (_loading) const MiniSpinner(),
+            ],
+          ),
+          const SizedBox(height: 10),
+          noteBody,
+        ],
+      );
+    }
+
     return ReadingSection(
       label: 'Your notes',
       trailing: InkWell(
@@ -1286,47 +1482,8 @@ class _LessonNotesState extends State<_LessonNotes> {
               'agent reads them when it revises the course.',
               style: T.body2.copyWith(color: C.text3, height: 1.6),
             )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (_error != null)
-                  ErrorRetry(_error!, onRetry: () {
-                    _loaded = false;
-                    _load();
-                  }),
-                // Borderless while resting, so the note field reads as more
-                // page rather than as a widget dropped onto one. The green
-                // underline on focus is the only state it needs.
-                TextField(
-                  controller: _controller,
-                  maxLines: null,
-                  minLines: 5,
-                  style: T.body.copyWith(
-                      fontSize: 15, height: 1.62, color: C.text),
-                  decoration: InputDecoration(
-                    filled: false,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 6),
-                    hintText: 'Write it here.',
-                    hintStyle: T.body2.copyWith(color: C.text3, fontSize: 15),
-                    enabledBorder: const UnderlineInputBorder(
-                        borderSide: BorderSide(color: C.border)),
-                    focusedBorder: const UnderlineInputBorder(
-                        borderSide: BorderSide(color: C.green)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton.icon(
-                    onPressed: _saving ? null : _save,
-                    icon: _saving
-                        ? const MiniSpinner()
-                        : const Icon(Icons.save_rounded, size: 16),
-                    label: const Text('Save note'),
-                  ),
-                ),
-              ],
-            ),
+          : noteBody,
     );
   }
 }
+

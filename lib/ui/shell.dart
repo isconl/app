@@ -241,13 +241,9 @@ class _ShellState extends State<Shell> {
           onPageChanged: _onPageChanged,
           itemBuilder: (context, i) => _tabBody(context, i, services),
         ),
-        floatingActionButton: FloatingActionButton(
+        floatingActionButton: SquareFab(
           heroTag: 'fab_chat',
-          backgroundColor: C.green,
-          foregroundColor: C.textInverse,
-          // BG26091015: app-wide, no full-circle edge buttons.
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Sz.rLg)),
-          child: const Icon(Icons.forum_rounded),
+          icon: const Icon(Icons.forum_rounded),
           onPressed: () => openChatSheet(context),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

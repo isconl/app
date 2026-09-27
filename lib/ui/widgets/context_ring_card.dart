@@ -476,7 +476,7 @@ class _ParticleNetworkPainter extends CustomPainter {
         final wave = 0.5 + 0.5 * math.sin(progress * 2 * math.pi * 3 + (i + offsetSeed) * 1.4);
         final lineAlpha = (0.05 + 0.10 * wave).clamp(0.0, 1.0);
         final linePaint = Paint()
-          ..color = color.withOpacity(lineAlpha)
+          ..color = color.withValues(alpha: lineAlpha)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.0;
         canvas.drawLine(p1, p2, linePaint);
@@ -492,13 +492,13 @@ class _ParticleNetworkPainter extends CustomPainter {
 
       // Outer halo
       final haloPaint = Paint()
-        ..color = color.withOpacity(dotAlpha * 0.25)
+        ..color = color.withValues(alpha: dotAlpha * 0.25)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(p, radius * 2.8, haloPaint);
 
       // Core dot
       final dotPaint = Paint()
-        ..color = color.withOpacity(dotAlpha)
+        ..color = color.withValues(alpha: dotAlpha)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(p, radius, dotPaint);
     }

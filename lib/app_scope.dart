@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import 'api/client.dart';
 import 'data/db.dart';
+import 'data/lesson_notes.dart';
 import 'data/modules.dart';
 import 'data/mutations.dart';
 import 'data/outbox.dart';
@@ -25,7 +26,36 @@ class AppServices {
     required this.sync,
     required this.mutations,
     required this.updater,
+    required this.lessonNotes,
   });
+
+  @visibleForTesting
+  factory AppServices.forTesting({
+    required AppDb db,
+    required SessionService session,
+    required Store store,
+    required ModuleLibrary modules,
+    required Narrator narrator,
+    required SmsIngest sms,
+    required OutboxService outbox,
+    required SyncEngine sync,
+    required Mutations mutations,
+    required UpdateService updater,
+    required LessonNotesRepository lessonNotes,
+  }) =>
+      AppServices._(
+        db: db,
+        session: session,
+        store: store,
+        modules: modules,
+        narrator: narrator,
+        sms: sms,
+        outbox: outbox,
+        sync: sync,
+        mutations: mutations,
+        updater: updater,
+        lessonNotes: lessonNotes,
+      );
 
   final AppDb db;
   final SessionService session;
@@ -46,6 +76,9 @@ class AppServices {
   final Mutations mutations;
   final UpdateService updater;
 
+  /// Isolated lesson notes storage (Study-on-Canvas contract).
+  final LessonNotesRepository lessonNotes;
+
   ApiClient get api => session.api;
 
   static Future<AppServices> boot() async {
@@ -61,6 +94,7 @@ class AppServices {
     final narrator = Narrator(apiOf);
     final sms = SmsIngest(apiOf);
     final updater = UpdateService(apiOf);
+    final lessonNotes = LessonNotesRepository(apiOf: apiOf, mutations: mutations, db: db);
     await outbox.refreshCount();
     await modules.load();
     await updater.loadInstalled();
@@ -75,6 +109,7 @@ class AppServices {
       sync: sync,
       mutations: mutations,
       updater: updater,
+      lessonNotes: lessonNotes,
     );
   }
 }

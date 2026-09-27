@@ -594,3 +594,40 @@ class IdBadge extends StatelessWidget {
     );
   }
 }
+
+/// Rounded-square FAB matching the chat button style (green ground, textInverse
+/// icon, Sz.rLg corners, no full-circle edge buttons per BG26091015).
+class SquareFab extends StatelessWidget {
+  const SquareFab({
+    super.key,
+    required this.icon,
+    required this.onPressed,
+    this.heroTag,
+    this.tooltip,
+    this.backgroundColor = C.green,
+    this.foregroundColor = C.textInverse,
+  });
+
+  final Widget icon;
+  final VoidCallback onPressed;
+  final Object? heroTag;
+  final String? tooltip;
+  final Color backgroundColor;
+  final Color foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton(
+      heroTag: heroTag,
+      tooltip: tooltip,
+      backgroundColor: backgroundColor,
+      foregroundColor: foregroundColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Sz.rLg),
+      ),
+      onPressed: onPressed,
+      child: icon,
+    );
+  }
+}
+

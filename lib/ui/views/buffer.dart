@@ -363,8 +363,8 @@ class _PostTile extends StatelessWidget {
       final res = await services.mutations.post('/api/buffer/post/manage', {
         'id': id,
         'action': action,
-        if (text != null) 'text': text,
-        if (dueAt != null) 'dueAt': dueAt.toIso8601String(),
+        'text': ?text,
+        'dueAt': ?dueAt?.toIso8601String(),
       });
       if (!context.mounted) return;
       final map = fmt.m(res);
