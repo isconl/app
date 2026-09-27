@@ -230,4 +230,156 @@ void main() {
     final result = await overlayVaultMirrorTables(db, 'dates', null) as Map;
     expect((result['dates'] as List).single, containsPair('ID', 'D1'));
   });
+
+  // -- BI26092608: Pruning on full pulls with outbox protection --
+
+  test('BI26092608: (a) a full pull without row X deletes X', () async {
+    final db = await freshDb();
+    // Seed mirror with T1 and T2
+    await upsertVaultRows(db, 'scope__tasks', [
+      {'ID': 'T1', 'TITLE': 'Task 1', 'STATUS': 'today', 'PRIORITY': 'medium'},
+      {'ID': 'T2', 'TITLE': 'Task 2', 'STATUS': 'today', 'PRIORITY': 'high'},
+    ]);
+    expect((await readVaultRows(db, 'scope__tasks')).map((r) => r['ID']).toSet(), {'T1', 'T2'});
+
+    // Server response now only contains T1 (T2 was archived or deleted on server)
+    final serverResponse = {
+      'tasks': [
+        {'ID': 'T1', 'TITLE': 'Task 1', 'STATUS': 'today', 'PRIORITY': 'medium'},
+      ],
+    };
+    final pruned = await mirrorSnapshotIntoVaultTables(
+      db,
+      'state',
+      serverResponse,
+      isFullPull: true,
+    );
+
+    expect(pruned['scope__tasks'], 1);
+    final remaining = await readVaultRows(db, 'scope__tasks');
+    expect(remaining.map((r) => r['ID']), ['T1'], reason: 'T2 must be deleted on full pull');
+  });
+
+  test('BI26092608: (b) a partial pull keeps X', () async {
+    final db = await freshDb();
+    // Seed mirror with T1 and T2
+    await upsertVaultRows(db, 'scope__tasks', [
+      {'ID': 'T1', 'TITLE': 'Task 1', 'STATUS': 'today', 'PRIORITY': 'medium'},
+      {'ID': 'T2', 'TITLE': 'Task 2', 'STATUS': 'today', 'PRIORITY': 'high'},
+    ]);
+
+    // A partial/filtered pull only returning T1
+    final serverResponse = {
+      'tasks': [
+        {'ID': 'T1', 'TITLE': 'Task 1 (edited)', 'STATUS': 'today', 'PRIORITY': 'medium'},
+      ],
+    };
+    final pruned = await mirrorSnapshotIntoVaultTables(
+      db,
+      'state',
+      serverResponse,
+      isFullPull: false,
+    );
+
+    expect(pruned, isEmpty);
+    final remaining = await readVaultRows(db, 'scope__tasks');
+    expect(remaining.map((r) => r['ID']).toSet(), {'T1', 'T2'}, reason: 'T2 must survive a partial pull');
+    expect(remaining.firstWhere((r) => r['ID'] == 'T1')['TITLE'], 'Task 1 (edited)');
+  });
+
+  test('BI26092608: (c) X with a queued outbox write survives a full pull', () async {
+    final db = await freshDb();
+    await db.execute('''
+      CREATE TABLE outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        body TEXT NOT NULL,
+        label TEXT NOT NULL,
+        view TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        error TEXT
+      )
+    ''');
+
+    // Seed mirror with T1, T2 (has pending edit), T3 (no outbox write), and QUEUED
+    await upsertVaultRows(db, 'scope__tasks', [
+      {'ID': 'T1', 'TITLE': 'Task 1', 'STATUS': 'today', 'PRIORITY': 'medium'},
+      {'ID': 'T2', 'TITLE': 'Task 2', 'STATUS': 'today', 'PRIORITY': 'high'},
+      {'ID': 'T3', 'TITLE': 'Task 3', 'STATUS': 'today', 'PRIORITY': 'low'},
+      {'ID': 'QUEUED', 'TITLE': 'Task Offline', 'STATUS': 'today', 'PRIORITY': 'medium'},
+    ]);
+
+    // Enqueue an outbox write for T2
+    await db.insert('outbox', {
+      'method': 'POST',
+      'path': '/api/tasks/update',
+      'body': '{"taskId":"T2","title":"Task 2 updated offline"}',
+      'label': 'Update task T2',
+      'view': 'tasks',
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+      'status': 'pending',
+    });
+
+    // Full pull only returns T1
+    final serverResponse = {
+      'tasks': [
+        {'ID': 'T1', 'TITLE': 'Task 1', 'STATUS': 'today', 'PRIORITY': 'medium'},
+      ],
+    };
+    final pruned = await mirrorSnapshotIntoVaultTables(
+      db,
+      'state',
+      serverResponse,
+      isFullPull: true,
+    );
+
+    // Only T3 should be pruned (T2 protected by outbox, QUEUED protected by default)
+    expect(pruned['scope__tasks'], 1);
+    final remaining = await readVaultRows(db, 'scope__tasks');
+    final remainingIds = remaining.map((r) => r['ID']).toSet();
+    expect(remainingIds.contains('T1'), isTrue, reason: 'T1 was returned by server');
+    expect(remainingIds.contains('T2'), isTrue, reason: 'T2 had a pending outbox write');
+    expect(remainingIds.contains('QUEUED'), isTrue, reason: 'QUEUED offline items must survive');
+    expect(remainingIds.contains('T3'), isFalse, reason: 'T3 had no outbox write and was missing from server');
+  });
+
+  test('BI26092608: (d) an empty or errored response deletes nothing', () async {
+    final db = await freshDb();
+    await upsertVaultRows(db, 'scope__tasks', [
+      {'ID': 'T1', 'TITLE': 'Task 1', 'STATUS': 'today', 'PRIORITY': 'medium'},
+      {'ID': 'T2', 'TITLE': 'Task 2', 'STATUS': 'today', 'PRIORITY': 'high'},
+    ]);
+
+    // 1. Empty tasks list
+    final emptyResponse = {'tasks': []};
+    final prunedEmpty = await mirrorSnapshotIntoVaultTables(
+      db,
+      'state',
+      emptyResponse,
+      isFullPull: true,
+    );
+    expect(prunedEmpty, isEmpty);
+    var remaining = await readVaultRows(db, 'scope__tasks');
+    expect(remaining.map((r) => r['ID']).toSet(), {'T1', 'T2'}, reason: 'Empty response must delete nothing');
+
+    // 2. Errored or malformed response
+    final errorResponse = {'error': 'Internal server error'};
+    final prunedError = await mirrorSnapshotIntoVaultTables(
+      db,
+      'state',
+      errorResponse,
+      isFullPull: true,
+    );
+    expect(prunedError, isEmpty);
+    remaining = await readVaultRows(db, 'scope__tasks');
+    expect(remaining.map((r) => r['ID']).toSet(), {'T1', 'T2'}, reason: 'Errored response must delete nothing');
+
+    // 3. Direct pruneVaultRows with empty keepIds deletes nothing
+    final directPrune = await pruneVaultRows(db, 'scope__tasks', []);
+    expect(directPrune, 0);
+    remaining = await readVaultRows(db, 'scope__tasks');
+    expect(remaining.map((r) => r['ID']).toSet(), {'T1', 'T2'});
+  });
 }

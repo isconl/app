@@ -29,6 +29,17 @@ class SyncEngine extends ChangeNotifier {
   DateTime? lastFullSync;
   String? lastError;
   int newAlerts = 0;
+  final List<String> syncLog = [];
+
+  /// Log a sync message to [syncLog] and debug console.
+  void log(String message) {
+    final entry = '${DateTime.now().toIso8601String()} · $message';
+    syncLog.add(entry);
+    if (syncLog.length > 200) {
+      syncLog.removeAt(0);
+    }
+    debugPrint('[SyncEngine] $message');
+  }
 
   /// Raised after a sync discovers fresh high-priority notifications.
   void Function(List<Map<String, dynamic>> fresh)? onNewAlerts;
@@ -116,9 +127,14 @@ class SyncEngine extends ChangeNotifier {
       notifyListeners();
       var anyOk = false;
       for (final snap in _store.syncSet) {
-        final ok = await snap.refresh();
+        final ok = await snap.refresh(isFullPull: true);
         anyOk = anyOk || ok;
         if (!ok && snap.error == 'offline') break;
+        if (snap.lastPruned.isNotEmpty) {
+          for (final entry in snap.lastPruned.entries) {
+            log('Pruned ${entry.value} stale row(s) from ${entry.key}');
+          }
+        }
       }
       if (anyOk) {
         lastFullSync = DateTime.now();

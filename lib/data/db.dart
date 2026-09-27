@@ -323,15 +323,34 @@ class AppDb {
   }
 
 
-  // ---- vault mirror (BN26083107) ----
+  // ---- vault mirror (BN26083107, BI26092608) ----
 
   /// Extracts and upserts whatever `kMirrorSources` declares for this
   /// snapshot key -- a no-op for the (still-majority) snapshot keys with no
-  /// mirror source declared yet. Called from `Snapshot.refresh()` right
-  /// after a successful fetch, alongside (not instead of) the existing
-  /// `putSnapshot()` blob cache.
-  Future<void> mirrorSnapshot(String snapshotKey, dynamic responseJson) =>
-      mirrorSnapshotIntoVaultTables(_db, snapshotKey, responseJson);
+  /// mirror source declared yet. When [isFullPull] is true, prunes local rows
+  /// not present in the server response. Called from `Snapshot.refresh()`.
+  Future<Map<String, int>> mirrorSnapshot(
+    String snapshotKey,
+    dynamic responseJson, {
+    bool isFullPull = false,
+    Iterable<String>? pendingOutboxIds,
+  }) =>
+      mirrorSnapshotIntoVaultTables(
+        _db,
+        snapshotKey,
+        responseJson,
+        isFullPull: isFullPull,
+        pendingOutboxIds: pendingOutboxIds,
+      );
+
+  /// Deletes local rows in [table] whose ID is not in [keepIds], protecting
+  /// pending writes in outbox.
+  Future<int> pruneVault(
+    String table,
+    Iterable<String> keepIds, [
+    Iterable<String>? pendingOutboxIds,
+  ]) =>
+      pruneVaultRows(_db, table, keepIds, pendingOutboxIds);
 
   /// Every row currently mirrored into `table` (see `vault_schema.dart`'s
   /// `kVaultTables` for the declared columns), same shape a server-side

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 
 import 'vault_schema.dart';
@@ -50,14 +52,109 @@ List<VaultRow> extractVaultRows(dynamic responseJson, String table, String jsonK
   return out;
 }
 
-/// Insert-or-replace every row by its `ID`, in one transaction. Matches
-/// vault's own `append`/`rewrite` semantics loosely (upsert-by-ID, not a
-/// full-table replace) -- a row missing from THIS particular response
-/// (e.g. one filtered out server-side) is left alone, not deleted, since a
-/// partial/filtered fetch is not evidence the row no longer exists.
-Future<void> upsertVaultRows(Database db, String table, List<VaultRow> rows) async {
-  if (rows.isEmpty) return;
+/// Deletes local rows in [table] whose ID is not in [keepIds].
+///
+/// Only deletes rows when [keepIds] is non-empty (an empty or failed server
+/// response must never delete local rows). Protects rows that have pending
+/// writes in the outbox or that are newly created offline ('QUEUED').
+Future<int> pruneVaultRows(
+  DatabaseExecutor db,
+  String table,
+  Iterable<String> keepIds, [
+  Iterable<String>? pendingOutboxIds,
+]) async {
+  if (!kVaultTables.containsKey(table)) return 0;
+  final keepSet = keepIds.where((id) => id.isNotEmpty && id != '-').toSet();
+  if (keepSet.isEmpty) return 0;
+
+  final pendingSet = <String>{...?pendingOutboxIds};
+  if (pendingOutboxIds == null) {
+    try {
+      final outboxRows = await db.rawQuery(
+        "SELECT body FROM outbox WHERE status != 'sent'",
+      );
+      for (final r in outboxRows) {
+        final bodyStr = r['body'];
+        if (bodyStr is String && bodyStr.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(bodyStr);
+            void extractIds(dynamic obj) {
+              if (obj is Map) {
+                for (final entry in obj.entries) {
+                  final key = entry.key.toString().toLowerCase();
+                  if (key == 'id' ||
+                      key == 'taskid' ||
+                      key == 'task_id' ||
+                      key == 'dateid' ||
+                      key == 'planid' ||
+                      key == 'personid') {
+                    if (entry.value != null && entry.value.toString().isNotEmpty) {
+                      pendingSet.add(entry.value.toString());
+                    }
+                  }
+                  extractIds(entry.value);
+                }
+              } else if (obj is List) {
+                for (final item in obj) {
+                  if (item is String) {
+                    pendingSet.add(item);
+                  } else {
+                    extractIds(item);
+                  }
+                }
+              }
+            }
+            extractIds(decoded);
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
+  pendingSet.add('QUEUED');
+
+  final localRows = await db.rawQuery('SELECT "ID" FROM "$table"');
+  final toDelete = <String>[];
+  for (final row in localRows) {
+    final id = row['ID']?.toString();
+    if (id != null && id != '-' && !keepSet.contains(id) && !pendingSet.contains(id)) {
+      toDelete.add(id);
+    }
+  }
+
+  if (toDelete.isEmpty) return 0;
+
+  const chunkSize = 400;
+  var count = 0;
+  for (var i = 0; i < toDelete.length; i += chunkSize) {
+    final chunk = toDelete.sublist(
+      i,
+      i + chunkSize > toDelete.length ? toDelete.length : i + chunkSize,
+    );
+    final placeholders = List.filled(chunk.length, '?').join(', ');
+    count += await db.rawDelete(
+      'DELETE FROM "$table" WHERE "ID" IN ($placeholders)',
+      chunk,
+    );
+  }
+  return count;
+}
+
+/// Insert-or-replace every row by its `ID`, in one transaction.
+///
+/// When [prune] is true (full, unfiltered table read only), deletes rows
+/// not in [rows] in the exact same transaction, protecting rows with pending
+/// outbox writes. Returns the number of pruned rows.
+Future<int> upsertVaultRows(
+  Database db,
+  String table,
+  List<VaultRow> rows, {
+  bool prune = false,
+  Iterable<String>? pendingOutboxIds,
+}) async {
+  if (rows.isEmpty) return 0;
   final now = DateTime.now().millisecondsSinceEpoch;
+  var prunedCount = 0;
   await db.transaction((txn) async {
     final batch = txn.batch();
     for (final row in rows) {
@@ -68,7 +165,13 @@ Future<void> upsertVaultRows(Database db, String table, List<VaultRow> rows) asy
       );
     }
     await batch.commit(noResult: true);
+
+    if (prune) {
+      final keepIds = rows.map((r) => r['ID'] ?? '-').where((id) => id != '-');
+      prunedCount = await pruneVaultRows(txn, table, keepIds, pendingOutboxIds);
+    }
   });
+  return prunedCount;
 }
 
 /// Every row currently in `table`, oldest-inserted-first (matching
@@ -84,14 +187,33 @@ Future<List<VaultRow>> readVaultRows(Database db, String table) async {
 
 /// The single entry point `Snapshot.refresh()` calls after a successful
 /// fetch: for every `kMirrorSources` row keyed to this snapshot, extract
-/// and upsert. A snapshot key with no mirror source (most of them, today)
-/// is a silent no-op -- the blob cache remains the only copy, unchanged.
-Future<void> mirrorSnapshotIntoVaultTables(Database db, String snapshotKey, dynamic responseJson) async {
+/// and upsert. When [isFullPull] is true, prunes deleted/archived rows in the
+/// same transaction.
+///
+/// Returns a map of table name to pruned row count for logging.
+Future<Map<String, int>> mirrorSnapshotIntoVaultTables(
+  Database db,
+  String snapshotKey,
+  dynamic responseJson, {
+  bool isFullPull = false,
+  Iterable<String>? pendingOutboxIds,
+}) async {
+  final pruneCounts = <String, int>{};
   for (final (key, table, jsonKey) in kMirrorSources) {
     if (key != snapshotKey) continue;
     final rows = extractVaultRows(responseJson, table, jsonKey);
-    await upsertVaultRows(db, table, rows);
+    final pruned = await upsertVaultRows(
+      db,
+      table,
+      rows,
+      prune: isFullPull,
+      pendingOutboxIds: pendingOutboxIds,
+    );
+    if (pruned > 0) {
+      pruneCounts[table] = pruned;
+    }
   }
+  return pruneCounts;
 }
 
 /// Wires the mirrored tables into what `Snapshot.value` actually holds --

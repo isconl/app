@@ -19,6 +19,7 @@ class Snapshot extends ChangeNotifier {
   DateTime? fetchedAt;
   bool loading = false;
   String? error;
+  Map<String, int> lastPruned = const {};
   bool _hydrated = false;
 
   bool get hasData => value != null;
@@ -46,7 +47,8 @@ class Snapshot extends ChangeNotifier {
   }
 
   /// Fetch a fresh copy. Serves the cache when offline; never throws.
-  Future<bool> refresh({bool cold = false}) async {
+  /// When [isFullPull] is true, prunes local mirror rows absent from the server.
+  Future<bool> refresh({bool cold = false, bool isFullPull = false}) async {
     await hydrate();
     if (loading) return false;
     loading = true;
@@ -56,14 +58,18 @@ class Snapshot extends ChangeNotifier {
       final fresh = await _api().getJson(path, cold: cold);
       fetchedAt = DateTime.now();
       await _db.putSnapshot(key, fresh);
-      // BN26083107: real per-collection tables, populated alongside (not
-      // instead of) the blob cache above -- a no-op for snapshot keys with
-      // no declared mirror source. Deliberately NOT called from
-      // patchLocal() below: that path writes a locally-edited, not
-      // server-confirmed, blob -- mirroring speculative edits into the
-      // structured tables risks the tables disagreeing with what the
-      // server actually has once the edit round-trips.
-      await _db.mirrorSnapshot(key, fresh);
+      // BN26083107, BI26092608: real per-collection tables, populated alongside
+      // (not instead of) the blob cache above -- a no-op for snapshot keys with
+      // no declared mirror source. When isFullPull is true, prunes stale rows.
+      // Deliberately NOT called from patchLocal() below: that path writes a
+      // locally-edited, not server-confirmed, blob -- mirroring speculative
+      // edits into the structured tables risks the tables disagreeing with what
+      // the server actually has once the edit round-trips.
+      lastPruned = await _db.mirrorSnapshot(
+        key,
+        fresh,
+        isFullPull: isFullPull,
+      );
       // Overlay right back on top of the response we just stored -- the
       // mirror can genuinely know MORE than this one fetch did (rows
       // accumulated from earlier fetches this one didn't happen to
@@ -98,6 +104,7 @@ class Snapshot extends ChangeNotifier {
     value = null;
     fetchedAt = null;
     error = null;
+    lastPruned = const {};
     _hydrated = true; // don't re-hydrate the value we just wiped
     notifyListeners();
   }
