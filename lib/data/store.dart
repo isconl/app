@@ -126,6 +126,7 @@ class Store {
   Snapshot get day => of('day', '/api/blocks');
   Snapshot get dayBlock => day;
   Snapshot get orientation => of('orientation', '/api/orientation');
+  Snapshot get signals => of('signals', '/api/signals');
   Snapshot get notifications =>
       of('notifications', '/api/notifications?limit=200');
   Snapshot get audit => of('audit', '/api/audit');
@@ -188,6 +189,7 @@ class Store {
   /// spending on a background poll the user may never look at.
   List<Snapshot> get syncSet => [
         state,
+        signals,
         dayBlock,
         notifications,
         orientation,

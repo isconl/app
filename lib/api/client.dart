@@ -58,6 +58,10 @@ class ApiClient {
     return _decode(res, path);
   }
 
+  /// GET /api/signals returning the signals payload.
+  Future<dynamic> signals({bool cold = false}) =>
+      getJson('/api/signals', cold: cold);
+
   /// GET returning raw bytes, for routes that answer with a file rather than
   /// JSON - the PDF export, for one. `_decode` cannot be used here: it parses
   /// every body as JSON and would reject a perfectly good PDF as a bad

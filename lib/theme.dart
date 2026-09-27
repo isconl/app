@@ -34,6 +34,7 @@ class C {
   static const redBg = Color(0x1FF85149);
   static const cyan = Color(0xFF58A6FF);
   static const cyanBg = Color(0x1A58A6FF);
+  static const blue = Color(0xFF58A6FF);
   static const violet = Color(0xFFBC8CFF);
   static const violetBg = Color(0x1ABC8CFF);
 

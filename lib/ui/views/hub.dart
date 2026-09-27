@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
+import '../shell.dart' show openNavRoute;
 import '../widgets/block_card.dart';
 import '../widgets/common.dart';
 import '../widgets/context_ring_card.dart';
@@ -28,7 +30,12 @@ class _HubViewState extends State<HubView> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        AppScope.of(context).store.day.hydrate();
+        final store = AppScope.of(context).store;
+        store.day.hydrate();
+        final sig = store.signals;
+        sig.hydrate().then((_) {
+          if (mounted && sig.value == null) sig.refresh();
+        });
       }
     });
   }
@@ -68,7 +75,7 @@ class _HubViewState extends State<HubView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(fmt.fullDate(now), style: T.headline),
+                  _buildDate(now),
                   const SizedBox(height: 4),
                   if (fmt.s(eq['eqShort']).isNotEmpty)
                     Wrap(
@@ -86,7 +93,13 @@ class _HubViewState extends State<HubView> {
                       ],
                     ),
                   const SizedBox(height: 12),
-                  _needsYou(newAlerts, overdue.length, review.length),
+                  _buildSignalsStripOrFallback(
+                    context,
+                    services,
+                    newAlerts,
+                    overdue.length,
+                    review.length,
+                  ),
                 ],
               ),
             ),
@@ -202,6 +215,131 @@ class _HubViewState extends State<HubView> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildDate(DateTime now) {
+    final full = fmt.fullDate(now);
+    final commaIdx = full.indexOf(',');
+    if (commaIdx < 0) {
+      return Text(full, style: T.headline);
+    }
+    final weekday = full.substring(0, commaIdx);
+    final rest = full.substring(commaIdx);
+    return Text.rich(
+      TextSpan(
+        style: T.headline,
+        children: [
+          TextSpan(
+            text: weekday,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          TextSpan(
+            text: rest,
+            style: const TextStyle(fontWeight: FontWeight.w400),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _toneColor(String tone) => switch (tone.toLowerCase().trim()) {
+        'urgent' => C.red,
+        'soon' => C.amber,
+        'waiting' => C.blue,
+        'good' => C.green,
+        'info' => C.text3,
+        _ => C.text3,
+      };
+
+  Widget _buildSignalsStripOrFallback(
+    BuildContext context,
+    AppServices services,
+    int alerts,
+    int overdue,
+    int review,
+  ) {
+    return ListenableBuilder(
+      listenable: services.store.signals,
+      builder: (context, _) {
+        final signalsVal = services.store.signals.value;
+        if (signalsVal is Map) {
+          final rawStrip = fmt.l(signalsVal['strip']);
+          final validSignals = rawStrip
+              .whereType<Map>()
+              .map((m) => m.cast<String, dynamic>())
+              .where((m) => fmt.s(m['label']).isNotEmpty)
+              .take(3)
+              .toList();
+
+          if (validSignals.isNotEmpty) {
+            return Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                for (var idx = 0; idx < validSignals.length; idx++) ...[
+                  if (idx > 0)
+                    Text('  ·  ',
+                        style: T.small.copyWith(color: C.text3)),
+                  _signalChip(context, validSignals[idx]),
+                ],
+              ],
+            );
+          }
+        }
+        return _needsYou(alerts, overdue, review);
+      },
+    );
+  }
+
+  Widget _signalChip(BuildContext context, Map<String, dynamic> signal) {
+    final label = fmt.s(signal['label']);
+    final tone = fmt.s(signal['tone']);
+    final route = fmt.s(signal['route']);
+    final detail = fmt.s(signal['detail']);
+    final color = _toneColor(tone);
+
+    void handleTap() {
+      HapticFeedback.selectionClick();
+      if (route.isNotEmpty) {
+        openNavRoute(context, route);
+      }
+    }
+
+    void handleLongPress() {
+      if (detail.isNotEmpty) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(detail),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+
+    final textWidget = Text(
+      label,
+      style: T.small.copyWith(
+        color: color,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+
+    return Tooltip(
+      message: detail.isNotEmpty ? detail : label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          onTap: handleTap,
+          onLongPress: handleLongPress,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+            child: textWidget,
+          ),
+        ),
+      ),
     );
   }
 

@@ -995,3 +995,61 @@ class SecondaryScreen extends StatelessWidget {
     );
   }
 }
+
+/// Resolves a nav route key to its (view, title) pair.
+(Widget, String)? viewForNavRoute(String route) {
+  var r = route.toLowerCase().trim();
+  if (r.startsWith('/')) r = r.substring(1);
+  if (r.startsWith('api/')) r = r.substring(4);
+  return switch (r) {
+    'hub' || 'command' => (const HubView(), 'Hub'),
+    'tasks' || 'slate' => (const TasksView(), 'Tasks'),
+    'planning' || 'plans' => (const PlanningView(), 'Planning'),
+    'calendar' || 'events' => (const CalendarView(), 'Calendar'),
+    'notifications' || 'alerts' => (const NotificationsView(), 'Alerts'),
+    'channels' => (const ChannelsHomeView(), 'Channels'),
+    'teams' => (const TeamsView(), 'Teams'),
+    'inbox' => (const InboxView(), 'Inbox'),
+    'buffer' || 'social' => (const SocialView(), 'Buffer'),
+    'kanban' || 'jira' => (const JiraView(), 'Kanban'),
+    'github' => (const GithubView(), 'GitHub'),
+    'portfolio' || 'practice' => (const PortfolioView(), 'Portfolio'),
+    'products' => (const ProjectsView(cat: 'product'), 'Products'),
+    'platforms' => (const ProjectsView(cat: 'platform'), 'Platforms'),
+    'corporate' => (const CorporateView(), 'Corporate'),
+    'rhythm' => (const RhythmView(), 'Rhythm'),
+    'study' || 'learning' => (const LearningView(), 'Study'),
+    'holdings' || 'finance' => (const FinanceView(), 'Holdings'),
+    'journal' => (const JournalView(), 'Journal'),
+    'ideas' => (const IdeasView(), 'Ideas'),
+    'circle' || 'contacts' => (const ContactsView(), 'Contacts'),
+    'family' => (const CircleView(ring: 'family'), 'Family'),
+    'professional' => (const CircleView(ring: 'professional'), 'Professional'),
+    'social_circle' => (const CircleView(ring: 'social'), 'Social'),
+    'spaces' => (const SpacesView(), 'Spaces'),
+    'ops' => (const OpsView(), 'Ops'),
+    'services' || 'hosted' => (const HostedServicesView(), 'Services'),
+    'files' => (const FilesView(), 'Files'),
+    'media' => (const MediaView(), 'Media'),
+    'audit' => (const AuditView(), 'Audit'),
+    'articles' => (const ArticlesView(), 'Articles'),
+    'decisions' => (const DecisionsView(), 'Decisions & Risks'),
+    'outbox' => (const OutboxView(), 'Outbox'),
+    'settings' => (const SettingsView(), 'Settings'),
+    'backlog' => (const BacklogView(), 'Backlog'),
+    _ => null,
+  };
+}
+
+/// Navigates to a view by route name (pushing SecondaryScreen, same as MenuSheet).
+void openNavRoute(BuildContext context, String route) {
+  final pair = viewForNavRoute(route);
+  if (pair != null) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SecondaryScreen(title: pair.$2, child: pair.$1),
+      ),
+    );
+  }
+}
