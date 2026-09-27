@@ -269,7 +269,7 @@ class _ShellState extends State<Shell> {
           // of the hamburger on every tab except Settings, which shows the
           // full OfflineBanner instead.
           actions: [if (_tab != 4) const SyncIndicator()],
-          onMenu: () => _openMenu(context),
+          onMenu: () => openMenu(context),
         ),
         body: _tabBody(context, _tab, services),
         floatingActionButton: SquareFab(
@@ -286,21 +286,22 @@ class _ShellState extends State<Shell> {
       ),
     );
   }
+}
 
-  void _openMenu(BuildContext context) {
-    HapticFeedback.selectionClick();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: C.panel,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
-        side: BorderSide(color: C.border),
-      ),
-      builder: (ctx) => const MenuSheet(),
-    );
-  }
+/// Opens the navigation menu sheet from anywhere in the app.
+void openMenu(BuildContext context) {
+  HapticFeedback.selectionClick();
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: C.panel,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
+      side: BorderSide(color: C.border),
+    ),
+    builder: (ctx) => const MenuSheet(),
+  );
 }
 
 // ─── Sub-tab horizontal strip ─────────────────────────────────────────────────
@@ -514,7 +515,17 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
       title: Row(
         children: [
           if (showBrand) ...[
-            const BrandMark(size: 26),
+            if (canPop)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  Navigator.of(context).maybePop();
+                },
+                child: const BrandMark(size: 26),
+              )
+            else
+              const BrandMark(size: 26),
             const SizedBox(width: 10),
           ],
           Expanded(

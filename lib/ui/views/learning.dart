@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -10,7 +11,7 @@ import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
-import '../shell.dart' show ShellAppBar;
+import '../shell.dart' show ShellAppBar, SyncIndicator, openMenu;
 import '../widgets/common.dart';
 import '../widgets/listen_bar.dart';
 import '../widgets/reader.dart';
@@ -326,7 +327,11 @@ class TrackCard extends StatelessWidget {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => _TrackDetailScreen(track: group.label, courses: courses),
+          builder: (_) => TrackDetailScreen(
+            track: group.label,
+            courses: courses,
+            trackColor: group.color,
+          ),
         ),
       ),
       child: Column(
@@ -428,26 +433,91 @@ class TrackCard extends StatelessWidget {
   }
 }
 
+/// Formats date as "12 Sep" (or keeps existing formatted string).
+String _formatDateDayMonth(dynamic v) {
+  final dt = fmt.parseDate(v);
+  if (dt == null) return fmt.s(v);
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+  return '${dt.day} ${months[dt.month - 1]}';
+}
+
+int _courseOrder(Map<String, dynamic> c) {
+  if (c['position'] != null) return fmt.i(c['position']);
+  if (c['SEQ'] != null) return fmt.i(c['SEQ']);
+  if (c['seq'] != null) return fmt.i(c['seq']);
+  return 999999;
+}
+
+int _moduleOrder(Map<String, dynamic> l) {
+  if (l['position'] != null) return fmt.i(l['position']);
+  if (l['SEQ'] != null) return fmt.i(l['SEQ']);
+  if (l['seq'] != null) return fmt.i(l['seq']);
+  if (l['order'] != null) return fmt.i(l['order']);
+  return 999999;
+}
+
 /// Track detail: the course list for one track only, each course collapsed
 /// to a compact summary card. Tap a course to see its full module list.
-class _TrackDetailScreen extends StatelessWidget {
-  const _TrackDetailScreen({required this.track, required this.courses});
+@visibleForTesting
+class TrackDetailScreen extends StatelessWidget {
+  const TrackDetailScreen({
+    super.key,
+    required this.track,
+    required this.courses,
+    this.trackColor,
+  });
   final String track;
   final List<Map<String, dynamic>> courses;
+  final Color? trackColor;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveColor = trackColor ?? C.green;
+    final sortedCourses = List<Map<String, dynamic>>.from(courses);
+    sortedCourses.sort((a, b) {
+      final posA = _courseOrder(a);
+      final posB = _courseOrder(b);
+      if (posA != posB) return posA.compareTo(posB);
+      return 0;
+    });
+
+    final firstIncompleteIndex = sortedCourses.indexWhere((c) {
+      final lessons = fmt.lm(c['lessons']);
+      final total = c['modulesTotal'] != null
+          ? fmt.i(c['modulesTotal'])
+          : lessons.length;
+      final done = c['modulesDone'] != null
+          ? fmt.i(c['modulesDone'])
+          : lessons
+              .where((l) => fmt.s(l['status']).toLowerCase() == 'done')
+              .length;
+      return total == 0 || done < total;
+    });
+
     return Scaffold(
-      appBar: ShellAppBar(title: track, showBrand: false),
+      appBar: ShellAppBar(
+        title: track,
+        showBrand: true,
+        actions: const [SyncIndicator()],
+        onMenu: () => openMenu(context),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(Sz.pad),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final course in courses)
+            for (var i = 0; i < sortedCourses.length; i++)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _CourseSummaryCard(course: course),
+                child: CourseSummaryCard(
+                  course: sortedCourses[i],
+                  index: i,
+                  isFirstIncomplete: i == firstIncompleteIndex,
+                  trackColor: effectiveColor,
+                ),
               ),
           ],
         ),
@@ -458,47 +528,135 @@ class _TrackDetailScreen extends StatelessWidget {
 
 /// Compact course card for the track-detail list: title, progress, module
 /// count. Full lesson list lives one tap deeper, in [_CourseDetailScreen].
-class _CourseSummaryCard extends StatelessWidget {
-  const _CourseSummaryCard({required this.course});
+@visibleForTesting
+class CourseSummaryCard extends StatelessWidget {
+  const CourseSummaryCard({
+    super.key,
+    required this.course,
+    this.index = 0,
+    this.isFirstIncomplete = false,
+    this.trackColor = C.green,
+  });
   final Map<String, dynamic> course;
+  final int index;
+  final bool isFirstIncomplete;
+  final Color trackColor;
 
   @override
   Widget build(BuildContext context) {
     final lessons = fmt.lm(course['lessons']);
-    final done =
-        lessons.where((l) => fmt.s(l['status']).toLowerCase() == 'done').length;
-    final pct = lessons.isEmpty ? 0.0 : done / lessons.length;
-    final title = fmt.s(course['TITLE']).isEmpty
-        ? (fmt.s(course['ID']).isEmpty ? fmt.s(course['id']) : fmt.s(course['ID']))
-        : fmt.s(course['TITLE']);
+    final total = course['modulesTotal'] != null
+        ? fmt.i(course['modulesTotal'])
+        : lessons.length;
+    final done = course['modulesDone'] != null
+        ? fmt.i(course['modulesDone'])
+        : lessons
+            .where((l) => fmt.s(l['status']).toLowerCase() == 'done')
+            .length;
+    final pct = total == 0 ? 0.0 : (done / total).clamp(0.0, 1.0);
+
+    final tVal = fmt.s(course['TITLE']);
+    final rawTitle = tVal.isNotEmpty
+        ? tVal
+        : fmt.s(course['title'] ?? course['ID'] ?? course['id']);
+    final title = stripEmoji(rawTitle);
+
+    final subVal = fmt.s(course['SUBTITLE']);
+    final rawSubtitle = subVal.isNotEmpty ? subVal : fmt.s(course['subtitle']);
+    final subtitle = stripEmoji(rawSubtitle);
+
+    // Subtle number 01, 02 top-right with tabular figures
+    final pos = course['position'] ?? course['SEQ'] ?? course['seq'];
+    final numVal = pos != null ? fmt.i(pos) : index + 1;
+    final numStr = numVal.toString().padLeft(2, '0');
+
+    // Meta line: n/m modules · opened 3d ago, falling back to · updated 12 Sep when never opened
+    final lastOpened = fmt.s(course['lastOpenedAt'] ?? course['last_opened_at'] ?? course['lastOpened']);
+    final updatedAt = fmt.s(course['updatedAt'] ?? course['updated_at'] ?? course['UPDATED_AT']);
+
+    String metaLine = '$done/$total modules';
+    if (lastOpened.isNotEmpty) {
+      metaLine += ' · opened ${fmt.ago(lastOpened)}';
+    } else if (updatedAt.isNotEmpty) {
+      metaLine += ' · updated ${_formatDateDayMonth(updatedAt)}';
+    }
+
+    final anyInProgress = lessons.any((l) {
+      final st = fmt.s(l['status']).toLowerCase();
+      return st == 'learning' || st == 'opened';
+    });
+    final nothingStarted = done == 0 && lastOpened.isEmpty && !anyInProgress;
+    final chipLabel = nothingStarted ? 'Start here' : 'Continue';
 
     return Panel(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => _CourseDetailScreen(course: course, title: title),
+          builder: (_) => CourseDetailScreen(
+            course: course,
+            title: title,
+            trackColor: trackColor,
+          ),
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: T.w600(T.body2)),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: LinearProgressIndicator(value: pct, minHeight: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: T.title),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(subtitle, style: T.small.copyWith(color: C.text3)),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 6),
-                Text('$done/${lessons.length} modules',
-                    style: T.tiny.copyWith(color: C.text3)),
-              ],
+              ),
+              const SizedBox(width: 8),
+              Text(
+                numStr,
+                style: T.small.copyWith(
+                  color: C.text3.withValues(alpha: 0.4),
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 4,
+              backgroundColor: C.border,
+              valueColor: AlwaysStoppedAnimation(trackColor),
             ),
           ),
-          const SizedBox(width: 8),
-          const Icon(Icons.chevron_right_rounded, size: 18, color: C.text3),
+          const SizedBox(height: 6),
+          Text(metaLine, style: T.small.copyWith(color: C.text3)),
+          if (isFirstIncomplete) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: trackColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: trackColor.withValues(alpha: 0.3)),
+              ),
+              child: Text(
+                chipLabel,
+                style: T.tiny.copyWith(
+                  color: trackColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -508,42 +666,61 @@ class _CourseSummaryCard extends StatelessWidget {
 /// Course detail: the existing [_CourseTile]'s full expanded content
 /// (module list, take-offline, per-lesson rows), reused as-is rather than
 /// rebuilt, pushed as its own screen instead of always-expanded inline.
-class _CourseDetailScreen extends StatelessWidget {
-  const _CourseDetailScreen({required this.course, required this.title});
+@visibleForTesting
+class CourseDetailScreen extends StatelessWidget {
+  const CourseDetailScreen({
+    super.key,
+    required this.course,
+    required this.title,
+    this.trackColor,
+  });
   final Map<String, dynamic> course;
   final String title;
+  final Color? trackColor;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: ShellAppBar(title: title, showBrand: false),
+      appBar: ShellAppBar(
+        title: title,
+        showBrand: true,
+        actions: const [SyncIndicator()],
+        onMenu: () => openMenu(context),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(Sz.pad),
-        child: _CourseTile(course: course),
+        child: CourseTile(course: course, trackColor: trackColor),
       ),
     );
   }
 }
 
-class _CourseTile extends StatefulWidget {
-  const _CourseTile({required this.course});
+@visibleForTesting
+class CourseTile extends StatefulWidget {
+  const CourseTile({super.key, required this.course, this.trackColor});
   final Map<String, dynamic> course;
+  final Color? trackColor;
 
   @override
-  State<_CourseTile> createState() => _CourseTileState();
+  State<CourseTile> createState() => _CourseTileState();
 }
 
-class _CourseTileState extends State<_CourseTile> {
+class _CourseTileState extends State<CourseTile> {
   bool _pulling = false;
   int _pulled = 0;
   int _total = 0;
 
   Future<void> _takeOffline(String courseId, List<String> files) async {
     setState(() { _pulling = true; _pulled = 0; _total = files.length; });
-    final lib = AppScope.of(context).modules;
-    await lib.downloadCourse(courseId, files, onProgress: (d, t) {
-      if (mounted) setState(() { _pulled = d; _total = t; });
-    });
+    ModuleLibrary? lib;
+    try {
+      lib = AppScope.of(context).modules;
+    } catch (_) {}
+    if (lib != null) {
+      await lib.downloadCourse(courseId, files, onProgress: (d, t) {
+        if (mounted) setState(() { _pulled = d; _total = t; });
+      });
+    }
     if (!mounted) return;
     setState(() => _pulling = false);
     toast(context, '$courseId is on this device');
@@ -551,8 +728,21 @@ class _CourseTileState extends State<_CourseTile> {
 
   @override
   Widget build(BuildContext context) {
-    final lib = AppScope.of(context).modules;
-    final lessons = fmt.lm(widget.course['lessons']);
+    final effectiveColor = widget.trackColor ?? C.green;
+    ModuleLibrary? lib;
+    try {
+      lib = AppScope.of(context).modules;
+    } catch (_) {}
+
+    final rawLessons = fmt.lm(widget.course['lessons']);
+    final lessons = List<Map<String, dynamic>>.from(rawLessons);
+    lessons.sort((a, b) {
+      final posA = _moduleOrder(a);
+      final posB = _moduleOrder(b);
+      if (posA != posB) return posA.compareTo(posB);
+      return 0;
+    });
+
     final done = lessons
         .where((l) => fmt.s(l['status']).toLowerCase() == 'done')
         .length;
@@ -563,12 +753,14 @@ class _CourseTileState extends State<_CourseTile> {
 
     final files = lessons.map((l) => fmt.s(l['file'])).where((f) => f.isNotEmpty).toList();
     final offline = files
-        .where((f) => lib.status(courseId, f).downloaded)
+        .where((f) => lib?.status(courseId, f).downloaded ?? false)
         .length;
     final stale = files
-        .where((f) => lib.status(courseId, f).state == ModuleState.stale)
+        .where((f) => lib?.status(courseId, f).state == ModuleState.stale)
         .length;
     final allHere = files.isNotEmpty && offline == files.length && stale == 0;
+
+    final nextIndex = lessons.indexWhere((l) => fmt.s(l['status']).toLowerCase() != 'done');
 
     return Panel(
       child: Column(
@@ -585,13 +777,18 @@ class _CourseTileState extends State<_CourseTile> {
                 ),
               ),
               Text('$done/${lessons.length}',
-                  style: T.mono.copyWith(color: C.greenBright)),
+                  style: T.mono.copyWith(color: effectiveColor)),
             ],
           ),
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(value: pct, minHeight: 4),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 4,
+              backgroundColor: C.border,
+              valueColor: AlwaysStoppedAnimation(effectiveColor),
+            ),
           ),
           if (files.isNotEmpty) ...[
             const SizedBox(height: 9),
@@ -632,11 +829,14 @@ class _CourseTileState extends State<_CourseTile> {
           ],
           const SizedBox(height: 10),
           for (var i = 0; i < lessons.length; i++)
-            _LessonRow(
+            LessonRow(
               courseId: courseId,
               lesson: lessons[i],
               nextLesson: i + 1 < lessons.length ? lessons[i + 1] : null,
               allLessons: lessons,
+              index: i,
+              isNext: i == nextIndex,
+              trackColor: effectiveColor,
             ),
         ],
       ),
@@ -644,80 +844,244 @@ class _CourseTileState extends State<_CourseTile> {
   }
 }
 
-class _LessonRow extends StatelessWidget {
-  const _LessonRow({
+@visibleForTesting
+class ModuleStateDot extends StatelessWidget {
+  const ModuleStateDot({super.key, required this.status, required this.color});
+  final String status;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = status.toLowerCase();
+    if (s == 'done') {
+      return Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+        ),
+      );
+    } else if (s == 'opened' || s == 'learning') {
+      return CustomPaint(
+        size: const Size(10, 10),
+        painter: _HalfFilledDotPainter(color: color),
+      );
+    } else {
+      return Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: C.text3, width: 1.5),
+        ),
+      );
+    }
+  }
+}
+
+class _HalfFilledDotPainter extends CustomPainter {
+  const _HalfFilledDotPainter({required this.color});
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+
+    // Draw filled left half
+    final fillPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      math.pi / 2,
+      math.pi,
+      true,
+      fillPaint,
+    );
+
+    // Draw outer ring
+    final strokePaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawCircle(center, radius - 0.75, strokePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _HalfFilledDotPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+@visibleForTesting
+class LessonRow extends StatelessWidget {
+  const LessonRow({
+    super.key,
     required this.courseId,
     required this.lesson,
     this.nextLesson,
     this.allLessons = const [],
+    this.index = 0,
+    this.isNext = false,
+    this.trackColor = C.green,
   });
   final String courseId;
   final Map<String, dynamic> lesson;
   final Map<String, dynamic>? nextLesson;
   final List<Map<String, dynamic>> allLessons;
+  final int index;
+  final bool isNext;
+  final Color trackColor;
 
   @override
   Widget build(BuildContext context) {
-    final lib = AppScope.of(context).modules;
-    final file = fmt.s(lesson['file']);
-    final status = fmt.s(lesson['status']).toLowerCase();
-    final st = lib.status(courseId, file);
+    ModuleLibrary? lib;
+    try {
+      lib = AppScope.of(context).modules;
+    } catch (_) {}
 
-    return InkWell(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => LessonScreen(
-            course: courseId,
-            file: file,
-            title: fmt.s(lesson['title']),
-            status: fmt.s(lesson['status']),
-            nextLesson: nextLesson,
-            allLessons: allLessons,
+    final file = fmt.s(lesson['file']);
+    final rawStatus = fmt.s(lesson['status']).toLowerCase();
+    final lastOpened = fmt.s(lesson['lastOpenedAt'] ?? lesson['last_opened_at'] ?? lesson['lastOpened']);
+    final status = rawStatus.isNotEmpty
+        ? rawStatus
+        : (lastOpened.isNotEmpty ? 'opened' : 'new');
+    final st = lib?.status(courseId, file) ?? const ModuleStatus(ModuleState.absent);
+
+    final tVal = fmt.s(lesson['TITLE']);
+    final rawTitle = tVal.isNotEmpty ? tVal : fmt.s(lesson['title'] ?? file);
+    final title = stripEmoji(rawTitle);
+
+    final subVal = fmt.s(lesson['SUBTITLE']);
+    final rawSubtitle = subVal.isNotEmpty ? subVal : fmt.s(lesson['subtitle']);
+    final subtitle = stripEmoji(rawSubtitle);
+
+    final pos = lesson['position'] ?? lesson['SEQ'] ?? lesson['seq'] ?? lesson['order'];
+    final numVal = pos != null ? fmt.i(pos) : index + 1;
+    final numStr = numVal.toString().padLeft(2, '0');
+
+    // Meta line: "8 min read · updated 20 Sep"
+    String? readTimeStr;
+    final readTimeVal = lesson['readTime'] ?? lesson['readingTime'] ?? lesson['minRead'] ?? lesson['read_time'];
+    if (readTimeVal != null) {
+      final sVal = fmt.s(readTimeVal);
+      if (sVal.contains('min')) {
+        readTimeStr = sVal;
+      } else {
+        final m = fmt.i(readTimeVal);
+        if (m > 0) readTimeStr = '$m min read';
+      }
+    } else if (lesson['words'] != null) {
+      final w = fmt.i(lesson['words']);
+      if (w > 0) {
+        final mins = (w / 220).ceil();
+        readTimeStr = '$mins min read';
+      }
+    }
+
+    String? updatedStr;
+    final updatedVal = lesson['updatedAt'] ?? lesson['updated_at'] ?? lesson['UPDATED_AT'] ?? lesson['reviewedAt'] ?? st.updated;
+    if (updatedVal != null && fmt.s(updatedVal).isNotEmpty) {
+      final d = _formatDateDayMonth(updatedVal);
+      if (d.isNotEmpty) updatedStr = 'updated $d';
+    }
+
+    final metaParts = [
+      if (readTimeStr != null && readTimeStr.isNotEmpty) readTimeStr,
+      if (updatedStr != null && updatedStr.isNotEmpty) updatedStr,
+    ];
+    final metaLine = metaParts.join(' · ');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Sz.rSm),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LessonScreen(
+              course: courseId,
+              file: file,
+              title: title,
+              status: rawStatus.isEmpty ? status : rawStatus,
+              nextLesson: nextLesson,
+              allLessons: allLessons,
+            ),
           ),
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            Icon(
-              switch (status) {
-                'done' => Icons.check_circle_rounded,
-                'learning' => Icons.play_circle_outline_rounded,
-                _ => Icons.circle_outlined,
-              },
-              size: 15,
-              color: switch (status) {
-                'done' => C.green,
-                'learning' => C.amber,
-                _ => C.text3,
-              },
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                fmt.s(lesson['title']).isEmpty ? file : fmt.s(lesson['title']),
-                style: T.small.copyWith(
-                  color: status == 'done' ? C.text3 : C.text2,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: isNext ? trackColor.withValues(alpha: 0.08) : Colors.transparent,
+            borderRadius: BorderRadius.circular(Sz.rSm),
+            border: isNext
+                ? Border.all(color: trackColor.withValues(alpha: 0.25))
+                : null,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  numStr,
+                  style: T.small.copyWith(
+                    color: C.text3.withValues(alpha: 0.4),
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
               ),
-            ),
-            // Offline state, as a 10px dot rather than a word. It is reference
-            // information you scan a column of, not something to read.
-            if (st.state == ModuleState.stale)
-              const Tooltip(
-                message: 'Updated on the agent - opens the new version',
-                child: Icon(Icons.sync_problem_rounded, size: 12, color: C.amber),
-              )
-            else if (st.downloaded)
-              const Tooltip(
-                message: 'On this device',
-                child: Icon(Icons.offline_pin_rounded, size: 12, color: C.green),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 4.5),
+                child: ModuleStateDot(status: status, color: trackColor),
               ),
-            const SizedBox(width: 6),
-            const Icon(Icons.chevron_right_rounded, size: 15, color: C.text3),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: T.w600(T.body2).copyWith(
+                        color: status == 'done' ? C.text3 : C.text,
+                      ),
+                    ),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: T.small.copyWith(color: C.text3),
+                      ),
+                    ],
+                    if (metaLine.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        metaLine,
+                        style: T.tiny.copyWith(color: C.text3),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (st.state == ModuleState.stale)
+                const Tooltip(
+                  message: 'Updated on the agent - opens the new version',
+                  child: Icon(Icons.sync_problem_rounded, size: 12, color: C.amber),
+                )
+              else if (st.downloaded)
+                const Tooltip(
+                  message: 'On this device',
+                  child: Icon(Icons.offline_pin_rounded, size: 12, color: C.green),
+                ),
+              const SizedBox(width: 6),
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Icon(Icons.chevron_right_rounded, size: 15, color: C.text3),
+              ),
+            ],
+          ),
         ),
       ),
     );
