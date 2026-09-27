@@ -93,5 +93,29 @@ void main() {
       final long = List.filled(440, 'word').join(' ');
       expect(readingMeta(long), '440 words · 2 min read');
     });
+
+    test('BI26092613: formats word count with thousands comma, reviewed date, and version', () {
+      final doc = List.filled(1240, 'word').join(' ');
+      // Full line: 1,240 words · 6 min read · reviewed 22 Sep 2026 · v3.0
+      expect(
+        readingMeta(doc, reviewedAt: '2026-09-22', version: '3.0'),
+        '1,240 words · 6 min read · reviewed 22 Sep 2026 · v3.0',
+      );
+      // Hides missing version
+      expect(
+        readingMeta(doc, reviewedAt: '2026-09-22'),
+        '1,240 words · 6 min read · reviewed 22 Sep 2026',
+      );
+      // Hides missing reviewedAt
+      expect(
+        readingMeta(doc, version: 'v3.0'),
+        '1,240 words · 6 min read · v3.0',
+      );
+      // Backwards compatible with updatedAt
+      expect(
+        readingMeta(doc, updatedAt: '2026-07-29'),
+        contains('1,240 words · 6 min read · Updated Jul 29'),
+      );
+    });
   });
 }

@@ -222,20 +222,45 @@ class ReadingSection extends StatelessWidget {
 /// Rough reading time, for the meta line. 220 wpm is a sensible middle for
 /// dense technical prose read on a phone.
 ///
-/// BL26091005: `updatedAt` (ISO, from the lesson's own file mtime) adds a
-/// third "Updated" segment (formatted date) when present -- omitted entirely if the
-/// server had no date for this lesson, rather than showing a blank/"Updated".
-String readingMeta(String markdown, {String? updatedAt}) {
+/// BI26092613: Header line: `1,240 words · 8 min read · reviewed 22 Sep 2026 · v3.0`,
+/// using `reviewedAt` and `version`. Hides any part that is missing.
+String readingMeta(
+  String markdown, {
+  String? updatedAt,
+  String? reviewedAt,
+  String? version,
+}) {
   final words = markdown
       .split(RegExp(r'\s+'))
       .where((w) => w.trim().isNotEmpty)
       .length;
-  if (words == 0) return '';
-  final minutes = (words / 220).ceil();
-  final base = '$words words · $minutes min read';
-  if (updatedAt == null || updatedAt.isEmpty) return base;
-  final date = fmt.shortDate(updatedAt);
-  return '$base · Updated $date';
+  final parts = <String>[];
+  if (words > 0) {
+    final minutes = (words / 220).ceil();
+    parts.add('${fmt.thousands(words)} words');
+    parts.add('$minutes min read');
+  }
+  if (reviewedAt != null && reviewedAt.trim().isNotEmpty) {
+    final rawRev = reviewedAt.trim();
+    final dStr = fmt.reviewedDate(rawRev);
+    if (dStr.toLowerCase().startsWith('reviewed ')) {
+      parts.add(dStr);
+    } else {
+      parts.add('reviewed $dStr');
+    }
+  } else if (updatedAt != null && updatedAt.trim().isNotEmpty) {
+    final date = fmt.shortDate(updatedAt);
+    parts.add('Updated $date');
+  }
+  if (version != null && version.trim().isNotEmpty) {
+    final vStr = version.trim();
+    if (vStr.toLowerCase().startsWith('v')) {
+      parts.add(vStr);
+    } else {
+      parts.add('v$vStr');
+    }
+  }
+  return parts.join(' · ');
 }
 
 /// BL26091006/BL26091028: `Next: 3-word lead-in — open topic` format,

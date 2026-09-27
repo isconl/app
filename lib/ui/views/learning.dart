@@ -7,6 +7,7 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app_scope.dart';
+import '../../data/db.dart';
 import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
 import '../../theme.dart';
@@ -1007,6 +1008,11 @@ class LessonRow extends StatelessWidget {
               status: rawStatus.isEmpty ? status : rawStatus,
               nextLesson: nextLesson,
               allLessons: allLessons,
+              trackColor: trackColor,
+              reviewedAt: fmt.s(lesson['reviewedAt'] ??
+                  lesson['reviewed_at'] ??
+                  lesson['REVIEWED_AT']),
+              version: fmt.s(lesson['version'] ?? lesson['VERSION']),
             ),
           ),
         ),
@@ -1097,6 +1103,9 @@ class LessonScreen extends StatefulWidget {
     required this.status,
     this.nextLesson,
     this.allLessons = const [],
+    this.trackColor = C.green,
+    this.reviewedAt,
+    this.version,
   });
 
   final String course;
@@ -1105,6 +1114,9 @@ class LessonScreen extends StatefulWidget {
   final String status;
   final Map<String, dynamic>? nextLesson;
   final List<Map<String, dynamic>> allLessons;
+  final Color trackColor;
+  final String? reviewedAt;
+  final String? version;
 
   @override
   State<LessonScreen> createState() => _LessonScreenState();
@@ -1112,6 +1124,9 @@ class LessonScreen extends StatefulWidget {
 
 class _LessonScreenState extends State<LessonScreen> {
   late String _status = widget.status;
+  String? _previousStatus;
+  bool _canUndo = false;
+  Timer? _undoTimer;
   final _scroll = ScrollController();
   Timer? _resumeDebounce;
   bool _restoredResume = false;
@@ -1152,22 +1167,39 @@ class _LessonScreenState extends State<LessonScreen> {
       if (!mounted) return;
       final lib = AppScope.of(context).modules;
       final st = lib.status(widget.course, widget.file);
-      if (st.state == ModuleState.absent) return;   // SnapshotView fetches it
       if (st.state == ModuleState.stale) {
         await lib.download(widget.course, widget.file);
+      }
+      if (!mounted) return;
+      final services = AppScope.of(context);
+      final localStatus = await services.db.lessonStatusLocal(
+        course: widget.course,
+        file: widget.file,
+      );
+      if (!mounted) return;
+      var eff = _status;
+      if (localStatus != null &&
+          AppDb.statusRank(localStatus) > AppDb.statusRank(eff)) {
+        eff = localStatus;
+        setState(() => _status = eff);
+      }
+      // BI26092613: Opening the module sets Opened (only if it was new/unstarted).
+      if (eff.isEmpty || eff.toLowerCase() == 'new') {
+        setState(() => _status = 'opened');
+        services.db.saveLessonStatusLocal(
+          course: widget.course,
+          file: widget.file,
+          status: 'opened',
+        );
+        services.mutations.lessonProgress(widget.course, widget.file, 'opened');
       }
     });
     _scroll.addListener(_onScroll);
   }
 
-  // BN26083103: local, always-on scroll-position tracking -- written
-  // unconditionally (online or offline, since it's on-device), debounced
-  // 1.2s of stillness, matching the web console's own resume-tracker
-  // (app.js, "The reader's scroll is written back on a debounce (1.2s of
-  // stillness)"). The best-effort server sync (saveLessonResume(), already
-  // written elsewhere, queueable:false) fires on the same tick, but only
-  // when online -- the local row is now the durable source of truth, so a
-  // dropped server write is no longer a real data-loss risk.
+  // BI26092613: local, always-on scroll-position tracking -- written
+  // to local db and queued in outbox in the same call, debounced to 2 s
+  // while scrolling and on leaving the screen, as a fraction 0 to 1.
   void _onScroll() {
     if (!_scroll.hasClients || _scroll.position.maxScrollExtent <= 0) return;
     // BI26092614: scroll-to-top appears only after scrolling past one screen height.
@@ -1175,29 +1207,49 @@ class _LessonScreenState extends State<LessonScreen> {
     if (show != _showScrollTop) {
       setState(() => _showScrollTop = show);
     }
-    // First layout after a restore-triggered jump also fires this listener
-    // -- don't let that overwrite the just-restored position with itself;
-    // harmless either way, but skip it while a restore is still pending.
-    _resumeDebounce?.cancel();
-    _resumeDebounce = Timer(const Duration(milliseconds: 1200), () {
-      if (!mounted) return;
-      final pct = (_scroll.position.pixels / _scroll.position.maxScrollExtent * 100)
-          .clamp(0, 100)
-          .round();
+
+    final maxExtent = _scroll.position.maxScrollExtent;
+    final fraction = (maxExtent > 0 ? _scroll.position.pixels / maxExtent : 0.0)
+        .clamp(0.0, 1.0);
+
+    // BI26092613: Scrolling past 10% sets Learning (only if it was opened).
+    if (fraction > 0.10 && _status.toLowerCase() == 'opened') {
+      setState(() => _status = 'learning');
       final services = AppScope.of(context);
-      services.db.saveLessonResumeLocal(
+      services.db.saveLessonStatusLocal(
         course: widget.course,
         file: widget.file,
-        scrollPct: pct,
+        status: 'learning',
       );
-      if (services.sync.online) {
-        services.mutations.saveLessonResume(
-          course: widget.course,
-          lesson: widget.file,
-          scrollPct: pct,
-        );
-      }
+      services.mutations.lessonProgress(widget.course, widget.file, 'learning');
+    }
+
+    // BI26092613: Saved locally, debounced to 2 s while scrolling.
+    _resumeDebounce?.cancel();
+    _resumeDebounce = Timer(const Duration(seconds: 2), () {
+      _saveResumeNow();
     });
+  }
+
+  void _saveResumeNow() {
+    if (!mounted || !_scroll.hasClients || _scroll.position.maxScrollExtent <= 0) return;
+    final maxExtent = _scroll.position.maxScrollExtent;
+    final fraction = (maxExtent > 0 ? _scroll.position.pixels / maxExtent : 0.0)
+        .clamp(0.0, 1.0);
+    final pct = (fraction * 100).round().clamp(0, 100);
+    final services = AppScope.of(context);
+    services.db.saveLessonResumeLocal(
+      course: widget.course,
+      file: widget.file,
+      scrollPct: pct,
+      fraction: fraction,
+    );
+    services.mutations.saveLessonResume(
+      course: widget.course,
+      lesson: widget.file,
+      scrollPct: pct,
+      fraction: fraction,
+    );
   }
 
   /// BI26092614: calculates the index of the topmost visible block/paragraph.
@@ -1273,12 +1325,12 @@ class _LessonScreenState extends State<LessonScreen> {
     _restoredResume = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || !_scroll.hasClients) return;
-      final pct = await AppScope.of(context).db.lessonResumeLocal(
+      final frac = await AppScope.of(context).db.lessonResumeFractionLocal(
             course: widget.course,
             file: widget.file,
           );
-      if (pct == null || !mounted || !_scroll.hasClients) return;
-      final target = _scroll.position.maxScrollExtent * (pct / 100);
+      if (frac == null || !mounted || !_scroll.hasClients) return;
+      final target = _scroll.position.maxScrollExtent * frac;
       if (target > 0) _scroll.jumpTo(target.clamp(0, _scroll.position.maxScrollExtent));
     });
   }
@@ -1286,9 +1338,89 @@ class _LessonScreenState extends State<LessonScreen> {
   @override
   void dispose() {
     _resumeDebounce?.cancel();
+    _undoTimer?.cancel();
+    _saveResumeNow();
     _scroll.removeListener(_onScroll);
     _scroll.dispose();
     super.dispose();
+  }
+
+  Widget _buildDoneButton(AppServices services) {
+    if (_canUndo) {
+      return OutlinedButton.icon(
+        icon: const Icon(Icons.undo_rounded, size: 16),
+        label: const Text('Done · undo'),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: widget.trackColor),
+          foregroundColor: widget.trackColor,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+        onPressed: () {
+          _undoTimer?.cancel();
+          final revertTo = _previousStatus ?? 'learning';
+          setState(() {
+            _canUndo = false;
+            _status = revertTo;
+          });
+          services.db.saveLessonStatusLocal(
+            course: widget.course,
+            file: widget.file,
+            status: revertTo,
+            force: true,
+          );
+          services.mutations.lessonProgress(
+            widget.course,
+            widget.file,
+            revertTo,
+            force: true,
+          );
+        },
+      );
+    }
+
+    if (_status.toLowerCase() == 'done') {
+      return OutlinedButton.icon(
+        icon: const Icon(Icons.check_circle_rounded, size: 16, color: C.green),
+        label: const Text('Completed'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: C.text3,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+        onPressed: null,
+      );
+    }
+
+    final isDarkTrack = widget.trackColor.computeLuminance() < 0.5;
+    return FilledButton(
+      style: FilledButton.styleFrom(
+        backgroundColor: widget.trackColor,
+        foregroundColor: isDarkTrack ? Colors.white : Colors.black,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+      ),
+      onPressed: () {
+        _previousStatus = _status;
+        setState(() {
+          _status = 'done';
+          _canUndo = true;
+        });
+        _undoTimer?.cancel();
+        _undoTimer = Timer(const Duration(seconds: 5), () {
+          if (mounted) setState(() => _canUndo = false);
+        });
+
+        services.db.saveLessonStatusLocal(
+          course: widget.course,
+          file: widget.file,
+          status: 'done',
+        );
+        services.mutations.lessonProgress(
+          widget.course,
+          widget.file,
+          'done',
+        );
+      },
+      child: const Text('Mark as done'),
+    );
   }
 
   @override
@@ -1366,6 +1498,13 @@ class _LessonScreenState extends State<LessonScreen> {
                 final lessonMap = fmt.m(data);
                 final content = fmt.s(lessonMap['content']);
                 final updatedAt = fmt.s(lessonMap['updatedAt']);
+                final reviewedAt = fmt.s(lessonMap['reviewedAt'] ??
+                    lessonMap['reviewed_at'] ??
+                    lessonMap['REVIEWED_AT'] ??
+                    widget.reviewedAt);
+                final version = fmt.s(lessonMap['version'] ??
+                    lessonMap['VERSION'] ??
+                    widget.version);
                 _currentContent = content;
                 _maybeRestoreResume();
                 return ReadingSurface(
@@ -1375,26 +1514,26 @@ class _LessonScreenState extends State<LessonScreen> {
                       kicker: widget.course,
                       meta: content.isEmpty
                           ? null
-                          : readingMeta(content,
-                              updatedAt: updatedAt.isEmpty ? null : updatedAt),
+                          : readingMeta(
+                              content,
+                              updatedAt: updatedAt.isEmpty ? null : updatedAt,
+                              reviewedAt:
+                                  reviewedAt.isEmpty ? null : reviewedAt,
+                              version: version.isEmpty ? null : version,
+                            ),
                       trailing: Row(
                         children: [
-                          for (final st in ['new', 'learning', 'done']) ...[
-                            Pill(st,
-                                selected: _status.toLowerCase() == st,
-                                onTap: () async {
-                                  setState(() => _status = st);
-                                  final res = await services.mutations
-                                      .lessonProgress(
-                                          widget.course, widget.file, st);
-                                  if (!context.mounted) return;
-                                  if (!res.ok) {
-                                    toast(context, res.error!, error: true);
-                                  } else if (res.queued) {
-                                    toast(context,
-                                        'Progress queued - will sync');
-                                  }
-                                }),
+                          for (final (st, label) in [
+                            ('opened', 'Opened'),
+                            ('learning', 'Learning'),
+                            ('done', 'Done'),
+                          ]) ...[
+                            Pill(
+                              label,
+                              selected: _status.toLowerCase() == st,
+                              color: widget.trackColor,
+                              onTap: null,
+                            ),
                             const SizedBox(width: 6),
                           ],
                         ],
@@ -1420,33 +1559,13 @@ class _LessonScreenState extends State<LessonScreen> {
                           baseUrl: services.api.baseUrl,
                           token: services.api.token),
                     _LessonNotes(course: widget.course, file: widget.file),
-                    // BL26091404: a "Done" action belongs at the very bottom
-                    // of the reader -- below all content, including the
-                    // closing quiz/Essentials section -- since that's where
-                    // a reader naturally lands once they've actually
-                    // finished, not a toolbar button up top. Reuses the same
-                    // _status state/mutation the top pills already use.
+                    // BI26092613: "Mark as done" button at the end of the module,
+                    // full width, in the track colour. Shows "Done · undo" for 5 seconds.
                     Padding(
                       padding: const EdgeInsets.only(top: 24, bottom: 8),
                       child: SizedBox(
                         width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: () async {
-                            final next =
-                                _status.toLowerCase() == 'done' ? 'learning' : 'done';
-                            setState(() => _status = next);
-                            final res = await services.mutations
-                                .lessonProgress(widget.course, widget.file, next);
-                            if (!context.mounted) return;
-                            if (!res.ok) {
-                              toast(context, res.error!, error: true);
-                            } else if (res.queued) {
-                              toast(context, 'Progress queued - will sync');
-                            }
-                          },
-                          child: Text(
-                              _status.toLowerCase() == 'done' ? 'Still learning' : 'Done'),
-                        ),
+                        child: _buildDoneButton(services),
                       ),
                     ),
                     if (_computedNextLesson != null || _computedPrevLesson != null)
@@ -1472,6 +1591,7 @@ class _LessonScreenState extends State<LessonScreen> {
                                       title: fmt.s(_computedPrevLesson!['title']),
                                       status: fmt.s(_computedPrevLesson!['status']),
                                       allLessons: widget.allLessons,
+                                      trackColor: widget.trackColor,
                                     ),
                                   ),
                                 ),
@@ -1495,6 +1615,7 @@ class _LessonScreenState extends State<LessonScreen> {
                                       title: fmt.s(_computedNextLesson!['title']),
                                       status: fmt.s(_computedNextLesson!['status']),
                                       allLessons: widget.allLessons,
+                                      trackColor: widget.trackColor,
                                     ),
                                   ),
                                 ),

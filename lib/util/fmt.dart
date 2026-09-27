@@ -69,6 +69,13 @@ String shortDate(dynamic v) {
   return dt.year == now.year ? base : '$base, ${dt.year}';
 }
 
+/// "2026-09-22" -> "22 Sep 2026"
+String reviewedDate(dynamic v) {
+  final dt = parseDate(v);
+  if (dt == null) return s(v);
+  return '${dt.day} ${_months[dt.month - 1]} ${dt.year}';
+}
+
 String weekdayDate(DateTime dt) =>
     '${_weekdays[dt.weekday - 1]}, ${_months[dt.month - 1]} ${dt.day}';
 

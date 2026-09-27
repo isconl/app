@@ -30,6 +30,9 @@ class AppDb {
         : p.join((await getApplicationDocumentsDirectory()).path, 'isconl.db');
     final db = await openDatabase(
       path,
+      // v5 (BI26092613): added lesson_progress table for local-first
+      // module status tracking (Opened/Learning/Done), and added fraction
+      // column to lesson_resume for scroll position fraction.
       // v4 (BI26092614): added lesson_notes, local storage for module notes
       // with paragraph/block anchor tracking.
       // v3 (BN26083103): added lesson_resume, an always-on local table for
@@ -43,7 +46,7 @@ class AppDb {
       // vault_schema.dart) alongside the pre-existing generic snapshot
       // cache, which stays as-is. onUpgrade only needs to ADD the new
       // tables for an existing install; onCreate covers both for a fresh one.
-      version: 4,
+      version: 5,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE snapshots (
@@ -76,6 +79,7 @@ class AppDb {
             course TEXT NOT NULL,
             file TEXT NOT NULL,
             scroll_pct INTEGER NOT NULL,
+            fraction REAL,
             updated_at INTEGER NOT NULL,
             PRIMARY KEY (course, file)
           )''');
@@ -85,6 +89,14 @@ class AppDb {
             file TEXT NOT NULL,
             text TEXT NOT NULL,
             anchor INTEGER,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (course, file)
+          )''');
+        await db.execute('''
+          CREATE TABLE lesson_progress (
+            course TEXT NOT NULL,
+            file TEXT NOT NULL,
+            status TEXT NOT NULL,
             updated_at INTEGER NOT NULL,
             PRIMARY KEY (course, file)
           )''');
@@ -112,6 +124,19 @@ class AppDb {
               updated_at INTEGER NOT NULL,
               PRIMARY KEY (course, file)
             )''');
+        }
+        if (oldVersion < 5) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS lesson_progress (
+              course TEXT NOT NULL,
+              file TEXT NOT NULL,
+              status TEXT NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (course, file)
+            )''');
+          try {
+            await db.execute('ALTER TABLE lesson_resume ADD COLUMN fraction REAL');
+          } catch (_) {}
         }
       },
     );
@@ -245,27 +270,56 @@ class AppDb {
 
   Future<void> clearChat() => _db.delete('chat').then((_) {});
 
-  // ---- lesson resume (BN26083103) ----
+  // ---- lesson resume (BN26083103, BI26092613) ----
 
   /// Always-on, offline-safe scroll-position write -- unconditional, online
   /// or offline, since it's purely on-device. This is the real "absolutely
   /// aware" local source of truth; the server-side saveLessonResume()
   /// mutation is best-effort on top of it, not a replacement for it.
+  ///
+  /// BI26092613: "For scroll position the newest timestamp wins."
+  /// Saved locally as a fraction 0 to 1 and scroll_pct.
   Future<void> saveLessonResumeLocal({
     required String course,
     required String file,
     required int scrollPct,
+    double? fraction,
+    int? updatedAt,
   }) async {
-    await _db.insert(
+    final now = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+    final existing = await _db.query(
       'lesson_resume',
-      {
-        'course': course,
-        'file': file,
-        'scroll_pct': scrollPct,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
+      columns: ['updated_at'],
+      where: 'course = ? AND file = ?',
+      whereArgs: [course, file],
+      limit: 1,
     );
+    if (existing.isNotEmpty) {
+      final prevUpdated = existing.first['updated_at'] as int?;
+      if (prevUpdated != null && prevUpdated > now) {
+        return;
+      }
+    }
+    final effectiveFraction = fraction ?? (scrollPct / 100.0).clamp(0.0, 1.0);
+    final data = <String, dynamic>{
+      'course': course,
+      'file': file,
+      'scroll_pct': scrollPct,
+      'updated_at': now,
+    };
+    try {
+      await _db.insert(
+        'lesson_resume',
+        {...data, 'fraction': effectiveFraction},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (_) {
+      await _db.insert(
+        'lesson_resume',
+        data,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
   }
 
   /// The saved scroll percentage (0-100) for one lesson, or null if this
@@ -283,6 +337,130 @@ class AppDb {
     );
     if (rows.isEmpty) return null;
     return rows.first['scroll_pct'] as int?;
+  }
+
+  /// The saved scroll fraction (0.0 to 1.0) for one lesson, or null if none saved.
+  Future<double?> lessonResumeFractionLocal({
+    required String course,
+    required String file,
+  }) async {
+    try {
+      final rows = await _db.query(
+        'lesson_resume',
+        columns: ['scroll_pct', 'fraction'],
+        where: 'course = ? AND file = ?',
+        whereArgs: [course, file],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.first;
+      if (row['fraction'] != null) {
+        return (row['fraction'] as num).toDouble();
+      }
+      final pct = row['scroll_pct'] as int?;
+      return pct != null ? pct / 100.0 : null;
+    } catch (_) {
+      final pct = await lessonResumeLocal(course: course, file: file);
+      return pct != null ? pct / 100.0 : null;
+    }
+  }
+
+  // ---- lesson progress (BI26092613) ----
+
+  /// Rank for status: done (3) > learning (2) > opened (1) > new (0).
+  static int statusRank(String? status) {
+    switch (status?.toLowerCase().trim()) {
+      case 'done':
+        return 3;
+      case 'learning':
+        return 2;
+      case 'opened':
+        return 1;
+      case 'new':
+      default:
+        return 0;
+    }
+  }
+
+  /// Merges two statuses by rank, never downgrading automatically.
+  static String mergeStatus(String? a, String? b) {
+    final rankA = statusRank(a);
+    final rankB = statusRank(b);
+    return rankA >= rankB
+        ? (a?.toLowerCase().trim() ?? 'new')
+        : (b?.toLowerCase().trim() ?? 'new');
+  }
+
+  /// Local-first module status save.
+  /// Status merges by rank (done > learning > opened > new) and never
+  /// downgrades automatically unless [force] is true (explicit user undo).
+  Future<void> saveLessonStatusLocal({
+    required String course,
+    required String file,
+    required String status,
+    bool force = false,
+    int? updatedAt,
+  }) async {
+    final normStatus = status.toLowerCase().trim();
+    final now = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+    if (!force) {
+      final existing = await _db.query(
+        'lesson_progress',
+        columns: ['status'],
+        where: 'course = ? AND file = ?',
+        whereArgs: [course, file],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        final prevStatus = existing.first['status'] as String?;
+        if (statusRank(prevStatus) > statusRank(normStatus)) {
+          return;
+        }
+      }
+    }
+    await _db.insert(
+      'lesson_progress',
+      {
+        'course': course,
+        'file': file,
+        'status': normStatus,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String?> lessonStatusLocal({
+    required String course,
+    required String file,
+  }) async {
+    final rows = await _db.query(
+      'lesson_progress',
+      columns: ['status'],
+      where: 'course = ? AND file = ?',
+      whereArgs: [course, file],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['status'] as String?;
+  }
+
+  Future<Map<String, String>> allLessonStatusesLocal([String? course]) async {
+    final rows = course == null
+        ? await _db.query('lesson_progress')
+        : await _db.query(
+            'lesson_progress',
+            where: 'course = ?',
+            whereArgs: [course],
+          );
+    final out = <String, String>{};
+    for (final r in rows) {
+      final c = r['course'] as String? ?? '';
+      final f = r['file'] as String? ?? '';
+      final s = r['status'] as String? ?? '';
+      out['$c/$f'] = s;
+    }
+    return out;
   }
 
   // ---- lesson notes (BI26092614) ----
@@ -362,6 +540,98 @@ class AppDb {
   /// same JSON shape, per-row merge, never a blind replace. See
   /// `overlayVaultMirror`'s own doc comment for why. A no-op for a
   /// snapshot key with no mirror source declared.
-  Future<dynamic> overlayVaultMirror(String snapshotKey, dynamic base) =>
-      overlayVaultMirrorTables(_db, snapshotKey, base);
+  ///
+  /// BI26092613: Also overlays local `lesson_progress` so local module
+  /// status is merged by rank and never downgraded on sync.
+  Future<dynamic> overlayVaultMirror(String snapshotKey, dynamic base) async {
+    final baseWithMirror =
+        await overlayVaultMirrorTables(_db, snapshotKey, base);
+    return overlayLessonProgressLocal(_db, snapshotKey, baseWithMirror);
+  }
 }
+
+/// Overlays local `lesson_progress` onto `learning` and `lesson:*` snapshots.
+/// Status merges by rank (done > learning > opened > new) and never downgrades.
+Future<dynamic> overlayLessonProgressLocal(
+  DatabaseExecutor db,
+  String snapshotKey,
+  dynamic base,
+) async {
+  if (base == null) return base;
+  try {
+    if (snapshotKey == 'learning') {
+      if (base is! Map) return base;
+      final merged = Map<String, dynamic>.from(base);
+      final courses = merged['courses'];
+      if (courses is! List) return merged;
+
+      final localRows = await db.query('lesson_progress');
+      if (localRows.isEmpty) return merged;
+
+      final localMap = <String, String>{};
+      for (final r in localRows) {
+        final c = r['course']?.toString() ?? '';
+        final f = r['file']?.toString() ?? '';
+        final s = r['status']?.toString() ?? '';
+        if (c.isNotEmpty && f.isNotEmpty) {
+          localMap['$c/$f'] = s;
+        }
+      }
+
+      final updatedCourses = <Map<String, dynamic>>[];
+      for (final courseItem in courses) {
+        if (courseItem is! Map) {
+          updatedCourses.add(courseItem as Map<String, dynamic>);
+          continue;
+        }
+        final cMap = Map<String, dynamic>.from(courseItem);
+        final courseId = (cMap['ID'] ?? cMap['id'] ?? '').toString();
+        final lessons = cMap['lessons'];
+        if (lessons is List) {
+          final updatedLessons = <Map<String, dynamic>>[];
+          for (final lessonItem in lessons) {
+            if (lessonItem is! Map) {
+              updatedLessons.add(lessonItem as Map<String, dynamic>);
+              continue;
+            }
+            final lMap = Map<String, dynamic>.from(lessonItem);
+            final file = (lMap['file'] ?? '').toString();
+            final localStatus = localMap['$courseId/$file'];
+            if (localStatus != null) {
+              final serverStatus = lMap['status']?.toString() ?? 'new';
+              lMap['status'] = AppDb.mergeStatus(localStatus, serverStatus);
+            }
+            updatedLessons.add(lMap);
+          }
+          cMap['lessons'] = updatedLessons;
+        }
+        updatedCourses.add(cMap);
+      }
+      merged['courses'] = updatedCourses;
+      return merged;
+    } else if (snapshotKey.startsWith('lesson:')) {
+      if (base is! Map) return base;
+      final parts = snapshotKey.substring('lesson:'.length).split('/');
+      if (parts.length >= 2) {
+        final course = parts[0];
+        final file = parts.sublist(1).join('/');
+        final rows = await db.query(
+          'lesson_progress',
+          columns: ['status'],
+          where: 'course = ? AND file = ?',
+          whereArgs: [course, file],
+          limit: 1,
+        );
+        if (rows.isNotEmpty) {
+          final localStatus = rows.first['status'] as String?;
+          final merged = Map<String, dynamic>.from(base);
+          final serverStatus = merged['status']?.toString() ?? 'new';
+          merged['status'] = AppDb.mergeStatus(localStatus, serverStatus);
+          return merged;
+        }
+      }
+    }
+  } catch (_) {}
+  return base;
+}
+

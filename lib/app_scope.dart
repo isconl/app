@@ -89,7 +89,7 @@ class AppServices {
     final store = Store(db, apiOf);
     final outbox = OutboxService(db, apiOf);
     final sync = SyncEngine(store, outbox, apiOf);
-    final mutations = Mutations(store, outbox, sync, apiOf);
+    final mutations = Mutations(store, outbox, sync, apiOf, db);
     final modules = ModuleLibrary(db, store, apiOf);
     final narrator = Narrator(apiOf);
     final sms = SmsIngest(apiOf);

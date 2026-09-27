@@ -1,5 +1,6 @@
 import '../api/client.dart';
 import '../util/fmt.dart' as fmt;
+import 'db.dart';
 import 'outbox.dart';
 import 'store.dart';
 import 'sync.dart';
@@ -22,12 +23,13 @@ class MutationResult {
 ///  - GATE-sensitive writes (deletes, Jira writes, /api/act confirmations)
 ///    are online-only: the constitution forbids optimistic state on those.
 class Mutations {
-  Mutations(this._store, this._outbox, this._sync, this._api);
+  Mutations(this._store, this._outbox, this._sync, this._api, [this._db]);
 
   final Store _store;
   final OutboxService _outbox;
   final SyncEngine _sync;
   final ApiClient Function() _api;
+  final AppDb? _db;
 
   bool get online => _sync.online;
 
@@ -50,7 +52,8 @@ class Mutations {
       } on ApiException catch (e) {
         return MutationResult.failed(e.message);
       } catch (e) {
-        return MutationResult.failed('$e');
+        if (!queueable) return MutationResult.failed('$e');
+        // fall through to queue on connection/network error when queueable
       }
     }
     if (!queueable) {
@@ -560,15 +563,58 @@ class Mutations {
 
   // ---------- learning ----------
 
+  /// BI26092613: Local-first module progress update.
+  /// Saves locally to SQLite db, applies optimistic patch, and queues in outbox.
   Future<MutationResult> lessonProgress(
-          String course, String lesson, String status) =>
-      _write(
-        path: '/api/learning/progress',
-        body: {'course': course, 'lesson': lesson, 'status': status},
-        label: 'Lesson $status · $lesson',
-        view: 'learning',
-        refresh: _store.learning,
-      );
+    String course,
+    String lesson,
+    String status, {
+    bool force = false,
+  }) async {
+    final normStatus = status.toLowerCase().trim();
+    await _db?.saveLessonStatusLocal(
+      course: course,
+      file: lesson,
+      status: normStatus,
+      force: force,
+    );
+    return _write(
+      path: '/api/learning/progress',
+      body: {'course': course, 'lesson': lesson, 'status': normStatus},
+      label: 'Lesson $normStatus · $lesson',
+      view: 'learning',
+      refresh: _store.learning,
+      queueable: true,
+      optimistic: () => _store.learning.patchLocal((current) {
+        final map = fmt.m(current);
+        final courses = List<Map<String, dynamic>>.from(fmt.lm(map['courses']));
+        var updated = false;
+        for (var i = 0; i < courses.length; i++) {
+          final c = Map<String, dynamic>.from(courses[i]);
+          final cId = fmt.s(c['ID']).isNotEmpty ? fmt.s(c['ID']) : fmt.s(c['id']);
+          if (cId == course) {
+            final lessons = List<Map<String, dynamic>>.from(fmt.lm(c['lessons']));
+            for (var j = 0; j < lessons.length; j++) {
+              final l = Map<String, dynamic>.from(lessons[j]);
+              if (fmt.s(l['file']) == lesson) {
+                final cur = fmt.s(l['status']);
+                if (force || AppDb.statusRank(normStatus) >= AppDb.statusRank(cur)) {
+                  l['status'] = normStatus;
+                  lessons[j] = l;
+                  c['lessons'] = lessons;
+                  courses[i] = c;
+                  updated = true;
+                }
+                break;
+              }
+            }
+            if (updated) break;
+          }
+        }
+        return updated ? {...map, 'courses': courses} : current;
+      }),
+    );
+  }
 
   // ---------- ideas (Spark) ----------
 
@@ -697,20 +743,32 @@ class Mutations {
         view: 'learning',
       );
 
-  /// Reading position, as a percentage. Never queued: a resume point that
-  /// arrives tomorrow would drag him back to where he was today.
+  /// BI26092613: Reading position, saved locally and queued in outbox.
   Future<MutationResult> saveLessonResume({
     required String course,
     required String lesson,
     required int scrollPct,
-  }) =>
-      _write(
-        path: '/api/learning/resume',
-        body: {'course': course, 'lesson': lesson, 'scrollPct': scrollPct},
-        label: 'Resume point · $lesson',
-        view: 'learning',
-        queueable: false,
-      );
+    double? fraction,
+  }) async {
+    await _db?.saveLessonResumeLocal(
+      course: course,
+      file: lesson,
+      scrollPct: scrollPct,
+      fraction: fraction,
+    );
+    return _write(
+      path: '/api/learning/resume',
+      body: {
+        'course': course,
+        'lesson': lesson,
+        'scrollPct': scrollPct,
+        'fraction': ?fraction,
+      },
+      label: 'Resume point · $lesson',
+      view: 'learning',
+      queueable: true,
+    );
+  }
 
   // ---------- decisions ----------
 
