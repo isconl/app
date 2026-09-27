@@ -63,15 +63,13 @@ class _LearningViewState extends State<LearningView> {
           }
           final lib = services.modules;
 
-          // BN26090604: groups come straight from /api/learning's own
-          // `groups` array -- the same live 8-track taxonomy the web
-          // renders from, matched to courses via each course's real
-          // GROUP_ID. Zero hardcoded track names/order/color on this side;
-          // a rename/reorder on the web needs no mobile code change.
+          // BN26090604, BI26092611: groups come straight from /api/learning's own
+          // `groups` array -- the same live taxonomy the web renders from, in
+          // SORT_ORDER. Zero hardcoded track names/order/color; do not re-sort
+          // in the client.
           final apiGroups = fmt.lm(fmt.m(data)['groups'])
-              .map(_LearningGroup.fromApi)
-              .toList()
-            ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+              .map(LearningGroup.fromApi)
+              .toList();
           final groupsById = {for (final g in apiGroups) g.id: g};
 
           final Map<String, List<Map<String, dynamic>>> byGroup = {};
@@ -91,11 +89,11 @@ class _LearningViewState extends State<LearningView> {
           final tracks = [
             for (final g in apiGroups)
               if (byGroup[g.id]?.isNotEmpty ?? false) g,
-            if (ungrouped.isNotEmpty) _LearningGroup.ungrouped,
+            if (ungrouped.isNotEmpty) LearningGroup.ungrouped,
           ];
           final coursesForTrack = {
             for (final g in apiGroups) g.id: byGroup[g.id] ?? const [],
-            _LearningGroup.ungrouped.id: ungrouped,
+            LearningGroup.ungrouped.id: ungrouped,
           };
 
           return Column(
@@ -122,43 +120,24 @@ class _LearningViewState extends State<LearningView> {
                   ),
                 ),
 
-              // ── landing: masonry tile grid, not a flat card list ──────────
-              // BL26090601/BN26090604: tile size was a deterministic function
-              // of real track data (_LearningGroup.tier), not literal
-              // randomness -- a re-render never reshuffles sizes.
-              //
-              // BL26091009 changes what drives the SPAN, per Sconl: a strict
-              // alternating landscape / two-small-side-by-side rhythm, so the
-              // grid reads as a designed layout rather than as whatever the
-              // data happened to produce. Position decides width now
-              // (_spanForIndex), matching the web console's own move to
-              // position-driven tiering.
-              //
-              // The data-driven tier is NOT discarded -- it still decides how
-              // much each card SAYS (_TrackCard's description maxLines keys off
-              // group.tier). Position governs the shape, data governs the
-              // content. That is the reconciliation the row asked for.
-              MasonryGridView.count(
+              // ── landing: 2-column staggered grid (BI26092611) ─────────────
+              // Sconl 26 Sep 2026: emoji-free, colour-coded track cards.
+              // A square card takes one cell at about 1:1; a wide card spans both
+              // columns at about 2:1. If tile is missing, square is used.
+              StaggeredGrid.count(
                 crossAxisCount: 2,
                 mainAxisSpacing: 8,
                 crossAxisSpacing: 8,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: tracks.length,
-                itemBuilder: (context, i) {
-                  final group = tracks[i];
-                  // .fit (not .count): height comes from the card's own
-                  // content, not a fixed aspect-locked cell -- avoids
-                  // overflow risk entirely while still varying real estate
-                  // by tier (wide tiers show more, e.g. the description).
-                  return StaggeredGridTile.fit(
-                    crossAxisCellCount: _spanForIndex(i),
-                    child: _TrackCard(
-                      group: group,
-                      courses: coursesForTrack[group.id]!,
+                children: [
+                  for (final group in tracks)
+                    StaggeredGridTile.fit(
+                      crossAxisCellCount: group.isWide ? 2 : 1,
+                      child: TrackCard(
+                        group: group,
+                        courses: coursesForTrack[group.id] ?? const [],
+                      ),
                     ),
-                  );
-                },
+                ],
               ),
 
               // ── low-emphasis library-wide action, moved off the top ──────
@@ -192,55 +171,35 @@ class _LearningViewState extends State<LearningView> {
   }
 }
 
-/// BL26091009: how wide the tile at [i] is, in a 2-column grid.
-///
-/// The rhythm repeats every three tracks: one full-width landscape, then two
-/// small tiles side by side. So 0 spans both columns, 1 and 2 take one column
-/// each, 3 spans both again, and so on.
-///
-/// Position, not data. Two tracks that happen to have identical course counts
-/// no longer render identically just because of that, and the page keeps the
-/// same visual cadence however the library grows. A trailing track left over at
-/// the end of a cycle simply takes one column, which the masonry layout absorbs
-/// without a gap.
-int _spanForIndex(int i) => i % 3 == 0 ? 2 : 1;
+/// Strips emoji codepoints from [text] (BI26092611).
+String stripEmoji(String text) {
+  if (text.isEmpty) return text;
+  final emojiRegex = RegExp(
+    r'[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1FA00}-\u{1FAFF}]',
+    unicode: true,
+  );
+  return text.replaceAll(emojiRegex, '').replaceAll(RegExp(r'\s+'), ' ').trim();
+}
 
-/// BN26090604 + the fleet's standing icon rule (`STANDING-RULES.md` #7:
-/// "every icon in the UI comes from the unified icon set. No emojis for UI
-/// chrome") -- the API's `icon` field is a raw emoji (`g.icon`, vault-side
-/// data), meant only as a fallback for surfaces with no real icon set of
-/// their own. The web console never renders that emoji directly either;
-/// it maps each group id through its own `learnGroupIcon()` to a proper
-/// monochrome SVG. This mirrors that same id->icon mapping on the Material
-/// side, so mobile stops rendering raw emoji as track icons.
-IconData _groupIconData(String id) => switch (id) {
-      'corporate-mandate' => Icons.business_center_rounded,
-      'sales-persuasion' => Icons.sell_rounded,
-      'medicine-surgery' => Icons.shield_rounded,
-      'markets-economics' => Icons.layers_rounded,
-      'wealth-finance' => Icons.bolt_rounded,
-      'platforms-experience' => Icons.grid_view_rounded,
-      'profiles-psychology' => Icons.groups_rounded,
-      'systems-architecture' => Icons.settings_rounded,
-      'projects-memory' => Icons.menu_book_rounded,
-      'legal-compliance' => Icons.gavel_rounded,
-      'identity-self' => Icons.explore_rounded,
-      'brands-ventures' => Icons.storefront_rounded,
-      '_ungrouped' => Icons.warning_amber_rounded,
-      _ => Icons.folder_rounded,
-    };
+/// Parses a hex color string, falling back to [fallback] (defaulting to [C.green]).
+/// Accepts 6-hex digits with or without leading '#'.
+Color hexColor(String? hex, {Color fallback = C.green}) {
+  if (hex == null || hex.isEmpty) return fallback;
+  final h = hex.replaceFirst('#', '').trim();
+  if (h.length != 6) return fallback;
+  final v = int.tryParse(h, radix: 16);
+  return v == null ? fallback : Color(0xFF000000 | v);
+}
 
-/// One entry from /api/learning's `groups` array -- label, icon (resolved
-/// via `_groupIconData`, never the API's raw emoji), color, sort order and
-/// the API's own aggregate counts, so the track card never has to
-/// recompute what the server already sent.
-class _LearningGroup {
-  const _LearningGroup({
+/// One entry from /api/learning's `groups` array -- label, color, tile,
+/// sort order, and aggregate counts (BI26092611).
+class LearningGroup {
+  const LearningGroup({
     required this.id,
     required this.label,
     required this.description,
-    required this.icon,
     required this.color,
+    required this.tile,
     required this.sortOrder,
     required this.courseCount,
     required this.moduleCount,
@@ -248,75 +207,69 @@ class _LearningGroup {
     required this.status,
   });
 
-  factory _LearningGroup.fromApi(Map<String, dynamic> g) => _LearningGroup(
-        id: fmt.s(g['id']),
-        label: fmt.s(g['label']).isEmpty ? fmt.s(g['id']) : fmt.s(g['label']),
-        description: fmt.s(g['description']),
-        icon: _groupIconData(fmt.s(g['id'])),
-        color: _hexColor(fmt.s(g['color'])),
-        sortOrder: (g['sortOrder'] is num) ? (g['sortOrder'] as num).toInt() : 99,
-        courseCount: (g['courseCount'] is num) ? (g['courseCount'] as num).toInt() : 0,
-        moduleCount: (g['moduleCount'] is num) ? (g['moduleCount'] as num).toInt() : 0,
-        progressPct: (g['progressPct'] is num) ? (g['progressPct'] as num).toInt() : 0,
-        status: fmt.s(g['status']),
-      );
+  factory LearningGroup.fromApi(Map<String, dynamic> g) {
+    final tileRaw = fmt.s(g['tile'] ?? g['TILE']).toLowerCase();
+    final tile = tileRaw == 'wide' ? 'wide' : 'square';
+    final sortOrderRaw = g['SORT_ORDER'] ?? g['sortOrder'];
+    final sortOrder = (sortOrderRaw is num) ? sortOrderRaw.toInt() : 99;
+    final colorHex = fmt.s(g['color'] ?? g['COLOR']);
+
+    return LearningGroup(
+      id: fmt.s(g['id'] ?? g['ID']),
+      label: fmt.s(g['label'] ?? g['LABEL']).isEmpty
+          ? fmt.s(g['id'] ?? g['ID'])
+          : fmt.s(g['label'] ?? g['LABEL']),
+      description: fmt.s(g['description'] ?? g['DESCRIPTION']),
+      color: hexColor(colorHex),
+      tile: tile,
+      sortOrder: sortOrder,
+      courseCount: ((g['courseCount'] ?? g['COURSE_COUNT']) is num)
+          ? (g['courseCount'] ?? g['COURSE_COUNT'] as num).toInt()
+          : 0,
+      moduleCount: ((g['moduleCount'] ?? g['MODULE_COUNT']) is num)
+          ? (g['moduleCount'] ?? g['MODULE_COUNT'] as num).toInt()
+          : 0,
+      progressPct: ((g['progressPct'] ?? g['PROGRESS_PCT']) is num)
+          ? (g['progressPct'] ?? g['PROGRESS_PCT'] as num).toInt()
+          : 0,
+      status: fmt.s(g['status'] ?? g['STATUS']),
+    );
+  }
 
   /// A real data problem, not a track: courses whose GROUP_ID doesn't match
-  /// any live group. Visibly flagged (amber, distinct label) rather than
-  /// silently folded into a fabricated "Other" bucket.
-  static const ungrouped = _LearningGroup(
-    id: '_ungrouped', label: 'Ungrouped — needs a GROUP_ID', description: '',
-    icon: Icons.warning_amber_rounded,
-    color: C.amber, sortOrder: 999, courseCount: 0, moduleCount: 0, progressPct: 0,
+  /// any live group. Visibly flagged (amber, distinct label).
+  static const ungrouped = LearningGroup(
+    id: '_ungrouped',
+    label: 'Ungrouped — needs a GROUP_ID',
+    description: '',
+    color: C.amber,
+    tile: 'wide',
+    sortOrder: 999,
+    courseCount: 0,
+    moduleCount: 0,
+    progressPct: 0,
     status: '',
   );
 
   final String id;
   final String label;
   final String description;
-  final IconData icon;
   final Color color;
+  final String tile;
   final int sortOrder;
   final int courseCount;
   final int moduleCount;
   final int progressPct;
   final String status;
 
-  /// BL26090601/BN26090604: deterministic masonry tier -- a function of
-  /// real track data, not literal randomness (a re-render would otherwise
-  /// reshuffle sizes for no reason). Mirrors the web console's own
-  /// `learnTileTier()` exactly: 4=2x2 (large or actively-worked), 2=2x1
-  /// (wide, long description), 3=1x2 (tall, mid-size + untouched), 1=1x1
-  /// (everything else). Archived tracks are always 1x1, regardless.
-  int get tier {
-    if (status == 'archived') return 1;
-    if (courseCount >= 5 ||
-        (progressPct > 0 && progressPct < 100 && courseCount >= 3)) {
-      return 4;
-    }
-    if (description.length > 90) return 2;
-    if (courseCount >= 2 && courseCount <= 4 && progressPct == 0) return 3;
-    return 1;
-  }
-
-  // BL26091009 removed `span`. Tile width is now positional (_spanForIndex),
-  // so mapping tier -> a grid span had no remaining caller and would have sat
-  // here looking authoritative while nothing read it. `tier` itself stays:
-  // it still decides how much each card says (see _TrackCard's maxLines).
-}
-
-Color _hexColor(String hex, {Color fallback = C.green}) {
-  final h = hex.replaceFirst('#', '').trim();
-  if (h.length != 6) return fallback;
-  final v = int.tryParse(h, radix: 16);
-  return v == null ? fallback : Color(0xFF000000 | v);
+  bool get isWide => tile == 'wide';
 }
 
 /// Offline coverage only -- courseCount/moduleCount/doneCount now come
-/// straight from the API's own group aggregate (_LearningGroup), never
+/// straight from the API's own group aggregate (LearningGroup), never
 /// recomputed here, so the two can't drift out of sync with each other.
 class _TrackStats {
-  _TrackStats(List<Map<String, dynamic>> courses, ModuleLibrary lib) {
+  _TrackStats(List<Map<String, dynamic>> courses, [ModuleLibrary? lib]) {
     for (final c in courses) {
       final lessons = fmt.lm(c['lessons']);
       final courseId = fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID']);
@@ -324,9 +277,11 @@ class _TrackStats {
         final file = fmt.s(l['file']);
         if (file.isEmpty) continue;
         totalModules++;
-        final st = lib.status(courseId, file);
-        if (st.downloaded) offlineModules++;
-        if (st.state == ModuleState.stale) staleModules++;
+        if (lib != null) {
+          final st = lib.status(courseId, file);
+          if (st.downloaded) offlineModules++;
+          if (st.state == ModuleState.stale) staleModules++;
+        }
       }
     }
   }
@@ -336,32 +291,38 @@ class _TrackStats {
   int staleModules = 0;
 }
 
-/// Track landing card - name, aggregate progress, offline coverage. No course
-/// or module detail here; that is the entire fix for the old flat list's
-/// overwhelm. Tap to drill into the track's course list.
-class _TrackCard extends StatelessWidget {
-  const _TrackCard({
+/// Track landing card - emoji-free, colour-coded track cards (BI26092611).
+/// A square card takes one cell at about 1:1; a wide card spans both columns
+/// at about 2:1. Left/top edge in track color, 6-8% tint background, and
+/// progress bar in track color with track in C.border.
+class TrackCard extends StatelessWidget {
+  const TrackCard({
+    super.key,
     required this.group,
     required this.courses,
   });
 
-  final _LearningGroup group;
+  final LearningGroup group;
   final List<Map<String, dynamic>> courses;
 
   @override
   Widget build(BuildContext context) {
-    final lib = AppScope.of(context).modules;
-    // Offline coverage is a phone-specific fact the API can't know -- the
-    // only thing still computed locally. Everything else (courseCount,
-    // moduleCount, progressPct) comes straight from `group`, the API's own
-    // aggregate, so it can never drift out of sync with the web.
+    ModuleLibrary? lib;
+    try {
+      lib = AppScope.of(context).modules;
+    } catch (_) {}
     final stats = _TrackStats(courses, lib);
     final pct = group.progressPct / 100;
     final allOffline = stats.totalModules > 0 &&
         stats.offlineModules == stats.totalModules &&
         stats.staleModules == 0;
 
+    final bgTint = Color.alphaBlend(group.color.withValues(alpha: 0.07), C.panel);
+
     return Panel(
+      color: bgTint,
+      borderColor: C.border,
+      padding: EdgeInsets.zero,
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
@@ -370,74 +331,96 @@ class _TrackCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Icon(group.icon, size: 15, color: group.color),
-              const SizedBox(width: 8),
-              Expanded(child: Text(group.label, style: T.title)),
-              const Icon(Icons.chevron_right_rounded, size: 18, color: C.text3),
-            ],
+          // Thin top band in the track color (BI26092611)
+          Container(
+            height: 3.5,
+            width: double.infinity,
+            color: group.color,
           ),
-          // BL26090601: description shown in full on wider tiers; the
-          // smallest tier truncates rather than dropping it entirely --
-          // every field stays on every card, only the treatment changes.
-          if (group.description.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              group.description,
-              style: T.small.copyWith(color: C.text3),
-              maxLines: group.tier == 1 ? 1 : 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-          const SizedBox(height: 9),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: pct,
-              minHeight: 4,
-              backgroundColor: C.surface,
-              valueColor: AlwaysStoppedAnimation(group.color),
-            ),
-          ),
-          const SizedBox(height: 9),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${group.courseCount} '
-                  '${group.courseCount == 1 ? 'course' : 'courses'} · '
-                  '${group.moduleCount} modules · ${group.progressPct}%',
-                  style: T.small,
+          Padding(
+            padding: const EdgeInsets.all(Sz.pad),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        stripEmoji(group.label),
+                        style: T.title.copyWith(color: C.text),
+                        maxLines: group.isWide ? 1 : 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, size: 18, color: C.text3),
+                  ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Icon(
-                  stats.staleModules > 0
-                      ? Icons.sync_problem_rounded
-                      : (allOffline
-                          ? Icons.offline_pin_rounded
-                          : Icons.cloud_download_rounded),
-                  size: 12,
-                  color: stats.staleModules > 0
-                      ? C.amber
-                      : (allOffline ? C.green : C.text3)),
-              const SizedBox(width: 6),
-              Text(
-                stats.staleModules > 0
-                    ? '${stats.offlineModules}/${stats.totalModules} on device · ${stats.staleModules} updated'
-                    : allOffline
-                        ? 'All on this device'
-                        : '${stats.offlineModules}/${stats.totalModules} on this device',
-                style: T.tiny.copyWith(
-                    color: stats.staleModules > 0 ? C.amber : C.text3),
-              ),
-            ],
+                if (group.description.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    stripEmoji(group.description),
+                    style: T.small.copyWith(color: C.text3),
+                    maxLines: group.isWide ? 2 : 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: 9),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: pct,
+                    minHeight: 4,
+                    backgroundColor: C.border,
+                    valueColor: AlwaysStoppedAnimation(group.color),
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${group.courseCount} '
+                        '${group.courseCount == 1 ? 'course' : 'courses'} · '
+                        '${group.moduleCount} modules · ${group.progressPct}%',
+                        style: T.small.copyWith(color: C.text),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(
+                      stats.staleModules > 0
+                          ? Icons.sync_problem_rounded
+                          : (allOffline
+                              ? Icons.offline_pin_rounded
+                              : Icons.cloud_download_rounded),
+                      size: 12,
+                      color: stats.staleModules > 0
+                          ? C.amber
+                          : (allOffline ? C.green : C.text3),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        stats.staleModules > 0
+                            ? '${stats.offlineModules}/${stats.totalModules} on device · ${stats.staleModules} updated'
+                            : allOffline
+                                ? 'All on this device'
+                                : '${stats.offlineModules}/${stats.totalModules} on this device',
+                        style: T.tiny.copyWith(
+                          color: stats.staleModules > 0 ? C.amber : C.text3,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
