@@ -58,11 +58,14 @@ class Shell extends StatefulWidget {
 }
 
 // ─── Sub-tab label + view definitions ────────────────────────────────────────
-class _SubTab {
-  const _SubTab(this.label, this.view);
+@visibleForTesting
+class SubTab {
+  const SubTab(this.label, this.view);
   final String label;
   final Widget view;
 }
+
+typedef _SubTab = SubTab;
 
 // BN26091012: reordered Calendar before Planning, per Sconl.
 const _commandSubs = [
@@ -79,8 +82,10 @@ const _commandSubs = [
 // Sconl's curated CV/resume links, not the venture-category filter that
 // used to sit here), reordered to Portfolio, Corporate, Products,
 // Platforms per Sconl's explicit target order.
+// BI26092606: Portfolio sub-tab renamed to Practice (PortfolioView unchanged),
+// matching the web console's Practice nav where portfolio routes to Practice.
 const _projectsSubs = [
-  _SubTab('Portfolio', PortfolioView()),
+  _SubTab('Practice',  PortfolioView()),
   _SubTab('Corporate', CorporateView()),
   _SubTab('Products',  ProjectsView(cat: 'product')),
   _SubTab('Platforms', ProjectsView(cat: 'platform')),
@@ -227,6 +232,8 @@ class _ShellState extends State<Shell> {
           subs: subs,
           index: safeSubIndex,
           onSelect: _switchSub,
+          services: services,
+          tab: tab,
         ),
         Expanded(
           child: PageView(
@@ -297,15 +304,112 @@ class _ShellState extends State<Shell> {
 }
 
 // ─── Sub-tab horizontal strip ─────────────────────────────────────────────────
-class _SubTabBar extends StatelessWidget {
-  const _SubTabBar({
+@visibleForTesting
+class SubTabBar extends StatelessWidget {
+  const SubTabBar({
+    super.key,
     required this.subs,
     required this.index,
     required this.onSelect,
+    this.services,
+    this.tab,
+    this.landingCount,
   });
-  final List<_SubTab> subs;
+
+  final List<SubTab> subs;
   final int index;
   final void Function(int) onSelect;
+  final AppServices? services;
+  final int? tab;
+  final int? landingCount;
+
+  static int? countFor(int tab, AppServices services) {
+    switch (tab) {
+      case 0: // Command -> Hub: open tasks due today (same as Hub's Today · N)
+        final state = fmt.m(services.store.state.value);
+        final tasks = fmt.lm(state['tasks']);
+        final todays = tasks.where((t) {
+          final st = fmt.s(t['STATUS']).toLowerCase();
+          return st == 'today';
+        }).length;
+        return todays > 0 ? todays : null;
+      case 1: // Channels -> Inbox: unread inbox items (same filter InboxView uses: STATUS == 'new')
+        final state = fmt.m(services.store.state.value);
+        final feed = fmt.lm(state['feed']);
+        final unread = feed.where((m) => fmt.s(m['STATUS']) == 'new').length;
+        return unread > 0 ? unread : null;
+      case 2: // Projects -> Practice: number of practice entries in portfolio
+        final portfolio = fmt.m(services.store.portfolio.value);
+        final items = fmt.lm(portfolio['items']);
+        return items.isNotEmpty ? items.length : null;
+      case 3: // Personal -> Rhythm: today's day blocks
+        final dayData = fmt.m(services.store.day.value);
+        final blocks = fmt.l(dayData['blocks']);
+        return blocks.isNotEmpty ? blocks.length : null;
+      case 4: // Systems -> Settings: no count
+      default:
+        return null;
+    }
+  }
+
+  static Listenable? listenableFor(int tab, AppServices services) {
+    switch (tab) {
+      case 0:
+      case 1:
+        return services.store.state;
+      case 2:
+        return services.store.portfolio;
+      case 3:
+        return services.store.day;
+      default:
+        return null;
+    }
+  }
+
+  Widget _buildLandingTab(BuildContext context, bool selected) {
+    final baseLabel = subs[0].label.toUpperCase();
+    final listenable =
+        services != null && tab != null ? listenableFor(tab!, services!) : null;
+
+    Widget renderWithCount(int? count) {
+      final text =
+          (count != null && count > 0) ? '$baseLabel · $count' : baseLabel;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => onSelect(0),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          alignment: Alignment.center,
+          child: Text(
+            text,
+            style: T.label.copyWith(
+              color: selected ? C.text : C.text3,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (landingCount != null) {
+      return renderWithCount(landingCount);
+    }
+
+    if (listenable != null) {
+      return ListenableBuilder(
+        listenable: listenable,
+        builder: (context, _) {
+          final count =
+              services != null && tab != null ? countFor(tab!, services!) : null;
+          return renderWithCount(count);
+        },
+      );
+    }
+
+    final count =
+        services != null && tab != null ? countFor(tab!, services!) : null;
+    return renderWithCount(count);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -321,7 +425,14 @@ class _SubTabBar extends StatelessWidget {
         itemCount: subs.length,
         itemBuilder: (context, i) {
           final selected = i == index;
+          if (i == 0) {
+            // BI26092606: landing sub-tab rendered as a plain uppercase
+            // section title (SectionLabel typography, no box/pill/fill)
+            // with live count ("HUB · 12"), not a green button.
+            return _buildLandingTab(context, selected);
+          }
           return GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => onSelect(i),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 160),
@@ -329,30 +440,17 @@ class _SubTabBar extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                // BN26091003: index 0 (the default view for every bottom-nav
-                // tab) gets a solid fill when selected -- C.greenDim, the
-                // app's existing solid-green-fill convention (same color
-                // filledButtonTheme uses). Every other tab keeps the
-                // existing tint+border treatment unchanged; this is a
-                // "default view" signal, not "more selected."
-                color: selected ? (i == 0 ? C.greenDim : C.greenBg) : Colors.transparent,
-                // BN26090606: rounded-rectangle, matching the webconsole's
-                // own standard small-button radius (--r-sm: 5px == Sz.rSm)
-                // -- was a fully-rounded pill (circular(20) against a 36px
-                // strip). Sconl's ask was specifically about the Calendar
-                // sub-tab, but this is the ONE shared component every
-                // sub-tab across every bottom-nav tab renders through, so
-                // the fix lands everywhere that style is reused, not just
-                // Calendar's own button.
+                // BN26090606: rounded-rectangle matching small-button radius
+                color: selected ? C.greenBg : Colors.transparent,
                 borderRadius: BorderRadius.circular(Sz.rSm),
-                border: selected && i != 0 ? Border.all(color: C.greenDim) : null,
+                border: selected ? Border.all(color: C.greenDim) : null,
               ),
               child: Center(
                 child: Text(
                   subs[i].label,
                   style: (selected
                           ? T.body2.copyWith(
-                              color: i == 0 ? Colors.white : C.greenBright,
+                              color: C.greenBright,
                               fontWeight: FontWeight.w600)
                           : T.body2)
                       .copyWith(fontSize: 12),
@@ -365,6 +463,8 @@ class _SubTabBar extends StatelessWidget {
     );
   }
 }
+
+typedef _SubTabBar = SubTabBar;
 
 
 

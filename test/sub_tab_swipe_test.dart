@@ -165,8 +165,8 @@ void main() {
       // Bottom bar tab is Channels, title is Channels
       expect(find.widgetWithText(ShellAppBar, 'Channels'), findsOneWidget);
 
-      // Landing sub-tab is Inbox (index 0)
-      expect(find.text('Inbox'), findsOneWidget);
+      // Landing sub-tab is Inbox (index 0, uppercase section title; BI26092606)
+      expect(find.text('INBOX'), findsOneWidget);
       expect(find.text('Teams'), findsOneWidget);
       expect(find.text('Kanban'), findsOneWidget);
       expect(find.text('Buffer'), findsOneWidget);
@@ -295,13 +295,12 @@ void main() {
       // Title is Projects
       expect(find.widgetWithText(ShellAppBar, 'Projects'), findsOneWidget);
 
-      // Sub-tab is Portfolio (index 0 of Projects)
-      final portfolioTileFinder = find.ancestor(
-        of: find.text('Portfolio'),
-        matching: find.byType(AnimatedContainer),
+      // Sub-tab is Practice (index 0 of Projects, formerly Portfolio; BI26092606)
+      expect(find.text('PRACTICE'), findsOneWidget);
+      final practiceContainer = tester.widget<Container>(
+        find.ancestor(of: find.text('PRACTICE'), matching: find.byType(Container)).first,
       );
-      final portfolioBox = tester.widget<AnimatedContainer>(portfolioTileFinder.first);
-      expect((portfolioBox.decoration as BoxDecoration).color, C.greenDim); // index 0 selected uses C.greenDim
+      expect(practiceContainer.decoration, isNull);
 
       // Now tap Channels again in bottom nav by semantics label
       await tester.tap(find.bySemanticsLabel('Channels'));
@@ -310,12 +309,11 @@ void main() {
 
       // Title is Channels and lands on Inbox (sub 0), NOT Kanban!
       expect(find.widgetWithText(ShellAppBar, 'Channels'), findsOneWidget);
-      final inboxTileFinder = find.ancestor(
-        of: find.text('Inbox'),
-        matching: find.byType(AnimatedContainer),
+      expect(find.text('INBOX'), findsOneWidget);
+      final inboxContainer = tester.widget<Container>(
+        find.ancestor(of: find.text('INBOX'), matching: find.byType(Container)).first,
       );
-      final inboxBox = tester.widget<AnimatedContainer>(inboxTileFinder.first);
-      expect((inboxBox.decoration as BoxDecoration).color, C.greenDim);
+      expect(inboxContainer.decoration, isNull);
 
       await tester.pump(const Duration(seconds: 11));
     });
@@ -346,14 +344,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Returned to Inbox (sub 0), still on Channels
+      // Returned to Inbox (sub 0), still on Channels (BI26092606)
       expect(find.widgetWithText(ShellAppBar, 'Channels'), findsOneWidget);
-      final inboxTileFinder = find.ancestor(
-        of: find.text('Inbox'),
-        matching: find.byType(AnimatedContainer),
-      );
-      final inboxBox = tester.widget<AnimatedContainer>(inboxTileFinder.first);
-      expect((inboxBox.decoration as BoxDecoration).color, C.greenDim);
+      expect(find.text('INBOX'), findsOneWidget);
 
       // Pop route again: should return to Command (tab 0)
       await widgetsAppState.didPopRoute();
