@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
+import '../widgets/block_card.dart';
 import '../widgets/common.dart';
 import '../widgets/context_ring_card.dart';
 import '../widgets/data_health_card.dart';
@@ -14,8 +15,23 @@ import 'tasks.dart' show showAddTaskSheet, TaskRowTile;
 /// is the group that holds Hub, Planning, Calendar and Ideas. This view is its
 /// first child, and a child that shares its parent's name reads as though the
 /// group were a single screen.
-class HubView extends StatelessWidget {
+class HubView extends StatefulWidget {
   const HubView({super.key});
+
+  @override
+  State<HubView> createState() => _HubViewState();
+}
+
+class _HubViewState extends State<HubView> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        AppScope.of(context).store.day.hydrate();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -78,22 +94,47 @@ class HubView extends StatelessWidget {
             const ContextRingCard(),
             // ---- orientation ----
             const _OrientationStrip(),
-            // ---- today's tasks ----
-            SectionLabel('Today · ${todays.length}',
-                trailing: TextButton(
-                  onPressed: () => showAddTaskSheet(context),
-                  child: const Text('+ Add'),
-                )),
-            if (todays.isEmpty)
-              const Panel(
-                child: Text('Nothing scheduled for today. '
-                    'Add a task or pull one forward from Next.'),
-              )
-            else
-              ...todays.take(8).map((t) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: TaskRowTile(task: t),
-                  )),
+            // ---- block card / today's tasks (BI26092625 + BI26092628) ----
+            ListenableBuilder(
+              listenable: services.store.day,
+              builder: (context, _) {
+                final dayData = fmt.m(services.store.day.value);
+                final rawBlocks = fmt.l(dayData['blocks']);
+                final blocks = rawBlocks
+                    .map((b) => Map<String, dynamic>.from(fmt.m(b)))
+                    .toList();
+                final currentId = fmt.s(dayData['currentId'] ??
+                    fmt.m(dayData['now'])['id']);
+
+                if (blocks.isNotEmpty) {
+                  return BlockCard(
+                    blocks: blocks,
+                    currentId: currentId,
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SectionLabel('Today · ${todays.length}',
+                        trailing: TextButton(
+                          onPressed: () => showAddTaskSheet(context),
+                          child: const Text('+ Add'),
+                        )),
+                    if (todays.isEmpty)
+                      const Panel(
+                        child: Text('Nothing scheduled for today. '
+                            'Add a task or pull one forward from Next.'),
+                      )
+                    else
+                      ...todays.take(8).map((t) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: TaskRowTile(task: t),
+                          )),
+                  ],
+                );
+              },
+            ),
             if (overdue.isNotEmpty) ...[
               SectionLabel('Overdue · ${overdue.length}'),
               ...overdue.take(5).map((t) => Padding(

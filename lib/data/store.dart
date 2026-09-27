@@ -116,7 +116,8 @@ class Store {
 
   // Core
   Snapshot get state => of('state', '/api/state');
-  Snapshot get dayBlock => of('dayBlock', '/api/blocks');
+  Snapshot get day => of('day', '/api/blocks');
+  Snapshot get dayBlock => day;
   Snapshot get orientation => of('orientation', '/api/orientation');
   Snapshot get notifications =>
       of('notifications', '/api/notifications?limit=200');

@@ -157,6 +157,211 @@ class Mutations {
         queueable: false,
       );
 
+  // ---------- day block actions (BI26092628) ----------
+
+  dynamic _patchDayTask(
+    dynamic current,
+    String taskId,
+    Map<String, dynamic> Function(Map<String, dynamic> task) taskModifier,
+  ) {
+    final map = fmt.m(current);
+    final rawBlocks = fmt.l(map['blocks']);
+    if (rawBlocks.isEmpty) return current;
+    var found = false;
+    final blocks = rawBlocks.map((rawB) {
+      final b = Map<String, dynamic>.from(fmt.m(rawB));
+      final rawTasks = fmt.l(b['tasks']);
+      if (rawTasks.isEmpty) return b;
+      final tasks = rawTasks.map((rawT) {
+        final t = Map<String, dynamic>.from(fmt.m(rawT));
+        if (fmt.s(t['id']).toLowerCase() == taskId.toLowerCase() ||
+            fmt.s(t['ID']).toLowerCase() == taskId.toLowerCase()) {
+          found = true;
+          return taskModifier(t);
+        }
+        return t;
+      }).toList();
+      b['tasks'] = tasks;
+      return b;
+    }).toList();
+    if (!found) return current;
+    return {...map, 'blocks': blocks};
+  }
+
+  dynamic _removeDayTask(dynamic current, String taskId,
+      {void Function(Map<String, dynamic> task)? onFound}) {
+    final map = fmt.m(current);
+    final rawBlocks = fmt.l(map['blocks']);
+    if (rawBlocks.isEmpty) return current;
+    final blocks = rawBlocks.map((rawB) {
+      final b = Map<String, dynamic>.from(fmt.m(rawB));
+      final rawTasks = fmt.l(b['tasks']);
+      if (rawTasks.isEmpty) return b;
+      final tasks = <Map<String, dynamic>>[];
+      for (final rawT in rawTasks) {
+        final t = Map<String, dynamic>.from(fmt.m(rawT));
+        if (fmt.s(t['id']).toLowerCase() == taskId.toLowerCase() ||
+            fmt.s(t['ID']).toLowerCase() == taskId.toLowerCase()) {
+          onFound?.call(t);
+        } else {
+          tasks.add(t);
+        }
+      }
+      b['tasks'] = tasks;
+      return b;
+    }).toList();
+    return {...map, 'blocks': blocks};
+  }
+
+  Future<MutationResult> dayPin(String taskId, {String? blockId}) {
+    return _write(
+      path: '/api/day/pin',
+      body: {
+        'taskId': taskId,
+        'id': taskId,
+        'blockId': ?blockId,
+      },
+      label: 'Pin task · $taskId',
+      view: 'hub',
+      refresh: _store.day,
+      optimistic: () => _store.day.patchLocal((current) {
+        return _patchDayTask(current, taskId, (t) {
+          final isPinned = t['pinned'] == true || t['PINNED'] == true;
+          return {
+            ...t,
+            'pinned': !isPinned,
+            'PINNED': !isPinned,
+          };
+        });
+      }),
+    );
+  }
+
+  Future<MutationResult> dayMove(String taskId,
+      {String? blockId, String? targetBlockId}) {
+    return _write(
+      path: '/api/day/move',
+      body: {
+        'taskId': taskId,
+        'id': taskId,
+        'blockId': ?blockId,
+        'targetBlockId': ?targetBlockId,
+      },
+      label: 'Move task · $taskId',
+      view: 'hub',
+      refresh: _store.day,
+      optimistic: () => _store.day.patchLocal((current) {
+        Map<String, dynamic>? movingTask;
+        final mapWithout =
+            _removeDayTask(current, taskId, onFound: (t) => movingTask = t);
+        if (movingTask == null) return current;
+        final map = fmt.m(mapWithout);
+        final rawBlocks = fmt.l(map['blocks']);
+        if (rawBlocks.isEmpty) return mapWithout;
+        final blocks =
+            rawBlocks.map((b) => Map<String, dynamic>.from(fmt.m(b))).toList();
+
+        int destIdx = -1;
+        if (targetBlockId != null) {
+          destIdx = blocks.indexWhere((b) => fmt.s(b['id']) == targetBlockId);
+        }
+        if (destIdx == -1) {
+          final currIdx = blocks.indexWhere((b) => fmt.s(b['id']) == blockId);
+          if (currIdx != -1) {
+            for (var i = 1; i < blocks.length; i++) {
+              final candidate = (currIdx + i) % blocks.length;
+              if (blocks[candidate]['placeable'] == true) {
+                destIdx = candidate;
+                break;
+              }
+            }
+          }
+        }
+        if (destIdx == -1) {
+          destIdx = blocks.indexWhere((b) => b['placeable'] == true);
+        }
+        if (destIdx != -1) {
+          final destTasks =
+              List<Map<String, dynamic>>.from(fmt.l(blocks[destIdx]['tasks']));
+          destTasks.add(movingTask!);
+          blocks[destIdx]['tasks'] = destTasks;
+        }
+        return {...map, 'blocks': blocks};
+      }),
+    );
+  }
+
+  Future<MutationResult> dayDefer(String taskId, {String? blockId}) {
+    return _write(
+      path: '/api/day/defer',
+      body: {
+        'taskId': taskId,
+        'id': taskId,
+        'blockId': ?blockId,
+      },
+      label: 'Defer task · $taskId',
+      view: 'hub',
+      refresh: _store.day,
+      optimistic: () => _store.day.patchLocal((current) {
+        return _removeDayTask(current, taskId);
+      }),
+    );
+  }
+
+  Future<MutationResult> dayStart(String taskId, {String? blockId}) {
+    return _write(
+      path: '/api/day/start',
+      body: {
+        'taskId': taskId,
+        'id': taskId,
+        'blockId': ?blockId,
+      },
+      label: 'Start task · $taskId',
+      view: 'hub',
+      refresh: _store.day,
+      optimistic: () => _store.day.patchLocal((current) {
+        return _patchDayTask(current, taskId, (t) {
+          final isStarted = t['started'] == true || t['STARTED'] == true;
+          return {
+            ...t,
+            'started': !isStarted,
+            'STARTED': !isStarted,
+            'startedAt': !isStarted ? DateTime.now().toIso8601String() : null,
+          };
+        });
+      }),
+    );
+  }
+
+  Future<MutationResult> dayDone(String taskId, {String? blockId}) {
+    return _write(
+      path: '/api/day/done',
+      body: {
+        'taskId': taskId,
+        'id': taskId,
+        'blockId': ?blockId,
+      },
+      label: 'Done task · $taskId',
+      view: 'hub',
+      refresh: _store.day,
+      optimistic: () async {
+        await _store.day.patchLocal((current) {
+          return _removeDayTask(current, taskId);
+        });
+        await _store.state.patchLocal((current) {
+          final map = fmt.m(current);
+          final tasks = fmt.lm(map['tasks']).map((t) {
+            if (fmt.s(t['ID']) == taskId || fmt.s(t['id']) == taskId) {
+              return {...t, 'STATUS': 'done'};
+            }
+            return t;
+          }).toList();
+          return {...map, 'tasks': tasks};
+        });
+      },
+    );
+  }
+
   // ---------- capture ----------
 
   Future<MutationResult> addInbox({

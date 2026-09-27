@@ -85,6 +85,156 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ),
                 ),
               ],
+              const SectionLabel('Block placement'),
+              Panel(
+                child: Builder(builder: (context) {
+                  final rawKind = fmt.s(task['KIND']).toLowerCase().trim();
+                  const validKinds = {'innovator', 'leadership', 'creative', 'connection'};
+                  final selectedKind = validKinds.contains(rawKind) ? rawKind : 'auto';
+
+                  final rawEst = task['ESTIMATE'];
+                  final parsedEst = rawEst is int
+                      ? rawEst
+                      : int.tryParse(fmt.s(rawEst)) ?? 1;
+                  final estimate = parsedEst.clamp(1, 8);
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('KIND', style: T.label),
+                      const SizedBox(height: 8),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SegmentedButton<String>(
+                          showSelectedIcon: false,
+                          style: const ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          segments: [
+                            ButtonSegment(
+                              value: 'auto',
+                              label: Text('Auto', style: T.tiny.copyWith(fontWeight: FontWeight.w600)),
+                            ),
+                            ButtonSegment(
+                              value: 'innovator',
+                              label: Text('Innovator', style: T.tiny.copyWith(fontWeight: FontWeight.w600)),
+                            ),
+                            ButtonSegment(
+                              value: 'leadership',
+                              label: Text('Leadership', style: T.tiny.copyWith(fontWeight: FontWeight.w600)),
+                            ),
+                            ButtonSegment(
+                              value: 'creative',
+                              label: Text('Creative', style: T.tiny.copyWith(fontWeight: FontWeight.w600)),
+                            ),
+                            ButtonSegment(
+                              value: 'connection',
+                              label: Text('Connection', style: T.tiny.copyWith(fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                          selected: {selectedKind},
+                          onSelectionChanged: (selected) async {
+                            final newKind = selected.first;
+                            await services.mutations.updateTask(
+                              widget.taskId,
+                              {'kind': newKind == 'auto' ? '' : newKind},
+                              label: 'Set task kind · $newKind',
+                            );
+                            await snap.patchLocal((curr) {
+                              final m = fmt.m(curr);
+                              final t = fmt.m(m['task']);
+                              return {
+                                ...m,
+                                'task': {
+                                  ...t,
+                                  'KIND': newKind == 'auto' ? '' : newKind,
+                                },
+                              };
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('ESTIMATE', style: T.label),
+                              const SizedBox(height: 4),
+                              Text(
+                                '$estimate half-hour${estimate == 1 ? '' : 's'} (${(estimate * 0.5).toStringAsFixed(1)}h)',
+                                style: T.body2.copyWith(color: C.text2),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              IconButton.outlined(
+                                icon: const Icon(Icons.remove_rounded, size: 18),
+                                tooltip: 'Decrease estimate',
+                                onPressed: estimate > 1
+                                    ? () async {
+                                        final newEst = estimate - 1;
+                                        await services.mutations.updateTask(
+                                          widget.taskId,
+                                          {'estimate': newEst},
+                                          label: 'Set estimate · $newEst half-hours',
+                                        );
+                                        await snap.patchLocal((curr) {
+                                          final m = fmt.m(curr);
+                                          final t = fmt.m(m['task']);
+                                          return {
+                                            ...m,
+                                            'task': {
+                                              ...t,
+                                              'ESTIMATE': newEst,
+                                            },
+                                          };
+                                        });
+                                      }
+                                    : null,
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: Text('$estimate',
+                                    style: T.headline.copyWith(color: C.green)),
+                              ),
+                              IconButton.outlined(
+                                icon: const Icon(Icons.add_rounded, size: 18),
+                                tooltip: 'Increase estimate',
+                                onPressed: estimate < 8
+                                    ? () async {
+                                        final newEst = estimate + 1;
+                                        await services.mutations.updateTask(
+                                          widget.taskId,
+                                          {'estimate': newEst},
+                                          label: 'Set estimate · $newEst half-hours',
+                                        );
+                                        await snap.patchLocal((curr) {
+                                          final m = fmt.m(curr);
+                                          final t = fmt.m(m['task']);
+                                          return {
+                                            ...m,
+                                            'task': {
+                                              ...t,
+                                              'ESTIMATE': newEst,
+                                            },
+                                          };
+                                        });
+                                      }
+                                    : null,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                }),
+              ),
               if (tools.isNotEmpty) ...[
                 const SectionLabel('Recommended tools'),
                 Panel(
