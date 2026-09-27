@@ -49,7 +49,9 @@ import 'widgets/system_status.dart';
 /// FAB = chat. Hamburger in app bar opens the full navigation menu sheet.
 /// Each tab has a horizontal sub-tab strip for inner views.
 class Shell extends StatefulWidget {
-  const Shell({super.key});
+  const Shell({super.key, this.initialTab = 0, this.initialSub = 0});
+  final int initialTab;
+  final int initialSub;
 
   @override
   State<Shell> createState() => _ShellState();
@@ -100,34 +102,78 @@ const _settingsSubs = [
 ];
 
 class _ShellState extends State<Shell> {
-  int _tab = 0;          // 0=Command 1=Channels 2=Projects 3=Personal 4=Systems
-  int _sub = 0;          // sub-tab index within current tab
+  late int _tab;          // 0=Command 1=Channels 2=Projects 3=Personal 4=Systems
+  late int _sub;          // sub-tab index within current tab
 
-  // BN26091002: horizontal swipe between the 5 bottom-nav tabs, in the
-  // bottom bar's own left-to-right order. Tapping the bottom bar animates
-  // this same controller instead of jumping state directly, so tap and
-  // swipe always agree on position; _onPageChanged is the single place
-  // that actually commits a new _tab (covers both paths).
-  final PageController _pageController = PageController();
+  // BI26092605: horizontal swipe now moves between the sub-tabs of the
+  // current bottom-nav tab (e.g. Inbox -> Teams -> Kanban -> Buffer), never
+  // between bottom-nav tabs. The bottom nav changes only when tapped.
+  // Each bottom tab has its own PageController (recreated on tab change to
+  // guarantee landing at sub 0); tapping a sub-tab animates it with easeOut
+  // (240 ms); _sub is committed only in the sub PageView's onPageChanged.
+  late final List<PageController> _subControllers;
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = widget.initialTab;
+    _sub = widget.initialSub;
+    _subControllers = List.generate(
+      5,
+      (i) => PageController(initialPage: i == _tab ? _sub : 0),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final services = AppScope.of(context);
+      services.sync.onNewAlerts =
+          (fresh) => AlertService.instance.showAgentAlerts(fresh);
+      services.sync.start();
+      services.sync.fullSync(wake: true).then((_) async {
+        await services.modules.check();
+        await services.modules.prefetchAll();
+        await services.sms.run();
+      });
+    });
+  }
 
   @override
   void dispose() {
-    _pageController.dispose();
+    for (final c in _subControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
   void _switchTab(int t) {
-    if (_tab == t) return;
-    _pageController.animateToPage(t,
-        duration: const Duration(milliseconds: 240), curve: Curves.easeOut);
-  }
-
-  void _onPageChanged(int t) {
-    if (_tab != t) setState(() { _tab = t; _sub = 0; });
+    if (_tab == t) {
+      if (_sub != 0) {
+        _switchSub(0);
+      }
+      return;
+    }
+    _subControllers[t].dispose();
+    _subControllers[t] = PageController(initialPage: 0);
+    setState(() {
+      _tab = t;
+      _sub = 0;
+    });
   }
 
   void _switchSub(int s) {
-    if (_sub != s) setState(() => _sub = s);
+    if (_sub == s) return;
+    final controller = _subControllers[_tab];
+    if (controller.hasClients) {
+      controller.animateToPage(
+        s,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _onSubPageChanged(int s) {
+    if (_sub != s) {
+      setState(() => _sub = s);
+    }
   }
 
   // BN26090606: Buffer dropped to hit the 4-sub-tab target -- still
@@ -168,28 +214,9 @@ class _ShellState extends State<Shell> {
 
   static const _tabLabels = ['Command', 'Channels', 'Projects', 'Personal', 'Systems'];
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final services = AppScope.of(context);
-      services.sync.onNewAlerts =
-          (fresh) => AlertService.instance.showAgentAlerts(fresh);
-      services.sync.start();
-      services.sync.fullSync(wake: true).then((_) async {
-        await services.modules.check();
-        await services.modules.prefetchAll();
-        await services.sms.run();
-      });
-    });
-  }
-
   Widget _tabBody(BuildContext context, int tab, AppServices services) {
     final subs = _subsFor(tab);
-    // Only the currently-active tab's sub-index applies here -- a
-    // neighbour tab PageView pre-builds while swiping always lands on its
-    // own default (index 0), never the active tab's unrelated sub-index.
-    final safeSubIndex = tab == _tab ? _sub.clamp(0, subs.length - 1) : 0;
+    final safeSubIndex = _sub.clamp(0, subs.length - 1);
     return Column(
       children: [
         // BN26091004: the amber offline banner now mounts in Settings only
@@ -202,8 +229,10 @@ class _ShellState extends State<Shell> {
           onSelect: _switchSub,
         ),
         Expanded(
-          child: IndexedStack(
-            index: safeSubIndex,
+          child: PageView(
+            key: ValueKey('tab_sub_pageview_$tab'),
+            controller: _subControllers[tab],
+            onPageChanged: _onSubPageChanged,
             children: subs.map((s) => s.view).toList(),
           ),
         ),
@@ -221,7 +250,7 @@ class _ShellState extends State<Shell> {
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return; // system handled it (we're at root)
         if (_sub > 0) {
-          setState(() => _sub = 0);
+          _switchSub(0);
         } else if (_tab > 0) {
           _switchTab(0);
         }
@@ -235,12 +264,7 @@ class _ShellState extends State<Shell> {
           actions: [if (_tab != 4) const SyncIndicator()],
           onMenu: () => _openMenu(context),
         ),
-        body: PageView.builder(
-          controller: _pageController,
-          itemCount: _tabLabels.length,
-          onPageChanged: _onPageChanged,
-          itemBuilder: (context, i) => _tabBody(context, i, services),
-        ),
+        body: _tabBody(context, _tab, services),
         floatingActionButton: SquareFab(
           heroTag: 'fab_chat',
           icon: const Icon(Icons.forum_rounded),
