@@ -26,7 +26,7 @@ class _EqContext {
   _EqContext(DateTime today)
       : cycleStart = _computeCycleStart(today),
         dayInCycle = _computeDayInCycle(today),
-        eqYear = today.month < 6 ? today.year - 1 : today.year {
+        eqYear = _eqYearFor(today) {
     cycleNum = ((today.difference(cycleStart).inDays) ~/ 28) + 1;
   }
   late final DateTime cycleStart;
@@ -48,12 +48,25 @@ class _EqContext {
   /// Key the server's scope/cycle_themes.tsv is keyed on: `eqYear-cycleNum`.
   String get cycleKey => '$eqYear-$cycleNum';
 
-  static DateTime _eqStart(DateTime today) {
-    final eqYear = today.month < 6 ? today.year - 1 : today.year;
-    final june1 = DateTime(eqYear, 6, 1);
+  /// BI26092521: eqYear is the year of the most recent first-Sunday-of-June
+  /// on or before `today`, not simply "this year from June, else last year"
+  /// -- those disagree for up to 6 days a year whenever the current year's
+  /// first Sunday of June falls after 1 June. Kept in step with hub's
+  /// getEquicycleContext() and pulse/lib/keystone.js's equicycle().
+  static DateTime _firstSundayOfJune(int year) {
+    final june1 = DateTime(year, 6, 1);
     final daysAhead = (7 - june1.weekday % 7) % 7;
-    return DateTime(eqYear, 6, 1 + daysAhead);
+    return DateTime(year, 6, 1 + daysAhead);
   }
+
+  static int _eqYearFor(DateTime today) {
+    var eqYear = today.year;
+    if (today.isBefore(_firstSundayOfJune(eqYear))) eqYear -= 1;
+    return eqYear;
+  }
+
+  static DateTime _eqStart(DateTime today) =>
+      _firstSundayOfJune(_eqYearFor(today));
 
   static int _daysSince(DateTime today) {
     final start = _eqStart(today);

@@ -34,13 +34,21 @@ class _CycleRef {
       cycleNum >= 13 ? _CycleRef(eqYear + 1, 1) : _CycleRef(eqYear, cycleNum + 1);
 
   /// The equicycle year starts on the first Sunday of June (calendar.dart).
+  /// BI26092521: eqYear is the year of the most recent first-Sunday-of-June
+  /// on or before today, not simply "this year from June, else last year" --
+  /// kept in step with calendar.dart's _EqContext and the web/pulse copies.
+  static DateTime _firstSundayOfJune(int year) {
+    final june1 = DateTime(year, 6, 1);
+    final daysAhead = (7 - june1.weekday % 7) % 7;
+    return DateTime(year, 6, 1 + daysAhead);
+  }
+
   static _CycleRef today() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final eqYear = today.month < 6 ? today.year - 1 : today.year;
-    final june1 = DateTime(eqYear, 6, 1);
-    final daysAhead = (7 - june1.weekday % 7) % 7;
-    final start = DateTime(eqYear, 6, 1 + daysAhead);
+    var eqYear = today.year;
+    if (today.isBefore(_firstSundayOfJune(eqYear))) eqYear -= 1;
+    final start = _firstSundayOfJune(eqYear);
     final days = today.difference(start).inDays;
     return _CycleRef(eqYear, (days < 0 ? 0 : days) ~/ 28 + 1);
   }
