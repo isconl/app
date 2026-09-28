@@ -31,7 +31,7 @@ import 'views/notifications.dart';
 import 'views/ops.dart';
 import 'views/outbox_view.dart';
 import 'views/planning.dart';
-import 'views/portfolio.dart';
+import 'views/practice.dart';
 import 'views/projects.dart';
 import 'views/rhythm.dart';
 import 'views/settings.dart';
@@ -82,10 +82,12 @@ const _commandSubs = [
 // Sconl's curated CV/resume links, not the venture-category filter that
 // used to sit here), reordered to Portfolio, Corporate, Products,
 // Platforms per Sconl's explicit target order.
-// BI26092606: Portfolio sub-tab renamed to Practice (PortfolioView unchanged),
-// matching the web console's Practice nav where portfolio routes to Practice.
+// BI26092606: Portfolio sub-tab renamed to Practice (PortfolioView unchanged).
+// BI26092324: now a real PracticeView (Documents = PortfolioView unchanged,
+// plus honest placeholders for Overview/Practices/Codex/Enquiries), matching
+// the web console's renderPractice()/PRACTICE_TABS tab for tab.
 const _projectsSubs = [
-  _SubTab('Practice',  PortfolioView()),
+  _SubTab('Practice',  PracticeView()),
   _SubTab('Corporate', CorporateView()),
   _SubTab('Products',  ProjectsView(cat: 'product')),
   _SubTab('Platforms', ProjectsView(cat: 'platform')),
@@ -818,8 +820,8 @@ class MenuSheet extends StatelessWidget {
               () => go(const GithubView(), 'GitHub')),
           // ── PROJECTS ─────────────────────────────────────────
           const SectionLabel('Projects'),
-          _item(ctx, Icons.rocket_launch_rounded, 'Portfolio',
-              () => go(const PortfolioView(), 'Portfolio')),
+          _item(ctx, Icons.rocket_launch_rounded, 'Practice',
+              () => go(const PracticeView(), 'Practice')),
           _item(ctx, Icons.inventory_2_rounded, 'Products',
               () => go(const ProjectsView(cat: 'product'), 'Products')),
           _item(ctx, Icons.layers_rounded, 'Platforms',
@@ -1013,7 +1015,7 @@ class SecondaryScreen extends StatelessWidget {
     'buffer' || 'social' => (const SocialView(), 'Buffer'),
     'kanban' || 'jira' => (const JiraView(), 'Kanban'),
     'github' => (const GithubView(), 'GitHub'),
-    'portfolio' || 'practice' => (const PortfolioView(), 'Portfolio'),
+    'portfolio' || 'practice' => (const PracticeView(), 'Practice'),
     'products' => (const ProjectsView(cat: 'product'), 'Products'),
     'platforms' => (const ProjectsView(cat: 'platform'), 'Platforms'),
     'corporate' => (const CorporateView(), 'Corporate'),
