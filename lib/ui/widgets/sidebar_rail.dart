@@ -57,7 +57,7 @@ final List<NavGroup> navGroups = [
   NavGroup('Hub', [
     NavItem('hub', Icons.bolt_rounded, 'Hub', () => const HubView()),
     NavItem('tasks', Icons.task_alt_rounded, 'Tasks', () => const TasksView()),
-    NavItem('planning', Icons.flag_rounded, 'Planning', () => const PlanningView()),
+    NavItem('planning', Icons.explore_rounded, 'Compass', () => const PlanningView()),
     NavItem('calendar', Icons.calendar_month_rounded, 'Calendar', () => const CalendarView()),
     NavItem('ideas', Icons.lightbulb_rounded, 'Ideas', () => const IdeasView()),
     NavItem('notifications', Icons.notifications_rounded, 'Alerts', () => const NotificationsView()),

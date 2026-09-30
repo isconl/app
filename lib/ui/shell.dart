@@ -72,7 +72,7 @@ const _commandSubs = [
   _SubTab('Hub',       HubView()),
   _SubTab('Tasks',     TasksView()),
   _SubTab('Calendar',  CalendarView()),
-  _SubTab('Planning',  PlanningView()),
+  _SubTab('Compass',   PlanningView()),
 ];
 
 // Channels & Personal subs are constructed dynamically (need onNavigate callback).
@@ -794,8 +794,8 @@ class MenuSheet extends StatelessWidget {
               () => go(const HubView(), 'Hub')),
           _item(ctx, Icons.task_alt_rounded, 'Tasks',
               () => go(const TasksView(), 'Tasks')),
-          _item(ctx, Icons.flag_rounded, 'Planning',
-              () => go(const PlanningView(), 'Planning')),
+          _item(ctx, Icons.explore_rounded, 'Compass',
+              () => go(const PlanningView(), 'Compass')),
           _item(ctx, Icons.calendar_month_rounded, 'Calendar',
               () => go(const CalendarView(), 'Calendar')),
           _item(ctx, Icons.notifications_rounded, 'Alerts',
@@ -1006,7 +1006,7 @@ class SecondaryScreen extends StatelessWidget {
   return switch (r) {
     'hub' || 'command' => (const HubView(), 'Hub'),
     'tasks' || 'slate' => (const TasksView(), 'Tasks'),
-    'planning' || 'plans' => (const PlanningView(), 'Planning'),
+    'planning' || 'plans' => (const PlanningView(), 'Compass'),
     'calendar' || 'events' => (const CalendarView(), 'Calendar'),
     'notifications' || 'alerts' => (const NotificationsView(), 'Alerts'),
     'channels' => (const ChannelsHomeView(), 'Channels'),
