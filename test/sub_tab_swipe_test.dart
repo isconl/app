@@ -296,9 +296,11 @@ void main() {
       expect(find.widgetWithText(ShellAppBar, 'Projects'), findsOneWidget);
 
       // Sub-tab is Practice (index 0 of Projects, formerly Portfolio; BI26092606)
-      expect(find.text('PRACTICE'), findsOneWidget);
+      // The view's own section label also reads PRACTICE, so look in the sub-tab strip only.
+      final practiceTab = find.descendant(of: find.byType(SubTabBar), matching: find.text('PRACTICE'));
+      expect(practiceTab, findsOneWidget);
       final practiceContainer = tester.widget<Container>(
-        find.ancestor(of: find.text('PRACTICE'), matching: find.byType(Container)).first,
+        find.ancestor(of: practiceTab, matching: find.byType(Container)).first,
       );
       expect(practiceContainer.decoration, isNull);
 

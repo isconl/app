@@ -150,6 +150,12 @@ void main() {
     );
   }
 
+  // Due dates are relative to today, so "1 overdue" holds on any day the suite runs.
+  String isoDay(int offset) {
+    final d = DateTime.now().add(Duration(days: offset));
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
   Map<String, dynamic> sampleState() => {
         'time': {
           'eqShort': '2026-5',
@@ -157,9 +163,9 @@ void main() {
           'yearPct': 74,
         },
         'tasks': [
-          {'ID': 'T1', 'STATUS': 'today', 'TITLE': 'Task 1', 'DUE_DATE': '2026-09-27'},
-          {'ID': 'T2', 'STATUS': 'review', 'TITLE': 'Task 2', 'DUE_DATE': '2026-09-27'},
-          {'ID': 'T3', 'STATUS': 'backlog', 'TITLE': 'Task 3', 'DUE_DATE': '2026-09-20'},
+          {'ID': 'T1', 'STATUS': 'today', 'TITLE': 'Task 1', 'DUE_DATE': isoDay(2)},
+          {'ID': 'T2', 'STATUS': 'review', 'TITLE': 'Task 2', 'DUE_DATE': isoDay(2)},
+          {'ID': 'T3', 'STATUS': 'backlog', 'TITLE': 'Task 3', 'DUE_DATE': isoDay(-5)},
         ],
         'feed': [],
         'services': {},
@@ -199,8 +205,9 @@ void main() {
 
       expect(dateFinder, findsOneWidget);
 
-      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
-      await tester.pump();
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 200)));
+      await tester.pump(const Duration(seconds: 2));
     });
   });
 
@@ -254,8 +261,9 @@ void main() {
       // 3. No "Needs you:" prefix
       expect(find.textContaining('Needs you:'), findsNothing);
 
-      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
-      await tester.pump();
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 200)));
+      await tester.pump(const Duration(seconds: 2));
     });
 
     testWidgets('a 404 renders the old _needsYou fallback', (tester) async {
@@ -287,8 +295,9 @@ void main() {
       // Signals should not be present
       expect(find.text('Rent due'), findsNothing);
 
-      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
-      await tester.pump();
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 200)));
+      await tester.pump(const Duration(seconds: 2));
     });
 
     testWidgets('tapping a signal label navigates to its route', (tester) async {
@@ -319,8 +328,9 @@ void main() {
       expect(find.byType(SecondaryScreen), findsOneWidget);
       expect(find.text('Holdings'), findsOneWidget);
 
-      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
-      await tester.pump();
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 200)));
+      await tester.pump(const Duration(seconds: 2));
     });
 
     testWidgets('long press on a signal label shows its detail in a snackbar', (tester) async {
@@ -349,8 +359,9 @@ void main() {
 
       expect(find.text('Rent due by midnight tonight'), findsOneWidget);
 
-      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
-      await tester.pump();
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 200)));
+      await tester.pump(const Duration(seconds: 2));
     });
 
     testWidgets('offline caching: cached snapshot is loaded and rendered offline', (tester) async {
@@ -381,8 +392,9 @@ void main() {
       expect(find.text('Standup 10:30'), findsOneWidget);
       expect(find.text('Joel waiting'), findsOneWidget);
 
-      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
-      await tester.pump();
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 200)));
+      await tester.pump(const Duration(seconds: 2));
     });
   });
 }

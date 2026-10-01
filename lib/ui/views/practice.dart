@@ -90,11 +90,14 @@ class _PracticeViewState extends State<PracticeView> {
           ),
         ),
         const SizedBox(height: 12),
-        switch (_tab) {
-          _PracticeTab.documents => const PortfolioView(),
-          _PracticeTab.overview => _overviewBody(),
-          _ => _placeholder(_label(_tab)),
-        },
+        // The tab body fills what is left. Documents scroll themselves; the rest scroll here.
+        Expanded(
+          child: switch (_tab) {
+            _PracticeTab.documents => const PortfolioView(),
+            _PracticeTab.overview => SingleChildScrollView(child: _overviewBody()),
+            _ => SingleChildScrollView(child: _placeholder(_label(_tab))),
+          },
+        ),
       ],
     );
   }
