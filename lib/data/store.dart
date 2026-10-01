@@ -137,6 +137,7 @@ class Store {
   Snapshot get refs => of('refs', '/api/refs');
   Snapshot get tags => of('tags', '/api/tags');
   Snapshot get dataHealth => of('dataHealth', '/api/health/data');
+  Snapshot get vitals => of('vitals', '/api/vitals');
 
   // Domains
   Snapshot get jira => of('jira', '/api/jira/issues');

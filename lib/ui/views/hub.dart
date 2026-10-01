@@ -8,7 +8,7 @@ import '../shell.dart' show openNavRoute;
 import '../widgets/block_card.dart';
 import '../widgets/common.dart';
 import '../widgets/context_ring_card.dart';
-import '../widgets/data_health_card.dart';
+import '../widgets/vitals_card.dart';
 import 'tasks.dart' show showAddTaskSheet, TaskRowTile;
 
 /// Hub: answers "what needs me?" in under two seconds.
@@ -49,7 +49,6 @@ class _HubViewState extends State<HubView> {
         final state = fmt.m(data);
         final eq = fmt.m(state['time']);
         final tasks = fmt.lm(state['tasks']);
-        final feed = fmt.lm(state['feed']);
         final now = DateTime.now();
 
         final todays = tasks.where((t) {
@@ -148,6 +147,8 @@ class _HubViewState extends State<HubView> {
                 );
               },
             ),
+            // ---- vitals, right after the block card (BI26092630) ----
+            const VitalsCard(),
             if (overdue.isNotEmpty) ...[
               SectionLabel('Overdue · ${overdue.length}'),
               ...overdue.take(5).map((t) => Padding(
@@ -155,60 +156,6 @@ class _HubViewState extends State<HubView> {
                     child: TaskRowTile(task: t),
                   )),
             ],
-            // ---- feed ----
-            if (feed.isNotEmpty) ...[
-              const SectionLabel('Latest captures'),
-              Panel(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    for (var idx = 0; idx < feed.length && idx < 5; idx++) ...[
-                      if (idx > 0) const Divider(),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: Sz.pad, vertical: 10),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(_channelIcon(fmt.s(feed[idx]['CHANNEL'])),
-                                size: 14, color: C.text3),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    fmt.s(feed[idx]['TITLE']).isEmpty
-                                        ? fmt.truncate(
-                                            fmt.s(feed[idx]['BODY']), 80)
-                                        : fmt.s(feed[idx]['TITLE']),
-                                    style: T.body2,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    [
-                                      fmt.s(feed[idx]['SENDER']),
-                                      fmt.ago(feed[idx]['RECEIVED'])
-                                    ]
-                                        .where((x) => x.isNotEmpty)
-                                        .join(' · '),
-                                    style: T.monoSmall,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-            // ---- data health ----
-            const DataHealthCard(),
             // ---- services ----
             const SectionLabel('Services'),
             _ServicesCard(services: fmt.m(state['services'])),
@@ -365,14 +312,6 @@ class _HubViewState extends State<HubView> {
     add('in review', review, C.cyan);
     return Text.rich(TextSpan(children: parts));
   }
-
-  IconData _channelIcon(String channel) => switch (channel.toLowerCase()) {
-        'whatsapp' => Icons.chat_rounded,
-        'email' || 'mail' => Icons.mail_rounded,
-        'telegram' => Icons.send_rounded,
-        'mobile' => Icons.smartphone_rounded,
-        _ => Icons.inbox_rounded,
-      };
 }
 
 class _OrientationStrip extends StatefulWidget {
