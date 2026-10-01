@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="updates" path="updates/"/>
+    <!-- Exported PDFs. Cache rather than documents on purpose: an export is a
+         copy of vault content he is handing to another app, not a second store
+         of it, so the OS is free to reclaim it. -->
+    <cache-path name="exports" path="exports/"/>
+</paths>
