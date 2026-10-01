@@ -24,6 +24,23 @@ const Map<String, Color> kBlockTones = {
   'rest': Color(0xFF43458F),
 };
 
+/// How far through a block `now` is, 0.0 to 1.0, from its `HH:MM` start and end clocks. Null when either
+/// clock is missing or unreadable, or `now` is outside the block (so no bar is drawn for it).
+double? blockProgress(String startClock, String endClock, DateTime now) {
+  int? mins(String c) {
+    final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(c.trim());
+    if (m == null) return null;
+    final h = int.parse(m.group(1)!), mi = int.parse(m.group(2)!);
+    return h > 23 || mi > 59 ? null : h * 60 + mi;
+  }
+
+  final s = mins(startClock), e = mins(endClock);
+  if (s == null || e == null || e <= s) return null;
+  final n = now.hour * 60 + now.minute;
+  if (n < s || n >= e) return null;
+  return (n - s) / (e - s);
+}
+
 Color blockToneOf(Map<String, dynamic>? block) {
   if (block == null) return C.text3;
   final toneStr = fmt.s(block['tone'] ?? block['color'] ?? block['axis'] ?? block['id']);
@@ -53,6 +70,22 @@ class BlockCard extends StatefulWidget {
 
 class _BlockCardState extends State<BlockCard> {
   bool _showNext = false;
+  Timer? _minute;
+
+  @override
+  void initState() {
+    super.initState();
+    // The progress bar on the now block moves once a minute.
+    _minute = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _minute?.cancel();
+    super.dispose();
+  }
 
   int get _currentIndex {
     if (widget.blocks.isEmpty) return 0;
@@ -179,6 +212,20 @@ class _BlockCardState extends State<BlockCard> {
                     ),
                 ],
               ),
+              // The now block's progress through its time range (BI26092625).
+              if (isNow && blockProgress(startClock, endClock, DateTime.now()) != null) ...[
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    key: const Key('block-progress'),
+                    value: blockProgress(startClock, endClock, DateTime.now()),
+                    minHeight: 3,
+                    backgroundColor: C.border,
+                    valueColor: AlwaysStoppedAnimation(tone),
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
 
               // Non-placeable block: show note
