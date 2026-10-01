@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -817,7 +816,7 @@ class _CourseTileState extends State<CourseTile> {
                 Icon(
                     allHere ? Icons.offline_pin_rounded : Icons.cloud_download_rounded,
                     size: 12,
-                    color: allHere ? C.green : (stale > 0 ? C.amber : C.text3)),
+                    color: allHere ? effectiveColor : (stale > 0 ? C.amber : C.text3)),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -829,7 +828,7 @@ class _CourseTileState extends State<CourseTile> {
                                 ? 'All ${files.length} on this device'
                                 : '$offline of ${files.length} on this device',
                     style: T.tiny.copyWith(
-                        color: stale > 0 ? C.amber : (allHere ? C.green : C.text3)),
+                        color: stale > 0 ? C.amber : (allHere ? effectiveColor : C.text3)),
                   ),
                 ),
                 if (!allHere && !_pulling)
@@ -864,75 +863,21 @@ class _CourseTileState extends State<CourseTile> {
   }
 }
 
-@visibleForTesting
-class ModuleStateDot extends StatelessWidget {
-  const ModuleStateDot({super.key, required this.status, required this.color});
-  final String status;
-  final Color color;
+/// BI26100137: the module number carries the status. Grey is new, the track colour is opened, amber is in
+/// progress, green is done. One mapping, so every list of modules agrees.
+Color moduleStatusColor(String status, Color trackColor) => switch (status.toLowerCase()) {
+      'done' => C.green,
+      'learning' => C.amber,
+      'opened' => trackColor,
+      _ => C.text3,
+    };
 
-  @override
-  Widget build(BuildContext context) {
-    final s = status.toLowerCase();
-    if (s == 'done') {
-      return Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color,
-        ),
-      );
-    } else if (s == 'opened' || s == 'learning') {
-      return CustomPaint(
-        size: const Size(10, 10),
-        painter: _HalfFilledDotPainter(color: color),
-      );
-    } else {
-      return Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: C.text3, width: 1.5),
-        ),
-      );
-    }
-  }
-}
-
-class _HalfFilledDotPainter extends CustomPainter {
-  const _HalfFilledDotPainter({required this.color});
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
-
-    // Draw filled left half
-    final fillPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      math.pi / 2,
-      math.pi,
-      true,
-      fillPaint,
-    );
-
-    // Draw outer ring
-    final strokePaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    canvas.drawCircle(center, radius - 0.75, strokePaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _HalfFilledDotPainter oldDelegate) =>
-      oldDelegate.color != color;
-}
+String moduleStatusWords(String status) => switch (status.toLowerCase()) {
+      'done' => 'done',
+      'learning' => 'in progress',
+      'opened' => 'opened',
+      _ => 'not opened',
+    };
 
 @visibleForTesting
 class LessonRow extends StatelessWidget {
@@ -1049,18 +994,19 @@ class LessonRow extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  numStr,
-                  style: T.small.copyWith(
-                    color: C.text3.withValues(alpha: 0.4),
-                    fontFeatures: const [FontFeature.tabularFigures()],
+                child: Semantics(
+                  label: 'Module $numStr, ${moduleStatusWords(status)}',
+                  excludeSemantics: true,
+                  child: Text(
+                    numStr,
+                    key: const Key('module-number'),
+                    style: T.small.copyWith(
+                      color: moduleStatusColor(status, trackColor),
+                      fontWeight: FontWeight.w800,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Padding(
-                padding: const EdgeInsets.only(top: 4.5),
-                child: ModuleStateDot(status: status, color: trackColor),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1094,11 +1040,6 @@ class LessonRow extends StatelessWidget {
                 const Tooltip(
                   message: 'Updated on the agent - opens the new version',
                   child: Icon(Icons.sync_problem_rounded, size: 12, color: C.amber),
-                )
-              else if (st.downloaded)
-                const Tooltip(
-                  message: 'On this device',
-                  child: Icon(Icons.offline_pin_rounded, size: 12, color: C.green),
                 ),
               const SizedBox(width: 6),
               const Padding(

@@ -14,6 +14,7 @@ import 'package:isconl/services/narration.dart';
 import 'package:isconl/services/session.dart';
 import 'package:isconl/services/sms_ingest.dart';
 import 'package:isconl/services/updater.dart';
+import 'package:isconl/theme.dart';
 import 'package:isconl/ui/nav_menu.dart';
 import 'package:isconl/ui/shell.dart';
 import 'package:isconl/ui/views/learning.dart';
@@ -177,6 +178,15 @@ void main() {
       // We are back at the root screen
       expect(find.text('Open Track'), findsOneWidget);
       expect(find.byType(TrackDetailScreen), findsNothing);
+    });
+
+    test('moduleStatusColor: grey new, track colour opened, amber learning, green done', () {
+      const track = Color(0xFF123456);
+      expect(moduleStatusColor('new', track), C.text3);
+      expect(moduleStatusColor('opened', track), track);
+      expect(moduleStatusColor('learning', track), C.amber);
+      expect(moduleStatusColor('done', track), C.green);
+      expect(moduleStatusColor('', track), C.text3);
     });
 
     testWidgets('course cards render in SEQ/position order, with subtle numbers and tabular figures', (tester) async {
@@ -481,12 +491,14 @@ void main() {
       expect(find.text('12 min read · updated 22 Sep'), findsOneWidget);
       expect(find.text('10 min read · updated 23 Sep'), findsOneWidget);
 
-      // State markers: 3 ModuleStateDot widgets
-      final dots = tester.widgetList<ModuleStateDot>(find.byType(ModuleStateDot)).toList();
-      expect(dots.length, 3);
-      expect(dots[0].status, 'done');
-      expect(dots[1].status, 'learning');
-      expect(dots[2].status, 'new');
+      // BI26100137: the number carries the status, heavy weight, and there is no status dot or offline tick.
+      final nums = tester.widgetList<Text>(find.byKey(const Key('module-number'))).toList();
+      expect(nums.length, 3);
+      expect(nums.map((n) => n.style?.fontWeight), everyElement(FontWeight.w800));
+      expect(nums[0].style?.color, C.green);
+      expect(nums[1].style?.color, C.amber);
+      expect(nums[2].style?.color, C.text3);
+      expect(find.byIcon(Icons.offline_pin_rounded), findsNothing);
 
       // Next module to study: module 2 is the first not 'done'
       final rows = tester.widgetList<LessonRow>(find.byType(LessonRow)).toList();
