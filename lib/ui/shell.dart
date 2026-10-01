@@ -35,9 +35,10 @@ import 'views/practice.dart';
 import 'views/projects.dart';
 import 'views/rhythm.dart';
 import 'views/settings.dart';
+import 'status_chip.dart';
+import 'views/slate.dart';
 import 'views/social.dart';
 import 'views/spaces.dart';
-import 'views/tasks.dart';
 import 'views/teams.dart';
 import 'widgets/command_palette.dart';
 import 'widgets/common.dart';
@@ -70,7 +71,7 @@ typedef _SubTab = SubTab;
 // BN26091012: reordered Calendar before Planning, per Sconl.
 const _commandSubs = [
   _SubTab('Hub',       HubView()),
-  _SubTab('Tasks',     TasksView()),
+  _SubTab('Slate',     SlateView()),
   _SubTab('Calendar',  CalendarView()),
   _SubTab('Compass',   PlanningView()),
 ];
@@ -249,6 +250,17 @@ class _ShellState extends State<Shell> {
     );
   }
 
+  /// BI26092622: a view's own chip where it declares one (Systems > Backlog), else data freshness.
+  StatusChipSource _chipSource(AppServices services) {
+    void open(BuildContext c, String title, Widget page) => Navigator.push(
+          c,
+          MaterialPageRoute(builder: (_) => SecondaryScreen(title: title, child: page)),
+        );
+    final fallback = FreshnessChipSource(services, open);
+    final onBacklog = _tab == 4 && _settingsSubs[_sub.clamp(0, _settingsSubs.length - 1)].label == 'Backlog';
+    return ChipSelector(onBacklog ? BacklogChipSource(services, open) : null, fallback);
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
@@ -267,6 +279,7 @@ class _ShellState extends State<Shell> {
       child: Scaffold(
         appBar: ShellAppBar(
           title: _tabLabels[_tab],
+          chipSource: _chipSource(services),
           // BN26091004: compact network-status indicator immediately left
           // of the hamburger on every tab except Settings, which shows the
           // full OfflineBanner instead.
@@ -482,11 +495,15 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
   const ShellAppBar({
     super.key,
     required this.title,
+    this.chipSource,
     this.showBrand = true,
     this.actions = const [],
     this.onMenu,
   });
   final String title;
+
+  /// BI26092622: the subtle status chip after the title. Null means no chip.
+  final StatusChipSource? chipSource;
   final bool showBrand;
 
   /// Screen-specific controls, placed before the sync indicator so the
@@ -538,7 +555,12 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(title, style: T.title),
+                Row(
+                  children: [
+                    Flexible(child: Text(title, style: T.title, overflow: TextOverflow.ellipsis)),
+                    if (chipSource != null) StatusChipLabel(source: chipSource!),
+                  ],
+                ),
                 ListenableBuilder(
                   listenable: services.store.state,
                   builder: (context, _) {
@@ -795,8 +817,8 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Command'),
           _item(ctx, Icons.bolt_rounded, 'Hub',
               () => go(const HubView(), 'Hub')),
-          _item(ctx, Icons.task_alt_rounded, 'Tasks',
-              () => go(const TasksView(), 'Tasks')),
+          _item(ctx, Icons.task_alt_rounded, 'Slate',
+              () => go(const SlateView(), 'Slate')),
           _item(ctx, Icons.explore_rounded, 'Compass',
               () => go(const PlanningView(), 'Compass')),
           _item(ctx, Icons.calendar_month_rounded, 'Calendar',
@@ -1008,7 +1030,7 @@ class SecondaryScreen extends StatelessWidget {
   if (r.startsWith('api/')) r = r.substring(4);
   return switch (r) {
     'hub' || 'command' => (const HubView(), 'Hub'),
-    'tasks' || 'slate' => (const TasksView(), 'Tasks'),
+    'tasks' || 'slate' => (const SlateView(), 'Slate'),
     'planning' || 'plans' => (const PlanningView(), 'Compass'),
     'calendar' || 'events' => (const CalendarView(), 'Calendar'),
     'notifications' || 'alerts' => (const NotificationsView(), 'Alerts'),

@@ -146,12 +146,35 @@ void main() {
         reason: 'progress bar fill must fall back to C.green',
       );
 
-      // Top band in C.green
+      // BI26100111: no coloured top band any more.
       final containers = tester.widgetList<Container>(find.byType(Container));
-      final hasTopBand = containers.any(
-        (c) => c.color == C.green && c.constraints?.minHeight == 3.5,
+      expect(
+        containers.any((c) => c.constraints?.minHeight == 3.5),
+        isFalse,
+        reason: 'the 3.5 px top band was removed',
       );
-      expect(hasTopBand, isTrue, reason: 'thin top band should use C.green fallback');
+      // The percentage takes the track colour (C.green fallback here).
+      final rich = tester.widgetList<RichText>(find.byType(RichText)).map((r) => r.text);
+      final pctSpans = <InlineSpan>[];
+      for (final span in rich) {
+        span.visitChildren((s) {
+          if (s is TextSpan && (s.text ?? '').endsWith('%')) pctSpans.add(s);
+          return true;
+        });
+      }
+      expect(pctSpans, isNotEmpty);
+      expect(pctSpans.first.style?.color, C.green);
+      expect(pctSpans.first.style?.fontWeight, FontWeight.w600);
+    });
+
+    test('legibleTrackColor keeps a readable colour and lightens a dark one', () {
+      const bg = Color(0xFF161B22);
+      const light = Color(0xFF58A6FF);
+      expect(legibleTrackColor(light, bg), light);
+      const dark = Color(0xFF1B2A41);
+      final fixed = legibleTrackColor(dark, bg);
+      expect(fixed, isNot(dark));
+      expect(fixed, Color.lerp(dark, Colors.white, 0.25));
     });
 
     testWidgets('no Text on the card contains an emoji codepoint', (tester) async {

@@ -30,7 +30,7 @@ import '../views/projects.dart';
 import '../views/rhythm.dart';
 import '../views/settings.dart';
 import '../views/spaces.dart';
-import '../views/tasks.dart';
+import '../views/slate.dart';
 import '../views/teams.dart';
 import 'common.dart';
 import 'system_status.dart';
@@ -56,7 +56,7 @@ class NavGroup {
 final List<NavGroup> navGroups = [
   NavGroup('Hub', [
     NavItem('hub', Icons.bolt_rounded, 'Hub', () => const HubView()),
-    NavItem('tasks', Icons.task_alt_rounded, 'Tasks', () => const TasksView()),
+    NavItem('tasks', Icons.task_alt_rounded, 'Slate', () => const SlateView()),
     NavItem('planning', Icons.explore_rounded, 'Compass', () => const PlanningView()),
     NavItem('calendar', Icons.calendar_month_rounded, 'Calendar', () => const CalendarView()),
     NavItem('ideas', Icons.lightbulb_rounded, 'Ideas', () => const IdeasView()),
