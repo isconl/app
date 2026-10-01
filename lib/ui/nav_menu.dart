@@ -2,54 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
-import '../data/store.dart';
 import '../theme.dart';
 import '../util/fmt.dart' as fmt;
-import 'shell.dart' show SecondaryScreen, openNavRoute;
-import 'views/articles.dart';
-import 'views/audit.dart';
-import 'views/backlog.dart';
-import 'views/calendar.dart';
-import 'views/channels_home.dart';
-import 'views/circle.dart';
-import 'views/corporate.dart';
-import 'views/decisions.dart';
-import 'views/files.dart';
-import 'views/finance.dart';
-import 'views/github.dart';
-import 'views/hosted_services.dart';
-import 'views/hub.dart';
-import 'views/ideas.dart';
-import 'views/inbox.dart';
-import 'views/jira.dart';
-import 'views/journal.dart';
-import 'views/learning.dart';
-import 'views/media_view.dart';
-import 'views/notifications.dart';
-import 'views/ops.dart';
-import 'views/outbox_view.dart';
-import 'views/planning.dart';
-import 'views/practice.dart';
-import 'views/projects.dart';
-import 'views/rhythm.dart';
-import 'views/settings.dart';
-import 'views/slate.dart';
-import 'views/social.dart';
-import 'views/teams.dart';
+import 'shell.dart' show SecondaryScreen, viewForNavRoute;
 import 'widgets/command_palette.dart';
 import 'widgets/common.dart';
-import 'widgets/system_status.dart';
+import 'widgets/cycle_mix.dart' show currentCycleKey;
 
-/// BI26092617: the navigation menu is a full-screen panel that slides in from the right, and its groups
-/// and items come from `GET /api/nav` (hub's one navigation source), so web and mobile cannot drift. Only
-/// the presentation lives here: an icon per view slug, and which mobile view a slug opens.
+/// BI26092617: the navigation menu is a full-screen panel that slides in from the right. Its groups and
+/// items come from `GET /api/nav` (hub's one navigation source), so web and mobile cannot drift. Only
+/// presentation lives here: an icon per view slug, and which mobile route a nav item opens.
 
 class NavItemDef {
   const NavItemDef({required this.view, required this.label, this.attrs = const {}, this.routed = true});
   final String view;
   final String label;
-
-  /// The item's `data-*` hints from the web sidebar (`data-cat`, `data-ring`, `data-axis`).
   final Map<String, String> attrs;
   final bool routed;
 }
@@ -61,11 +28,13 @@ class NavGroupDef {
   final List<NavItemDef> items;
 }
 
-/// The groups of a `/api/nav` payload (`{groups: [{key, label, children: [...]}]}`), in the server's order.
-/// Malformed entries are skipped rather than failing the menu.
+/// The groups of a `/api/nav` payload, in the server's order. The payload is a list of
+/// `{key,label,children:[{view,label,attrs?,routed?}]}`; `{groups: [...]}` is accepted too. Malformed
+/// entries are skipped rather than failing the menu.
 List<NavGroupDef> parseNavGroups(dynamic json) {
+  final raw = json is Map ? json['groups'] : json;
   final out = <NavGroupDef>[];
-  for (final g in fmt.lm(fmt.m(json)['groups'])) {
+  for (final g in fmt.lm(raw)) {
     final key = fmt.s(g['key']);
     final label = fmt.s(g['label']);
     if (key.isEmpty || label.isEmpty) continue;
@@ -113,46 +82,31 @@ IconData navIcon(String view) => switch (view) {
       _ => Icons.circle_outlined,
     };
 
-/// The mobile view a nav item opens, or null when the app does not have one yet.
-Widget? widgetForNavItem(NavItemDef i) => switch (i.view) {
-      'today' => const HubView(),
-      'tasks' => const SlateView(),
-      'planning' => const PlanningView(),
-      'calendar' => const CalendarView(),
-      'notifications' => const NotificationsView(),
-      'inbox' => const InboxView(),
-      'teams' => const TeamsView(),
-      'jira' => const JiraView(),
-      'social' => const SocialView(),
-      'github' => const GithubView(),
-      'practice' => const PracticeView(),
-      'corporate' => const CorporateView(),
-      'projects' => ProjectsView(cat: i.attrs['data-cat'] == 'platform' ? 'platform' : 'product'),
-      'rhythm' => const RhythmView(),
-      'finance' => const FinanceView(),
-      'learning' => const LearningView(),
-      'circle' => i.attrs['data-ring'] == null ? null : CircleView(ring: i.attrs['data-ring']!),
-      'contacts' => const ContactsView(),
-      'ops' => const OpsView(),
-      'files' => const FilesView(),
-      'media' => const MediaView(),
-      'backlog' => const BacklogView(),
-      'audit' => const AuditView(),
-      _ => null,
-    };
-
-/// What a nav item with no mobile view shows.
-class NotOnMobileView extends StatelessWidget {
-  const NotOnMobileView(this.label, {super.key});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) =>
-      EmptyState('$label is not on mobile yet', 'Open it on the web console for now.', icon: Icons.desktop_windows_rounded);
+/// The route key (for `viewForNavRoute`) a nav item opens, or null when the app has no view for it yet.
+String? navRouteFor(NavItemDef i) {
+  switch (i.view) {
+    case 'today':
+      return 'hub';
+    case 'projects':
+      return i.attrs['data-cat'] == 'platform' ? 'platforms' : 'products';
+    case 'circle':
+      return switch (i.attrs['data-ring']) {
+        'family' => 'family',
+        'professional' => 'professional',
+        'social' => 'social_circle',
+        _ => null,
+      };
+    case 'isconl' || 'xkeel' || 'qspace':
+      return 'spaces';
+    case 'identity' || 'codex':
+      return null;
+    default:
+      return viewForNavRoute(i.view) != null ? i.view : null;
+  }
 }
 
-/// Features the app has and the web sidebar does not, kept reachable so renaming and mirroring the web
-/// menu never loses one. This is the only list in the menu that is not served by hub.
+/// Features the app has that the web sidebar does not, kept reachable so mirroring the web menu never loses
+/// one. The only list in the menu not served by hub.
 const List<(String, IconData, String)> kMobileOnlyItems = [
   ('Channels', Icons.dashboard_rounded, 'channels'),
   ('Journal', Icons.auto_stories_rounded, 'journal'),
@@ -163,18 +117,7 @@ const List<(String, IconData, String)> kMobileOnlyItems = [
   ('Outbox', Icons.outbox_rounded, 'outbox'),
 ];
 
-Widget? _mobileOnlyView(String key) => switch (key) {
-      'channels' => const ChannelsHomeView(),
-      'journal' => const JournalView(),
-      'ideas' => const IdeasView(),
-      'articles' => const ArticlesView(),
-      'decisions' => const DecisionsView(),
-      'services' => const HostedServicesView(),
-      'outbox' => const OutboxView(),
-      _ => null,
-    };
-
-/// The cycle number and theme word from the server's `eqShort` ("Cycle 5  ·  Day 12  ·  Dig"), or null.
+/// The cycle number and theme word from the server's `eqShort` ("Cycle 5 · Day 12 · Dig"), or null.
 ({int cycle, String theme})? parseEqShort(String eqShort) {
   final m = RegExp(r'^Cycle\s+(\d+)\s*[·|]\s*Day\s+\d+\s*[·|]\s*(.+?)\s*$').firstMatch(eqShort.trim());
   if (m == null) return null;
@@ -182,12 +125,10 @@ Widget? _mobileOnlyView(String key) => switch (key) {
 }
 
 /// The theme line, `Reap: Harvest, don't hoard`: the word, then the cycle's tagline when it has one.
-({String word, String? tagline})? cycleThemeLine(dynamic stateValue, dynamic cycleThemeValue) {
+({String word, String? tagline})? cycleThemeLine(dynamic stateValue, String? tagline) {
   final eq = parseEqShort(fmt.s(fmt.m(fmt.m(stateValue)['time'])['eqShort']));
   if (eq == null) return null;
-  final override = fmt.s(fmt.m(cycleThemeValue)['theme']);
-  final tagline = fmt.s(fmt.m(fmt.m(cycleThemeValue)['mix'])['tagline']);
-  return (word: override.isNotEmpty ? override : eq.theme, tagline: tagline.isEmpty ? null : tagline);
+  return (word: eq.theme, tagline: (tagline == null || tagline.isEmpty) ? null : tagline);
 }
 
 /// Opens the menu: a route that slides in from the right (260 ms, easeOutCubic), not a bottom sheet.
@@ -197,8 +138,8 @@ void openNavMenu(BuildContext context) {
     opaque: true,
     transitionDuration: const Duration(milliseconds: 260),
     reverseTransitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (_, __, ___) => const NavMenuScreen(),
-    transitionsBuilder: (_, animation, __, child) => SlideTransition(
+    pageBuilder: (_, _, _) => const NavMenuScreen(),
+    transitionsBuilder: (_, animation, _, child) => SlideTransition(
       position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
           .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic)),
       child: child,
@@ -215,17 +156,25 @@ class NavMenuScreen extends StatefulWidget {
 
 class _NavMenuScreenState extends State<NavMenuScreen> with SingleTickerProviderStateMixin {
   late final AnimationController _icon = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
+  String? _tagline;
 
   @override
   void initState() {
     super.initState();
     // The hamburger the user just tapped turns into the X as the panel arrives.
     _icon.forward();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final store = AppScope.of(context).store;
-      store.nav.hydrate().then((_) {
-        if (mounted) store.nav.refresh();
-      });
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final services = AppScope.of(context);
+      await services.store.nav.hydrate();
+      if (!mounted) return;
+      services.store.nav.refresh();
+      try {
+        final res = await services.api.getJson('/api/cycle-theme?cycleKey=${currentCycleKey()}');
+        final tag = fmt.s(fmt.m(fmt.m(res)['mix'])['tagline']);
+        if (mounted && tag.isNotEmpty) setState(() => _tagline = tag);
+      } catch (_) {
+        // Offline: the theme word alone is shown.
+      }
     });
   }
 
@@ -245,10 +194,16 @@ class _NavMenuScreenState extends State<NavMenuScreen> with SingleTickerProvider
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => SecondaryScreen(title: title, child: view)));
   }
 
-  void _openItem(NavItemDef item) {
-    final view = widgetForNavItem(item) ?? NotOnMobileView(item.label);
-    _open(view, item.label);
+  void _openRoute(String route, String label) {
+    final pair = viewForNavRoute(route);
+    if (pair == null) return _openNotOnMobile(label);
+    _open(pair.$1, label);
   }
+
+  void _openNotOnMobile(String label) => _open(
+        EmptyState('$label is not on mobile yet', 'Open it on the web console for now.', icon: Icons.desktop_windows_rounded),
+        label,
+      );
 
   Widget _row(IconData icon, String label, VoidCallback onTap, {String? badge, Key? key}) {
     return InkWell(
@@ -263,7 +218,7 @@ class _NavMenuScreenState extends State<NavMenuScreen> with SingleTickerProvider
           children: [
             Icon(icon, size: 17, color: C.text2),
             const SizedBox(width: 12),
-            Expanded(child: Text(label, style: T.body2.copyWith(color: C.text))),
+            Expanded(child: Text(label, style: T.body.copyWith(color: C.text))),
             if (badge != null) Badge2(badge, color: C.greenBg, textColor: C.greenBright),
           ],
         ),
@@ -273,8 +228,7 @@ class _NavMenuScreenState extends State<NavMenuScreen> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final services = AppScope.of(context);
-    final store = services.store;
+    final store = AppScope.of(context).store;
     return Scaffold(
       backgroundColor: C.panel,
       body: SafeArea(
@@ -285,11 +239,12 @@ class _NavMenuScreenState extends State<NavMenuScreen> with SingleTickerProvider
             if ((d.primaryVelocity ?? 0) > 300) _close();
           },
           child: ListenableBuilder(
-            listenable: Listenable.merge([store.nav, store.state, store.cycleThemeFor(DateTime.now(), store.state.value)]),
+            listenable: Listenable.merge([store.nav, store.state]),
             builder: (context, _) {
               final groups = parseNavGroups(store.nav.value);
               final state = fmt.m(store.state.value);
-              final line = cycleThemeLine(state, store.cycleThemeFor(DateTime.now(), store.state.value).value);
+              final line = cycleThemeLine(state, _tagline);
+              final inbox = fmt.i(state['inbox_count']);
               return ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 30),
                 children: [
@@ -301,7 +256,7 @@ class _NavMenuScreenState extends State<NavMenuScreen> with SingleTickerProvider
                             : Text.rich(
                                 key: const Key('nav-theme-line'),
                                 TextSpan(
-                                  style: T.body2.copyWith(color: C.text2),
+                                  style: T.body.copyWith(color: C.text2),
                                   children: [
                                     TextSpan(text: line.word, style: const TextStyle(fontWeight: FontWeight.w700, color: C.text)),
                                     if (line.tagline != null) TextSpan(text: ': ${line.tagline}'),
@@ -322,10 +277,7 @@ class _NavMenuScreenState extends State<NavMenuScreen> with SingleTickerProvider
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Expanded(
-                        child: _row(Icons.settings_rounded, 'Settings', () => _open(const SettingsView(), 'Settings'),
-                            key: const Key('nav-settings')),
-                      ),
+                      Expanded(child: _row(Icons.settings_rounded, 'Settings', () => _openRoute('settings', 'Settings'), key: const Key('nav-settings'))),
                       IconButton(
                         tooltip: 'Search',
                         icon: const Icon(Icons.search_rounded, size: 20, color: C.text2),
@@ -336,7 +288,7 @@ class _NavMenuScreenState extends State<NavMenuScreen> with SingleTickerProvider
                   if (groups.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Text('The menu has not loaded yet. It is cached after the first time.', style: TextStyle(color: C.text3)),
+                      child: Text('The menu has not loaded yet. It is kept on the device after the first time.', style: TextStyle(color: C.text3)),
                     ),
                   for (final g in groups) ...[
                     SectionLabel(g.label),
@@ -344,18 +296,17 @@ class _NavMenuScreenState extends State<NavMenuScreen> with SingleTickerProvider
                       _row(
                         navIcon(i.view),
                         i.label,
-                        () => _openItem(i),
+                        () {
+                          final route = i.routed ? navRouteFor(i) : null;
+                          route == null ? _openNotOnMobile(i.label) : _openRoute(route, i.label);
+                        },
                         key: Key('nav-item-${i.view}-${i.label}'),
-                        badge: i.view == 'inbox' && fmt.i(state['inbox_count']) > 0 ? '${fmt.i(state['inbox_count'])}' : null,
+                        badge: i.view == 'inbox' && inbox > 0 ? '$inbox' : null,
                       ),
                   ],
                   const SectionLabel('On this device'),
                   for (final m in kMobileOnlyItems)
-                    _row(m.$2, m.$1, () => _open(_mobileOnlyView(m.$3)!, m.$1), key: Key('nav-mobile-${m.$3}')),
-                  const SizedBox(height: 18),
-                  const Divider(),
-                  const SizedBox(height: 10),
-                  SystemStatusLines(services: services),
+                    _row(m.$2, m.$1, () => _openRoute(m.$3, m.$1), key: Key('nav-mobile-${m.$3}')),
                 ],
               );
             },
