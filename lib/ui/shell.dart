@@ -35,9 +35,9 @@ import 'views/practice.dart';
 import 'views/projects.dart';
 import 'views/rhythm.dart';
 import 'views/settings.dart';
+import 'views/slate.dart';
 import 'views/social.dart';
 import 'views/spaces.dart';
-import 'views/tasks.dart';
 import 'views/teams.dart';
 import 'widgets/command_palette.dart';
 import 'widgets/common.dart';
@@ -70,7 +70,7 @@ typedef _SubTab = SubTab;
 // BN26091012: reordered Calendar before Planning, per Sconl.
 const _commandSubs = [
   _SubTab('Hub',       HubView()),
-  _SubTab('Tasks',     TasksView()),
+  _SubTab('Slate',     SlateView()),
   _SubTab('Calendar',  CalendarView()),
   _SubTab('Compass',   PlanningView()),
 ];
@@ -795,8 +795,8 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Command'),
           _item(ctx, Icons.bolt_rounded, 'Hub',
               () => go(const HubView(), 'Hub')),
-          _item(ctx, Icons.task_alt_rounded, 'Tasks',
-              () => go(const TasksView(), 'Tasks')),
+          _item(ctx, Icons.task_alt_rounded, 'Slate',
+              () => go(const SlateView(), 'Slate')),
           _item(ctx, Icons.explore_rounded, 'Compass',
               () => go(const PlanningView(), 'Compass')),
           _item(ctx, Icons.calendar_month_rounded, 'Calendar',
@@ -1008,7 +1008,7 @@ class SecondaryScreen extends StatelessWidget {
   if (r.startsWith('api/')) r = r.substring(4);
   return switch (r) {
     'hub' || 'command' => (const HubView(), 'Hub'),
-    'tasks' || 'slate' => (const TasksView(), 'Tasks'),
+    'tasks' || 'slate' => (const SlateView(), 'Slate'),
     'planning' || 'plans' => (const PlanningView(), 'Compass'),
     'calendar' || 'events' => (const CalendarView(), 'Calendar'),
     'notifications' || 'alerts' => (const NotificationsView(), 'Alerts'),
