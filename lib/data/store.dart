@@ -118,6 +118,9 @@ class Store {
   final ApiClient Function() _api;
   final Map<String, Snapshot> _snapshots = {};
 
+  /// Every endpoint snapshot opened so far, for status pages (last fetch per domain).
+  Iterable<Snapshot> get snapshots => List.unmodifiable(_snapshots.values);
+
   Snapshot of(String key, String path) =>
       _snapshots.putIfAbsent(key, () => Snapshot(key, path, _db, _api));
 
