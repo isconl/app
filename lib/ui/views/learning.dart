@@ -1394,16 +1394,11 @@ class _LessonScreenState extends State<LessonScreen> {
     final heading = widget.title.isEmpty ? widget.file : widget.title;
 
     return Scaffold(
+      // Notes stays fixed in the corner; scroll-to-top appears above it (BI26100122).
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          SquareFab(
-            heroTag: 'fab_lesson_notes',
-            tooltip: 'Notes',
-            icon: const Icon(Icons.edit_note_rounded),
-            onPressed: () => _openNotesSheet(context),
-          ),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 160),
             transitionBuilder: (child, animation) => FadeTransition(
@@ -1416,8 +1411,8 @@ class _LessonScreenState extends State<LessonScreen> {
             child: _showScrollTop
                 ? Padding(
                     key: const ValueKey('fab_scroll_top_visible'),
-                    padding: const EdgeInsets.only(top: 12),
-                    child: SquareFab(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: CircleFab(
                       heroTag: 'fab_lesson_scroll_top',
                       tooltip: 'Scroll to top',
                       icon: const Icon(Icons.vertical_align_top_rounded),
@@ -1433,6 +1428,12 @@ class _LessonScreenState extends State<LessonScreen> {
                     ),
                   )
                 : const SizedBox.shrink(key: ValueKey('fab_scroll_top_hidden')),
+          ),
+          CircleFab(
+            heroTag: 'fab_lesson_notes',
+            tooltip: 'Notes',
+            icon: const Icon(Icons.edit_note_rounded),
+            onPressed: () => _openNotesSheet(context),
           ),
         ],
       ),

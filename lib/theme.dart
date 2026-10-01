@@ -165,6 +165,11 @@ ThemeData buildTheme() {
       centerTitle: false,
       surfaceTintColor: Colors.transparent,
     ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      shape: CircleBorder(),
+      backgroundColor: C.green,
+      foregroundColor: C.textInverse,
+    ),
     dividerTheme: const DividerThemeData(color: C.border, thickness: 1, space: 1),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: C.surface,

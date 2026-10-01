@@ -595,10 +595,10 @@ class IdBadge extends StatelessWidget {
   }
 }
 
-/// Rounded-square FAB matching the chat button style (green ground, textInverse
-/// icon, Sz.rLg corners, no full-circle edge buttons per BG26091015).
-class SquareFab extends StatelessWidget {
-  const SquareFab({
+/// Circular FAB (BI26100122): green ground, textInverse icon. Every floating button in the app is a
+/// circle; the theme's floatingActionButtonTheme says the same for raw FloatingActionButtons.
+class CircleFab extends StatelessWidget {
+  const CircleFab({
     super.key,
     required this.icon,
     required this.onPressed,
@@ -622,9 +622,7 @@ class SquareFab extends StatelessWidget {
       tooltip: tooltip,
       backgroundColor: backgroundColor,
       foregroundColor: foregroundColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Sz.rLg),
-      ),
+      shape: const CircleBorder(),
       onPressed: onPressed,
       child: icon,
     );

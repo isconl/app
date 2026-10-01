@@ -253,3 +253,41 @@ class _BrandPainter extends CustomPainter {
   bool shouldRepaint(_BrandPainter old) =>
       old.t != t || old.motion != motion;
 }
+
+/// BI26100122: the mark in one colour, for the assistant button. Same geometry as [BrandMark] at rest: the
+/// ring with the node's gap punched out, and the node. Both take [color], so it reads on any ground.
+class MonoBrandMark extends StatelessWidget {
+  const MonoBrandMark({super.key, required this.color, this.size = 24});
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(size: Size.square(size), painter: _MonoPainter(color));
+}
+
+class _MonoPainter extends CustomPainter {
+  const _MonoPainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final k = size.width / BrandGeometry.canvas;
+    final c = Offset(BrandGeometry.cx * k, BrandGeometry.cy * k);
+    final node = Offset((BrandGeometry.cx + BrandGeometry.nodeDx) * k, (BrandGeometry.cy - BrandGeometry.nodeDy) * k);
+    canvas.saveLayer(Offset.zero & size, Paint());
+    canvas.drawCircle(
+      c,
+      BrandGeometry.ringRadius * k,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = BrandGeometry.ringWidth * k,
+    );
+    canvas.drawCircle(node, BrandGeometry.holeRadius * k, Paint()..blendMode = BlendMode.clear);
+    canvas.restore();
+    canvas.drawCircle(node, BrandGeometry.nodeRadius * k, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_MonoPainter old) => old.color != color;
+}

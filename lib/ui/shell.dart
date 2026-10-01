@@ -41,6 +41,7 @@ import 'views/slate.dart';
 import 'views/social.dart';
 import 'views/spaces.dart';
 import 'views/teams.dart';
+import 'widgets/brand.dart' show MonoBrandMark;
 import 'widgets/command_palette.dart';
 import 'widgets/common.dart';
 import 'widgets/nav_bar.dart';
@@ -288,9 +289,10 @@ class _ShellState extends State<Shell> {
           onMenu: () => openMenu(context),
         ),
         body: _tabBody(context, _tab, services),
-        floatingActionButton: SquareFab(
+        floatingActionButton: CircleFab(
           heroTag: 'fab_chat',
-          icon: const Icon(Icons.forum_rounded),
+          tooltip: 'Assistant',
+          icon: const MonoBrandMark(color: C.textInverse, size: 24),
           onPressed: () => openChatSheet(context),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

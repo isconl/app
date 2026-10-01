@@ -8,6 +8,7 @@ import 'package:isconl/data/outbox.dart';
 import 'package:isconl/data/store.dart';
 import 'package:isconl/data/sync.dart';
 import 'package:isconl/theme.dart';
+import 'package:isconl/ui/widgets/brand.dart';
 import 'package:isconl/ui/views/learning.dart';
 import 'package:isconl/ui/widgets/common.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -122,12 +123,12 @@ void main() {
     return AppDb.forTesting(rawDb);
   }
 
-  group('BI26092614: SquareFab widget', () {
-    testWidgets('SquareFab renders with green rounded rectangle style', (tester) async {
+  group('BI26092614: CircleFab widget', () {
+    testWidgets('CircleFab renders as a green circle', (tester) async {
       var tapped = false;
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
-          floatingActionButton: SquareFab(
+          floatingActionButton: CircleFab(
             icon: const Icon(Icons.forum_rounded),
             tooltip: 'Chat',
             onPressed: () => tapped = true,
@@ -142,17 +143,16 @@ void main() {
       expect(fab.backgroundColor, C.green);
       expect(fab.foregroundColor, C.textInverse);
 
-      final shape = fab.shape as RoundedRectangleBorder;
-      expect(shape.borderRadius, BorderRadius.circular(Sz.rLg));
+      expect(fab.shape, isA<CircleBorder>());
 
       await tester.tap(fabFinder);
       expect(tapped, isTrue);
     });
 
-    testWidgets('SquareFab supports custom colors and tooltip', (tester) async {
+    testWidgets('CircleFab supports custom colors and tooltip', (tester) async {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
-          floatingActionButton: SquareFab(
+          floatingActionButton: CircleFab(
             icon: const Icon(Icons.edit_note_rounded),
             backgroundColor: C.surface,
             foregroundColor: C.text,
@@ -166,6 +166,24 @@ void main() {
       expect(fab.backgroundColor, C.surface);
       expect(fab.foregroundColor, C.text);
       expect(fab.tooltip, 'Custom tooltip');
+    });
+  });
+
+  group('BI26100122: floating buttons', () {
+    testWidgets('the theme default is a green circle, so a raw FloatingActionButton cannot drift', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: buildTheme(),
+        home: Scaffold(floatingActionButton: FloatingActionButton(onPressed: () {}, child: const Icon(Icons.add))),
+      ));
+      final theme = Theme.of(tester.element(find.byType(FloatingActionButton))).floatingActionButtonTheme;
+      expect(theme.shape, isA<CircleBorder>());
+      expect(theme.backgroundColor, C.green);
+    });
+
+    testWidgets('the mono mark paints in the colour it is given at the size it is given', (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: Center(child: MonoBrandMark(color: C.textInverse, size: 24)))));
+      expect(tester.getSize(find.byType(MonoBrandMark)), const Size(24, 24));
+      expect(find.byType(CustomPaint), findsWidgets);
     });
   });
 
@@ -285,14 +303,14 @@ void main() {
               floatingActionButton: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SquareFab(
+                  CircleFab(
                     heroTag: 'fab_notes',
                     tooltip: 'Notes',
                     icon: const Icon(Icons.edit_note_rounded),
                     onPressed: () {},
                   ),
                   if (showScrollTop)
-                    SquareFab(
+                    CircleFab(
                       heroTag: 'fab_top',
                       tooltip: 'Scroll to top',
                       icon: const Icon(Icons.vertical_align_top_rounded),
