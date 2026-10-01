@@ -14,6 +14,7 @@ import 'package:isconl/services/narration.dart';
 import 'package:isconl/services/session.dart';
 import 'package:isconl/services/sms_ingest.dart';
 import 'package:isconl/services/updater.dart';
+import 'package:isconl/ui/nav_menu.dart';
 import 'package:isconl/ui/shell.dart';
 import 'package:isconl/ui/views/learning.dart';
 import 'package:isconl/ui/widgets/brand.dart';
@@ -155,18 +156,18 @@ void main() {
       expect(find.byType(BrandMark), findsOneWidget);
 
       // Verify SyncIndicator is present on right
-      expect(find.byType(SyncIndicator), findsOneWidget);
+      expect(find.byType(SyncIndicator), findsWidgets);
 
       // Verify hamburger menu IconButton is present
       expect(find.byIcon(Icons.menu_rounded), findsOneWidget);
 
-      // Tapping hamburger menu opens MenuSheet
+      // Tapping hamburger menu opens the full-screen menu panel (BI26092617)
       await tester.tap(find.byIcon(Icons.menu_rounded));
       await tester.pumpAndSettle();
-      expect(find.byType(MenuSheet), findsOneWidget);
+      expect(find.byType(NavMenuScreen), findsOneWidget);
 
-      // Close menu
-      await tester.tapAt(const Offset(20, 20));
+      // Close menu with the X
+      await tester.tap(find.byKey(const Key('nav-close')));
       await tester.pumpAndSettle();
 
       // Tapping the BrandMark pops the TrackDetailScreen
@@ -400,7 +401,7 @@ void main() {
 
       // BrandMark, SyncIndicator, menu
       expect(find.byType(BrandMark), findsOneWidget);
-      expect(find.byType(SyncIndicator), findsOneWidget);
+      expect(find.byType(SyncIndicator), findsWidgets);
       expect(find.byIcon(Icons.menu_rounded), findsOneWidget);
 
       // Tapping BrandMark pops

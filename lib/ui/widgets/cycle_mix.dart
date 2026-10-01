@@ -54,6 +54,9 @@ class _CycleRef {
   }
 }
 
+/// The `<eqYear>-<cycle>` key of today's cycle, as `/api/cycle-theme?cycleKey=` takes it.
+String currentCycleKey() => _CycleRef.today().key;
+
 class _Mix {
   _Mix(this.words, this.weights, this.tagline);
   final List<String> words;

@@ -1,7 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:isconl/ui/views/slate.dart';
-import 'package:isconl/ui/views/tasks.dart';
 import 'package:isconl/ui/shell.dart' show viewForNavRoute;
 
 void main() {

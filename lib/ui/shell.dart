@@ -35,6 +35,7 @@ import 'views/practice.dart';
 import 'views/projects.dart';
 import 'views/rhythm.dart';
 import 'views/settings.dart';
+import 'nav_menu.dart';
 import 'status_chip.dart';
 import 'views/slate.dart';
 import 'views/social.dart';
@@ -303,21 +304,8 @@ class _ShellState extends State<Shell> {
   }
 }
 
-/// Opens the navigation menu sheet from anywhere in the app.
-void openMenu(BuildContext context) {
-  HapticFeedback.selectionClick();
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: C.panel,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
-      side: BorderSide(color: C.border),
-    ),
-    builder: (ctx) => const MenuSheet(),
-  );
-}
+/// Opens the navigation menu (BI26092617: a full-screen panel sliding in from the right).
+void openMenu(BuildContext context) => openNavMenu(context);
 
 // ─── Sub-tab horizontal strip ─────────────────────────────────────────────────
 @visibleForTesting
@@ -581,17 +569,16 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
       ),
       actions: [
         ...actions,
-        if (onMenu != null)
-          IconButton(
-            icon: const Icon(Icons.menu_rounded),
-            tooltip: 'Navigation menu',
-            onPressed: () {
-              HapticFeedback.selectionClick();
-              onMenu!();
-            },
-          )
-        else
-          const SyncIndicator(),
+        // BI26092617: the sync indicator, then the hamburger, right-most on every view.
+        const SyncIndicator(),
+        IconButton(
+          icon: const Icon(Icons.menu_rounded),
+          tooltip: 'Navigation menu',
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            (onMenu ?? () => openMenu(context))();
+          },
+        ),
         const SizedBox(width: 4),
       ],
     );
