@@ -403,6 +403,26 @@ class Mutations {
         refresh: _store.state,
       );
 
+  /// BI26092641: attach an Unknown handle (kind + value) to an existing person.
+  Future<MutationResult> inboxLinkUnknown({required String kind, required String value, required String personId}) => _write(
+        path: '/api/inbox/unknown/link',
+        body: {'kind': kind, 'value': value, 'personId': personId},
+        label: 'Link $value',
+        view: 'inbox',
+        refresh: _store.state,
+        queueable: false,
+      );
+
+  /// BI26092641: create a person from an Unknown handle. Explicit only, never automatic.
+  Future<MutationResult> inboxCreateUnknown({required String kind, required String value, required String name}) => _write(
+        path: '/api/inbox/unknown/create',
+        body: {'kind': kind, 'value': value, 'name': name},
+        label: 'Create $name',
+        view: 'inbox',
+        refresh: _store.state,
+        queueable: false,
+      );
+
   // ---------- journal ----------
 
   Future<MutationResult> addJournal({
