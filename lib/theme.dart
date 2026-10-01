@@ -111,6 +111,8 @@ class T {
       fontFamily: _mono, fontSize: 11.5, height: 1.45, color: C.text2);
   static const monoSmall = TextStyle(
       fontFamily: _mono, fontSize: 10, height: 1.35, color: C.text3);
+  /// The small monospace status line: the app-bar status chip and the checkpoint card share it.
+  static final statusMono = monoSmall.copyWith(fontSize: 11, color: C.text3);
   static const idBadge = TextStyle(
       fontFamily: _mono, fontSize: 10.5, height: 1.2, color: C.green, fontWeight: FontWeight.w500);
 

@@ -129,7 +129,7 @@ class StatusChipLabel extends StatelessWidget {
               child: Text(
                 '  ·  $text',
                 key: const Key('status-chip'),
-                style: T.monoSmall.copyWith(fontSize: 11, color: C.text3),
+                style: T.statusMono,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),

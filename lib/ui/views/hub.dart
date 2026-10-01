@@ -6,6 +6,7 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show openNavRoute;
 import '../widgets/block_card.dart';
+import '../widgets/checkpoint_card.dart';
 import '../widgets/common.dart';
 import '../widgets/context_ring_card.dart';
 import '../widgets/vitals_card.dart';
@@ -102,6 +103,8 @@ class _HubViewState extends State<HubView> {
                 ],
               ),
             ),
+            // ---- checkpoint, between the date block and the ring (BI26092624) ----
+            const CheckpointCard(),
             // ---- console ring ----
             const ContextRingCard(),
             // ---- orientation ----
