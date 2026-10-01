@@ -387,7 +387,10 @@ class SubTabBar extends StatelessWidget {
           child: Text(
             text,
             style: T.label.copyWith(
-              color: selected ? C.text : C.text3,
+              // The landing label is Inter Black in the app's green, bright when selected and dim
+              // when not (BI26100102). T.label itself is untouched: other labels share it.
+              fontWeight: FontWeight.w900,
+              color: selected ? C.green : C.greenDim,
             ),
           ),
         ),

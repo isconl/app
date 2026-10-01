@@ -184,9 +184,9 @@ void main() {
       expect(landingTextFinder, findsOneWidget);
 
       final landingText = tester.widget<Text>(landingTextFinder);
-      expect(landingText.style?.color, C.text); // Selected state: full strength C.text
+      expect(landingText.style?.color, C.green); // Selected: the app green
       expect(landingText.style?.letterSpacing, 1.2);
-      expect(landingText.style?.fontWeight, FontWeight.w600);
+      expect(landingText.style?.fontWeight, FontWeight.w900);
 
       // Verify container has NO BoxDecoration (no fill, no border)
       final containerFinder = find.ancestor(
@@ -209,7 +209,7 @@ void main() {
       expect(tasksDeco.borderRadius, BorderRadius.circular(Sz.rSm));
     });
 
-    testWidgets('SubTabBar landing sub-tab dims to C.text3 when unselected and tap selects it', (tester) async {
+    testWidgets('SubTabBar landing sub-tab dims to C.greenDim when unselected and tap selects it', (tester) async {
       int selectedIndex = 1;
       await tester.pumpWidget(MaterialApp(
         home: StatefulBuilder(
@@ -236,7 +236,8 @@ void main() {
       final landingTextFinder = find.text('HUB · 5');
       expect(landingTextFinder, findsOneWidget);
       final unselectedLandingText = tester.widget<Text>(landingTextFinder);
-      expect(unselectedLandingText.style?.color, C.text3);
+      expect(unselectedLandingText.style?.color, C.greenDim);
+      expect(unselectedLandingText.style?.fontWeight, FontWeight.w900);
 
       // Index 1 (Tasks) is active -> C.greenBg tint and C.greenBright text
       final tasksBox = tester.widget<AnimatedContainer>(
@@ -250,7 +251,8 @@ void main() {
 
       expect(selectedIndex, 0);
       final selectedLandingText = tester.widget<Text>(find.text('HUB · 5'));
-      expect(selectedLandingText.style?.color, C.text);
+      expect(selectedLandingText.style?.color, C.green);
+      expect(selectedLandingText.style?.fontWeight, FontWeight.w900);
     });
 
     testWidgets('SubTabBar renders label alone without · 0 when count is 0, null, or unavailable', (tester) async {
