@@ -183,6 +183,18 @@ String stripEmoji(String text) {
   return text.replaceAll(emojiRegex, '').replaceAll(RegExp(r'\s+'), ' ').trim();
 }
 
+/// A track colour as text on [background]: the colour itself when it reads (contrast of at least
+/// 3:1), else a variant lightened 25% toward white (BI26100111).
+Color legibleTrackColor(Color c, Color background) {
+  double contrast(Color a, Color b) {
+    final la = a.computeLuminance(), lb = b.computeLuminance();
+    final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  return contrast(c, background) >= 3.0 ? c : Color.lerp(c, Colors.white, 0.25)!;
+}
+
 /// Parses a hex color string, falling back to [fallback] (defaulting to [C.green]).
 /// Accepts 6-hex digits with or without leading '#'.
 Color hexColor(String? hex, {Color fallback = C.green}) {
@@ -339,12 +351,6 @@ class TrackCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Thin top band in the track color (BI26092611)
-          Container(
-            height: 3.5,
-            width: double.infinity,
-            color: group.color,
-          ),
           Padding(
             padding: const EdgeInsets.all(Sz.pad),
             child: Column(
@@ -386,11 +392,24 @@ class TrackCard extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        '${group.courseCount} '
-                        '${group.courseCount == 1 ? 'course' : 'courses'} · '
-                        '${group.moduleCount} modules · ${group.progressPct}%',
-                        style: T.small.copyWith(color: C.text),
+                      child: Text.rich(
+                        TextSpan(
+                          style: T.small.copyWith(color: C.text),
+                          children: [
+                            TextSpan(
+                              text: '${group.courseCount} '
+                                  '${group.courseCount == 1 ? 'course' : 'courses'} · '
+                                  '${group.moduleCount} modules · ',
+                            ),
+                            TextSpan(
+                              text: '${group.progressPct}%',
+                              style: T.small.copyWith(
+                                color: legibleTrackColor(group.color, bgTint),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -407,7 +426,7 @@ class TrackCard extends StatelessWidget {
                       size: 12,
                       color: stats.staleModules > 0
                           ? C.amber
-                          : (allOffline ? C.green : C.text3),
+                          : (allOffline ? group.color : C.text3),
                     ),
                     const SizedBox(width: 6),
                     Expanded(
