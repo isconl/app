@@ -13,7 +13,7 @@ publish_to: 'none'
 # stale venture-category filter), masonry track grid + icon-standard fix.
 # Build number advanced past both branches' prior values (main's own stale
 # CI bump to +9, dev's independent +9) to stay unambiguous.
-version: 0.3.35+45
+version: 0.3.36+46
 
 environment:
   sdk: ^3.12.0
@@ -58,6 +58,7 @@ dependencies:
   # web console builds in CSS, ported here since Flutter has no native
   # masonry grid.
   flutter_staggered_grid_view: ^0.7.0
+  fl_chart: ^1.2.0
 
 dev_dependencies:
   flutter_test:
