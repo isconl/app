@@ -105,11 +105,12 @@ List<_SubTab> _projectsSubsFor(void Function(int) openSub) => [
 // renders as a section inside OpsView, so this row was down to 3
 // sub-tabs. BG26091303: Backlog added as the 4th, and the tab itself
 // relabelled Settings -> Systems (SettingsView() stays index 0/default).
-const _settingsSubs = [
-  _SubTab('Settings', SettingsView()),
-  _SubTab('Files',    FilesView()),
-  _SubTab('Ops',      OpsView()),
-  _SubTab('Backlog',  BacklogView()),
+// BI26100131: Settings carries the Systems dashboard, whose tiles open Ops and Backlog.
+List<_SubTab> _settingsSubsFor(void Function(int) openSub) => [
+  _SubTab('Settings', SettingsView(onOpenSub: openSub)),
+  const _SubTab('Files',    FilesView()),
+  const _SubTab('Ops',      OpsView()),
+  const _SubTab('Backlog',  BacklogView()),
 ];
 
 class _ShellState extends State<Shell> {
@@ -219,7 +220,7 @@ class _ShellState extends State<Shell> {
     1 => _channelSubs,
     2 => _projectsSubsFor(_switchSub),
     3 => _personalSubs,
-    4 => _settingsSubs,
+    4 => _settingsSubsFor(_switchSub),
     _ => _commandSubs,
   };
 
@@ -260,7 +261,7 @@ class _ShellState extends State<Shell> {
           MaterialPageRoute(builder: (_) => SecondaryScreen(title: title, child: page)),
         );
     final fallback = FreshnessChipSource(services, open);
-    final onBacklog = _tab == 4 && _settingsSubs[_sub.clamp(0, _settingsSubs.length - 1)].label == 'Backlog';
+    final onBacklog = _tab == 4 && _sub == 3;
     return ChipSelector(onBacklog ? BacklogChipSource(services, open) : null, fallback);
   }
 

@@ -6,6 +6,7 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/integrations_section.dart';
+import 'systems_dashboard.dart';
 
 /// Connection, security, sync, update-on-cue, appearance, about.
 ///
@@ -15,8 +16,12 @@ import '../widgets/integrations_section.dart';
 /// as Buffer's compose gate: a phone typing a Jira API token is a bad
 /// afternoon. DesktopShell passes true; the mobile Shell's default is false.
 class SettingsView extends StatefulWidget {
-  const SettingsView({super.key, this.showIntegrations = false});
+  const SettingsView({super.key, this.showIntegrations = false, this.onOpenSub});
   final bool showIntegrations;
+
+  /// Set on the Systems landing: shows the dashboard above the settings and
+  /// lets its tiles open Ops (2) and Backlog (3).
+  final void Function(int sub)? onOpenSub;
 
   @override
   State<SettingsView> createState() => _SettingsViewState();
@@ -47,6 +52,11 @@ class _SettingsViewState extends State<SettingsView> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.onOpenSub != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: SystemsDashboardHost(onOpenSub: widget.onOpenSub),
+                ),
               // ---- automatic context ----
               const SectionLabel('Automatic context'),
               const SmsCard(),
