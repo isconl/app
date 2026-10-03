@@ -10,6 +10,7 @@ import '../../app_scope.dart';
 import '../../data/db.dart';
 import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
+import '../../study/cdm/cdm_lesson_body.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../../util/reader_prefs.dart';
@@ -1452,6 +1453,15 @@ class _LessonScreenState extends State<LessonScreen> {
     );
   }
 
+  Widget _lessonOfflineNote() => Padding(
+        padding: const EdgeInsets.only(top: 26),
+        child: Text(
+          'Lesson content loads when online, then stays cached '
+          'on this device for reading offline.',
+          style: T.body2.copyWith(color: C.text3, height: 1.6),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
@@ -1569,6 +1579,8 @@ class _LessonScreenState extends State<LessonScreen> {
                 final version = fmt.s(lessonMap['version'] ??
                     lessonMap['VERSION'] ??
                     widget.version);
+                final docId = fmt.s(lessonMap['docId'] ?? lessonMap['doc_id']);
+                final docVersion = fmt.s(lessonMap['docVersion'] ?? lessonMap['doc_version']);
                 _currentContent = content;
                 _maybeRestoreResume();
                 return ReadingSurface(
@@ -1608,15 +1620,22 @@ class _LessonScreenState extends State<LessonScreen> {
                           course: widget.course,
                           file: widget.file,
                           markdown: content),
-                    if (content.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 26),
-                        child: Text(
-                          'Lesson content loads when online, then stays cached '
-                          'on this device for reading offline.',
-                          style: T.body2.copyWith(color: C.text3, height: 1.6),
-                        ),
+                    if (docId.isNotEmpty && docVersion.isNotEmpty)
+                      // BI26092620: a module served as a deck document is drawn natively
+                      // from the version-keyed cache; the markdown reader is its fallback.
+                      CdmLessonBody(
+                        docId: docId,
+                        version: docVersion,
+                        courseId: widget.course,
+                        fallback: content.isEmpty
+                            ? _lessonOfflineNote()
+                            : ReadingBody(content,
+                                courseId: widget.course,
+                                baseUrl: services.api.baseUrl,
+                                token: services.api.token),
                       )
+                    else if (content.isEmpty)
+                      _lessonOfflineNote()
                     else
                       ReadingBody(content,
                           courseId: widget.course,

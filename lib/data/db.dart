@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../study/cdm/cdm_cache.dart';
 import 'vault_mirror.dart';
 
 /// Local persistence. The vault ENGINE on the server remains the single
@@ -21,6 +22,9 @@ class AppDb {
   factory AppDb.forTesting(Database db) => AppDb._(db);
   final Database _db;
 
+  /// BI26092620: deck documents cached per version, plus their images.
+  late final CdmCache cdm = CdmCache(_db);
+
   static Future<AppDb> open() async {
     // Web has no filesystem; ffi-web keys its IndexedDB store off a bare
     // logical name rather than a joined directory path (see main.dart's
@@ -30,6 +34,8 @@ class AppDb {
         : p.join((await getApplicationDocumentsDirectory()).path, 'isconl.db');
     final db = await openDatabase(
       path,
+      // v6 (BI26092620): added cdm_cache, cdm_images and cdm_meta, the on-device
+      // cache of deck documents keyed by doc@version.
       // v5 (BI26092613): added lesson_progress table for local-first
       // module status tracking (Opened/Learning/Done), and added fraction
       // column to lesson_resume for scroll position fraction.
@@ -46,7 +52,7 @@ class AppDb {
       // vault_schema.dart) alongside the pre-existing generic snapshot
       // cache, which stays as-is. onUpgrade only needs to ADD the new
       // tables for an existing install; onCreate covers both for a fresh one.
-      version: 5,
+      version: 6,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE snapshots (
@@ -101,6 +107,7 @@ class AppDb {
             PRIMARY KEY (course, file)
           )''');
         await ensureVaultMirrorTables(db);
+        await CdmCache.createTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) await ensureVaultMirrorTables(db);
@@ -138,6 +145,7 @@ class AppDb {
             await db.execute('ALTER TABLE lesson_resume ADD COLUMN fraction REAL');
           } catch (_) {}
         }
+        if (oldVersion < 6) await CdmCache.createTables(db);
       },
     );
     return AppDb._(db);

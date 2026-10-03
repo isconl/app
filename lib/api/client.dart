@@ -83,6 +83,18 @@ class ApiClient {
     return (bytes: res.bodyBytes, filename: name);
   }
 
+  /// GET that revalidates with an ETag. A 304 comes back as `status: 304` with an
+  /// empty body, so a caller can tell "nothing changed" from a failure. Any other
+  /// non-2xx status throws, as the other getters do.
+  Future<({int status, String body, String? etag})> getConditional(String path,
+      {String? etag, bool cold = false}) async {
+    final res = await _send('GET', path,
+        cold: cold, extraHeaders: {if (etag != null && etag.isNotEmpty) 'If-None-Match': etag});
+    if (res.statusCode == 304) return (status: 304, body: '', etag: etag);
+    _decode(res, path); // throws the usual ApiException for 404/429/5xx and error bodies
+    return (status: res.statusCode, body: res.body, etag: res.headers['etag']);
+  }
+
   Future<dynamic> postJson(String path, Map<String, dynamic> body,
       {bool cold = false}) async {
     final res = await _send('POST', path, body: body, cold: cold);
@@ -90,7 +102,7 @@ class ApiClient {
   }
 
   Future<http.Response> _send(String method, String path,
-      {Map<String, dynamic>? body, bool cold = false}) async {
+      {Map<String, dynamic>? body, bool cold = false, Map<String, String>? extraHeaders}) async {
     // No base URL is a CONFIGURATION state, not a network failure. Without this
     // guard an empty base produces a relative URI, http throws a ClientException,
     // and the app reports "offline" - which sends him looking at his signal
@@ -102,6 +114,7 @@ class ApiClient {
     }
     final req = http.Request(method, _uri(path));
     req.headers.addAll(_headers());
+    if (extraHeaders != null) req.headers.addAll(extraHeaders);
     if (body != null) req.body = jsonEncode(body);
     try {
       final streamed = await _http
