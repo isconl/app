@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/day_blocks.dart';
+import '../../util/equicycle.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import 'learning_export_stub.dart'
@@ -18,70 +19,32 @@ import 'learning_export_stub.dart'
 /// BT26091023's 5am-first / merged-Rest-row structure from the start.
 enum _CalMode { gregorian, equicycle, planner }
 
-/// Ported from the web's getEquicycleContext() -- the year anchors on
-/// the first Sunday of June, so a 28-day cycle divides evenly into 4 true
-/// weeks. Pure function, no state, easy to keep in sync with the web version
-/// if the anchor rule ever changes there.
+/// BI26100205 (Equicycle 2): the position comes from the cached year table
+/// (util/equicycle.dart), never from arithmetic here. When no table covers
+/// today, [unavailable] is true and the view says so instead of guessing.
 class _EqContext {
-  _EqContext(DateTime today)
-      : cycleStart = _computeCycleStart(today),
-        dayInCycle = _computeDayInCycle(today),
-        eqYear = _eqYearFor(today) {
-    cycleNum = ((today.difference(cycleStart).inDays) ~/ 28) + 1;
-  }
-  late final DateTime cycleStart;
-  late final int dayInCycle;
-  late final int cycleNum;
-  final int eqYear;
+  _EqContext(DateTime today) : pos = EquicycleYears.instance.positionFor(today);
+  final EqPosition? pos;
+  bool get unavailable => pos == null;
+  DateTime get cycleStart => pos!.cycleStart;
+  int get dayInCycle => pos!.day;
+  int get cycleNum => pos!.cycle;
+  int get eqYear => pos!.year;
+  bool get stillweek => pos!.stillweek;
   static const _themes = [
     'Plant', 'Push', 'Climb', 'Reap', 'Dig', 'Weave', 'Mend', 'Scout',
     'Scale', 'Make', 'Run', 'Stock', 'Audit',
   ];
   /// Local fallback only -- BN26091025: the real source of truth is now
-  /// GET /api/cycle-theme, which can override a cycle's theme. (BI26092508,
-  /// 25 Sep 2026: this comment used to cite a cycle-4 "Leverage" override.
-  /// None was ever stored on the server, which is why cycle 4 shows Reap.)
+  /// GET /api/cycle-theme, which can override a cycle's theme.
   /// _CalendarViewState._loadServerTheme fetches it and falls back to this
   /// array when the server has no override for the cycle (theme: null).
   String get theme => _themes[(cycleNum - 1).clamp(0, 12)];
 
-  /// Key the server's scope/cycle_themes.tsv is keyed on: `eqYear-cycleNum`.
-  String get cycleKey => '$eqYear-$cycleNum';
-
-  /// BI26092521: eqYear is the year of the most recent first-Sunday-of-June
-  /// on or before `today`, not simply "this year from June, else last year"
-  /// -- those disagree for up to 6 days a year whenever the current year's
-  /// first Sunday of June falls after 1 June. Kept in step with hub's
-  /// getEquicycleContext() and pulse/lib/keystone.js's equicycle().
-  static DateTime _firstSundayOfJune(int year) {
-    final june1 = DateTime(year, 6, 1);
-    final daysAhead = (7 - june1.weekday % 7) % 7;
-    return DateTime(year, 6, 1 + daysAhead);
-  }
-
-  static int _eqYearFor(DateTime today) {
-    var eqYear = today.year;
-    if (today.isBefore(_firstSundayOfJune(eqYear))) eqYear -= 1;
-    return eqYear;
-  }
-
-  static DateTime _eqStart(DateTime today) =>
-      _firstSundayOfJune(_eqYearFor(today));
-
-  static int _daysSince(DateTime today) {
-    final start = _eqStart(today);
-    final diff = DateTime(today.year, today.month, today.day)
-        .difference(DateTime(start.year, start.month, start.day))
-        .inDays;
-    return diff < 0 ? 0 : diff;
-  }
-
-  static int _computeDayInCycle(DateTime today) =>
-      (_daysSince(today) % 28) + 1;
-
-  static DateTime _computeCycleStart(DateTime today) => DateTime(
-      today.year, today.month, today.day)
-      .subtract(Duration(days: _computeDayInCycle(today) - 1));
+  /// Key the server's cycle themes are keyed on: `eq2:26-C04`. vault and
+  /// scope accept the old `26-4` form too, so this can ship before or after
+  /// their migration.
+  String get cycleKey => pos!.cycleKey;
 }
 
 /// Month grid + upcoming key dates. Events merge local + M365 server-side.
@@ -124,10 +87,22 @@ class _CalendarViewState extends State<CalendarView> {
     final now = DateTime.now();
     _month = DateTime(now.year, now.month);
     _selected = DateTime(now.year, now.month, now.day);
+    EquicycleYears.instance.addListener(_onYears);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final services = AppScope.of(context);
       services.sync.touch(services.store.dates);
+      EquicycleYears.instance.ensureLoaded(services.api, services.db);
     });
+  }
+
+  void _onYears() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    EquicycleYears.instance.removeListener(_onYears);
+    super.dispose();
   }
 
   Future<void> _importIcs() async {
@@ -358,6 +333,12 @@ class _CalendarViewState extends State<CalendarView> {
   Widget _equicycleGrid(Map<String, List<Map<String, dynamic>>> byDay) {
     final today = DateTime.now();
     final ctx = _EqContext(today);
+    if (ctx.unavailable) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: Text('Calendar unavailable', style: T.title)),
+      );
+    }
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _maybeLoadServerTheme(ctx.cycleKey));
     final displayTheme = _serverThemeKey == ctx.cycleKey && _serverTheme != null
@@ -372,7 +353,7 @@ class _CalendarViewState extends State<CalendarView> {
       final date = ctx.cycleStart.add(Duration(days: dayN - 1));
       final key = fmt.isoDate(date);
       final items = byDay[key] ?? const [];
-      final isToday = dayN == ctx.dayInCycle;
+      final isToday = !ctx.stillweek && dayN == ctx.dayInCycle;
       final isSel = _selected != null && fmt.isoDate(_selected!) == key;
       cells.add(GestureDetector(
         onTap: () => setState(() => _selected = date),
@@ -419,7 +400,10 @@ class _CalendarViewState extends State<CalendarView> {
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: Text('Cycle ${ctx.cycleNum} · Day ${ctx.dayInCycle} · $displayTheme',
+          child: Text(
+              ctx.stillweek
+                  ? 'Stillweek · Day ${ctx.pos!.stillweekDay} · $displayTheme'
+                  : 'Cycle ${ctx.cycleNum} · Day ${ctx.dayInCycle} · $displayTheme',
               style: T.title),
         ),
         GridView.count(

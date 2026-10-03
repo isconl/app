@@ -7,6 +7,7 @@ import '../util/fmt.dart' as fmt;
 import 'shell.dart' show SecondaryScreen, viewForNavRoute;
 import 'widgets/command_palette.dart';
 import 'widgets/common.dart';
+import '../util/equicycle.dart';
 import 'widgets/cycle_mix.dart' show currentCycleKey;
 
 /// BI26092617: the navigation menu is a full-screen panel that slides in from the right. Its groups and
@@ -169,7 +170,10 @@ class _NavMenuScreenState extends State<NavMenuScreen> with SingleTickerProvider
       if (!mounted) return;
       services.store.nav.refresh();
       try {
-        final res = await services.api.getJson('/api/cycle-theme?cycleKey=${currentCycleKey()}');
+        await EquicycleYears.instance.ensureLoaded(services.api, services.db);
+        final key = currentCycleKey();
+        if (key == null) return;
+        final res = await services.api.getJson('/api/cycle-theme?cycleKey=$key');
         final tag = fmt.s(fmt.m(fmt.m(res)['mix'])['tagline']);
         if (mounted && tag.isNotEmpty) setState(() => _tagline = tag);
       } catch (_) {
