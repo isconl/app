@@ -88,3 +88,4 @@ reports Visual Studio missing, and the "Desktop development with C++"
 workload is a ~7GB install. Windows and Linux binaries are produced by CI
 instead; iterate on desktop layout with `flutter run -d chrome`, which
 uses the same adaptive breakpoints.
+
