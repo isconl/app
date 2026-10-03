@@ -25,9 +25,9 @@ void main() {
       t.view.physicalSize = Size(w, 1600);
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
-      final opened = <int>[];
+      final opened = <String>[];
       await t.pumpWidget(MaterialApp(
-        home: Scaffold(body: SingleChildScrollView(padding: const EdgeInsets.all(14), child: ChannelsDashboard(dash: dash, onOpenSub: opened.add))),
+        home: Scaffold(body: SingleChildScrollView(padding: const EdgeInsets.all(14), child: ChannelsDashboard(dash: dash, onOpenView: opened.add))),
       ));
       await t.pump();
       expect(t.takeException(), isNull);
@@ -35,7 +35,7 @@ void main() {
       expect(find.text('Launch post'), findsOneWidget);
       await t.tap(find.text('KANBAN'));
       await t.tap(find.text('BUFFER, NEXT UP'));
-      expect(opened, [2, 3]);
+      expect(opened, ['jira', 'social']);
     });
   }
 

@@ -6,13 +6,13 @@ import 'channels_dash_model.dart';
 
 /// BI26100128: the Channels landing as a dashboard. Four stat tiles, unread
 /// by source for seven days, the Kanban split and Buffer's next posts. Each
-/// tile opens the sub-tab that owns its data via [onOpenSub] (Teams 1,
-/// Kanban 2, Buffer 3). Figures the app cannot compute yet show the empty
+/// tile opens the sub-tab that owns its data via [onOpenView] (a nav view:
+/// jira, social). Figures the app cannot compute yet show the empty
 /// state rather than a guess.
 class ChannelsDashboard extends StatelessWidget {
-  const ChannelsDashboard({super.key, required this.dash, this.onOpenSub, this.updatedAt});
+  const ChannelsDashboard({super.key, required this.dash, this.onOpenView, this.updatedAt});
   final ChannelsDash dash;
-  final void Function(int sub)? onOpenSub;
+  final void Function(String view)? onOpenView;
   final DateTime? updatedAt;
 
   static const _colors = {
@@ -24,7 +24,7 @@ class ChannelsDashboard extends StatelessWidget {
     'Other': C.text3,
   };
 
-  void Function()? _open(int sub) => onOpenSub == null ? null : () => onOpenSub!(sub);
+  void Function()? _open(String view) => onOpenView == null ? null : () => onOpenView!(view);
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +50,7 @@ class ChannelsDashboard extends StatelessWidget {
       DashItem(StatTile(
         label: 'In progress',
         value: '${dash.inProgress}',
-        onTap: _open(2),
+        onTap: _open('jira'),
       )),
       DashItem(
         DashTile(
@@ -69,7 +69,7 @@ class ChannelsDashboard extends StatelessWidget {
       DashItem(
         DashTile(
           label: 'Kanban',
-          onTap: _open(2),
+          onTap: _open('jira'),
           child: BarStrip(segments: [
             BarSegment('To do', dash.kanban['To do']!.toDouble(), C.amber),
             BarSegment('Doing', dash.kanban['In progress']!.toDouble(), C.cyan),
@@ -82,7 +82,7 @@ class ChannelsDashboard extends StatelessWidget {
       DashItem(
         DashTile(
           label: 'Buffer, next up',
-          onTap: _open(3),
+          onTap: _open('social'),
           child: MiniList(
             empty: 'Nothing scheduled',
             items: [for (final p in dash.bufferNext) MiniItem(p.title, p.when)],

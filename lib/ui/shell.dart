@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
 import '../util/equicycle.dart';
+import '../data/store.dart' show Snapshot;
 import '../data/sync.dart' show SyncPhase;
 import '../main.dart' show BrandMark;
 import '../services/alerts.dart';
@@ -12,6 +13,7 @@ import 'views/articles.dart';
 import 'views/audit.dart';
 import 'views/backlog.dart';
 import 'views/calendar.dart';
+import 'views/channel_subs.dart';
 import 'views/channels_home.dart';
 import 'views/chat.dart';
 import 'views/circle.dart';
@@ -125,6 +127,7 @@ class _ShellState extends State<Shell> {
   // guarantee landing at sub 0); tapping a sub-tab animates it with easeOut
   // (240 ms); _sub is committed only in the sub PageView's onPageChanged.
   late final List<PageController> _subControllers;
+  Snapshot? _nav;
 
   @override
   void initState() {
@@ -137,6 +140,9 @@ class _ShellState extends State<Shell> {
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final services = AppScope.of(context);
+      _nav = services.store.nav;
+      _nav!.hydrate();
+      _nav!.addListener(_onNav);
       services.sync.onNewAlerts =
           (fresh) => AlertService.instance.showAgentAlerts(fresh);
       services.sync.start();
@@ -150,10 +156,20 @@ class _ShellState extends State<Shell> {
 
   @override
   void dispose() {
+    _nav?.removeListener(_onNav);
     for (final c in _subControllers) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  /// A new nav can change how many Channels sub-tabs there are; keep the page index inside them.
+  void _onNav() {
+    if (!mounted) return;
+    setState(() {
+      final n = _subsFor(_tab).length;
+      if (_sub >= n) _sub = n - 1;
+    });
   }
 
   void _switchTab(int t) {
@@ -197,12 +213,38 @@ class _ShellState extends State<Shell> {
   // menu), same precedent BN26090606 already set for Personal
   // (PersonalHomeView -> RhythmView, a real content view replacing a
   // generic dashboard landing).
-  List<_SubTab> get _channelSubs => [
-    _SubTab('Inbox',   InboxView(onOpenSub: _switchSub)),
-    const _SubTab('Teams',   TeamsView()),
-    const _SubTab('Kanban',  JiraView()),
-    const _SubTab('Buffer',  SocialView()),
-  ];
+  // BI26092637: the sub-tabs come from /api/nav (flow group): Inbox, Deck, Teams, Tools
+  // (Kanban, Buffer and GitHub folded into Tools). Press is not a mobile sub-tab.
+  List<_SubTab> get _channelSubs {
+    final nav = AppScope.of(context).store.nav.value;
+    final tools = toolViewsIn(nav);
+    return [
+      for (final p in channelPlan(nav))
+        _SubTab(
+          p.label,
+          switch (p.kind) {
+            ChannelKind.inbox => InboxView(onOpenView: _openChannelView),
+            ChannelKind.deck => const DeckChannelView(),
+            ChannelKind.teams => const TeamsView(),
+            ChannelKind.tools => ToolsView(views: tools),
+          },
+        ),
+    ];
+  }
+
+  /// Opens the Channels sub-tab that holds [view] (a nav view slug), selecting the tool inside Tools.
+  void _openChannelView(String view) {
+    final plan = channelPlan(AppScope.of(context).store.nav.value);
+    final kind = switch (view) {
+      'jira' || 'social' || 'github' => ChannelKind.tools,
+      'teams' => ChannelKind.teams,
+      'canvas' || 'deck' => ChannelKind.deck,
+      _ => ChannelKind.inbox,
+    };
+    if (toolViews.contains(view)) ToolsPrefs.instance.select(view, db: AppScope.of(context).db);
+    final i = plan.indexWhere((p) => p.kind == kind);
+    if (i >= 0) _switchSub(i);
+  }
 
   // BN26090606: hub-style sub swapped from PersonalHomeView to RhythmView
   // (was built but never wired into this tab) and relabeled Personal ->

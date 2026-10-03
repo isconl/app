@@ -17,10 +17,10 @@ import 'inbox_threads.dart';
 /// sit under Unknown, with Link to person and Create person. The grouping and the display rules live in
 /// inbox_threads.dart so they are tested without a widget.
 class InboxView extends StatefulWidget {
-  const InboxView({super.key, this.onOpenSub});
+  const InboxView({super.key, this.onOpenView});
 
-  /// Switches the Channels tab to another sub-tab (Teams 1, Kanban 2, Buffer 3).
-  final void Function(int sub)? onOpenSub;
+  /// Opens the Channels sub-tab that holds a nav view (jira, social, github, teams).
+  final void Function(String view)? onOpenView;
 
   @override
   State<InboxView> createState() => _InboxViewState();
@@ -143,7 +143,7 @@ class _InboxViewState extends State<InboxView> {
                   listenable: Listenable.merge([services.store.jira, services.store.buffer]),
                   builder: (context, _) => Padding(
                     padding: const EdgeInsets.only(bottom: 14),
-                    child: ChannelsDashboard(dash: _dash(services, feed), onOpenSub: widget.onOpenSub),
+                    child: ChannelsDashboard(dash: _dash(services, feed), onOpenView: widget.onOpenView),
                   ),
                 ),
                 for (final t in groups.people.where(shown))

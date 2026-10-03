@@ -142,6 +142,7 @@ class Store {
   Snapshot get nav => of('nav', '/api/nav');
   Snapshot get checkpoint => of('checkpoint', '/api/checkpoint');
   Snapshot get opsStatus => of('opsStatus', '/api/ops/status');
+  Snapshot get deckStudio => of('deckStudio', '/api/deck/studio');
 
   // Domains
   Snapshot get jira => of('jira', '/api/jira/issues');
