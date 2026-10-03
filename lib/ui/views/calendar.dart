@@ -9,6 +9,7 @@ import '../../util/day_blocks.dart';
 import '../../util/equicycle.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/month_grid.dart';
 import 'learning_export_stub.dart'
     if (dart.library.io) 'learning_export_native.dart' as export_impl;
 
@@ -196,14 +197,29 @@ class _CalendarViewState extends State<CalendarView> {
               children: [
                 _modeAndActionsRow(),
                 const SizedBox(height: 8),
-                if (_mode == _CalMode.gregorian) ...[
-                  _monthHeader(),
-                  const SizedBox(height: 8),
+                if (_mode == _CalMode.gregorian)
                   Panel(
                     padding: const EdgeInsets.all(8),
-                    child: _grid(byDay),
-                  ),
-                ] else if (_mode == _CalMode.equicycle)
+                    child: GregorianMonthGrid(
+                      month: _month,
+                      today: DateTime.now(),
+                      selected: _selected,
+                      eventDays: byDay.keys.toSet(),
+                      onSelect: (d) => setState(() {
+                        _selected = d;
+                        if (d.month != _month.month) _month = DateTime(d.year, d.month);
+                      }),
+                      onMonth: (delta) => setState(() => _month = DateTime(_month.year, _month.month + delta)),
+                      onToday: () {
+                        final now = DateTime.now();
+                        setState(() {
+                          _month = DateTime(now.year, now.month);
+                          _selected = DateTime(now.year, now.month, now.day);
+                        });
+                      },
+                    ),
+                  )
+                else if (_mode == _CalMode.equicycle)
                   Panel(
                     padding: const EdgeInsets.all(8),
                     child: _equicycleGrid(byDay),
@@ -633,110 +649,6 @@ class _CalendarViewState extends State<CalendarView> {
           ),
         );
       },
-    );
-  }
-
-  Widget _monthHeader() {
-    return Row(
-      children: [
-        Text('${fmt.monthsFull[_month.month - 1]} ${_month.year}',
-            style: T.title),
-        const Spacer(),
-        IconButton(
-          icon: const Icon(Icons.chevron_left_rounded, color: C.text2),
-          onPressed: () => setState(
-              () => _month = DateTime(_month.year, _month.month - 1)),
-        ),
-        TextButton(
-          onPressed: () {
-            final now = DateTime.now();
-            setState(() {
-              _month = DateTime(now.year, now.month);
-              _selected = DateTime(now.year, now.month, now.day);
-            });
-          },
-          child: const Text('Today'),
-        ),
-        IconButton(
-          icon: const Icon(Icons.chevron_right_rounded, color: C.text2),
-          onPressed: () => setState(
-              () => _month = DateTime(_month.year, _month.month + 1)),
-        ),
-      ],
-    );
-  }
-
-  Widget _grid(Map<String, List<Map<String, dynamic>>> byDay) {
-    final firstDay = DateTime(_month.year, _month.month, 1);
-    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
-    final leading = (firstDay.weekday + 6) % 7; // Monday-first
-    final today = DateTime.now();
-    final cells = <Widget>[];
-
-    for (final wd in ['M', 'T', 'W', 'T', 'F', 'S', 'S']) {
-      cells.add(Center(
-          child:
-              Text(wd, style: T.monoSmall.copyWith(color: C.text3))));
-    }
-    for (var idx = 0; idx < leading; idx++) {
-      cells.add(const SizedBox.shrink());
-    }
-    for (var day = 1; day <= daysInMonth; day++) {
-      final date = DateTime(_month.year, _month.month, day);
-      final key = fmt.isoDate(date);
-      final has = byDay.containsKey(key);
-      final isToday = date.year == today.year &&
-          date.month == today.month &&
-          date.day == today.day;
-      final isSel = _selected != null &&
-          date.year == _selected!.year &&
-          date.month == _selected!.month &&
-          date.day == _selected!.day;
-      cells.add(GestureDetector(
-        onTap: () => setState(() => _selected = date),
-        child: Container(
-          margin: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            color: isSel ? C.greenBg : null,
-            border: Border.all(
-                color: isSel
-                    ? C.green
-                    : isToday
-                        ? C.borderMid
-                        : Colors.transparent),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('$day',
-                  style: T.small.copyWith(
-                    color: isSel
-                        ? C.greenBright
-                        : isToday
-                            ? C.text
-                            : C.text2,
-                    fontWeight: isToday || isSel
-                        ? FontWeight.w600
-                        : FontWeight.w400,
-                  )),
-              SizedBox(
-                height: 5,
-                child: has
-                    ? const StatusDot(C.green, size: 4)
-                    : const SizedBox.shrink(),
-              ),
-            ],
-          ),
-        ),
-      ));
-    }
-    return GridView.count(
-      crossAxisCount: 7,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 0.95,
-      children: cells,
     );
   }
 
