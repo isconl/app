@@ -1,11 +1,15 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../../app_scope.dart';
+import '../../console/console_mode.dart';
+import '../../console/console_services.dart';
 import '../../theme.dart';
 import '../../util/day_blocks.dart';
 import '../../util/fmt.dart' as fmt;
 import 'common.dart';
+import 'console_faces.dart';
 
 /// Context ring widget atop the Command tab: countdown ring for the current
 /// block, 3 corner readouts, urgency-based color theming, and the particle-network
@@ -21,6 +25,11 @@ class _ContextRingCardState extends State<ContextRingCard>
     with SingleTickerProviderStateMixin {
   late final AnimationController _anim;
 
+  // BI26092648: the card's face, and the triple-tap that cycles it.
+  ConsoleServices? _console;
+  ConsoleMode _mode = ConsoleMode.progress;
+  final _taps = TripleTapDetector();
+
   @override
   void initState() {
     super.initState();
@@ -31,7 +40,30 @@ class _ContextRingCardState extends State<ContextRingCard>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_console != null) return;
+    final c = ConsoleServices.of(AppScope.of(context));
+    _console = c;
+    _mode = c.mode.mode;
+    c.mode.addListener(_onMode);
+    c.restore();
+  }
+
+  void _onMode(ConsoleMode m) {
+    if (mounted && m != _mode) setState(() => _mode = m);
+  }
+
+  void _onCardTap() {
+    if (_taps.tap(DateTime.now())) {
+      HapticFeedback.lightImpact();
+      _console?.mode.cycle();
+    }
+  }
+
+  @override
   void dispose() {
+    _console?.mode.removeListener(_onMode);
     _anim.dispose();
     super.dispose();
   }
@@ -78,7 +110,10 @@ class _ContextRingCardState extends State<ContextRingCard>
             ? '${curBlock.startClock} - ${curBlock.endClock}'
             : (nextBlock != null ? 'starts ${nextBlock.startClock}' : '08:00 - 17:00');
 
-        return Container(
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: _onCardTap,
+          child: Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
             color: C.panel,
@@ -105,34 +140,57 @@ class _ContextRingCardState extends State<ContextRingCard>
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: urgency.bg,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                'Console',
-                                style: T.monoSmall.copyWith(
-                                  fontSize: 10,
-                                  color: urgency.primary,
-                                  fontWeight: FontWeight.w600,
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: _mode == ConsoleMode.recorder ? C.redBg : urgency.bg,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    _mode.pillSuffix == null ? 'Console' : 'Console · ${_mode.pillSuffix}',
+                                    key: const ValueKey('console-pill'),
+                                    style: T.monoSmall.copyWith(
+                                      fontSize: 10,
+                                      color: _mode == ConsoleMode.recorder ? C.red : urgency.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(height: 5),
+                                ConsoleModeDots(mode: _mode, color: _mode == ConsoleMode.recorder ? C.red : urgency.primary),
+                              ],
                             ),
-                            if (cornerElapsed.isNotEmpty) ...[
+                            if (_mode == ConsoleMode.progress && cornerElapsed.isNotEmpty) ...[
                               const SizedBox(width: 8),
-                              Text('$cornerElapsed elapsed', style: T.tiny),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text('$cornerElapsed elapsed', style: T.tiny),
+                              ),
                             ],
                           ],
                         ),
-                        Text(cornerLength, style: T.tiny),
+                        if (_mode == ConsoleMode.progress) Text(cornerLength, style: T.tiny),
                       ],
                     ),
                     const SizedBox(height: 12),
+                    // A triple-tap cycles the faces; the cross-fade keeps the card's size steady.
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: KeyedSubtree(
+                        key: ValueKey(_mode),
+                        child: switch (_mode) {
+                          ConsoleMode.progress => Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
                     Center(
                       child: SizedBox(
                         width: 170,
@@ -188,12 +246,19 @@ class _ContextRingCardState extends State<ContextRingCard>
                           ),
                         ],
                       ),
+                              ],
+                            ),
+                          ConsoleMode.player => PlayerFace(player: _console!.player, services: _console!),
+                          ConsoleMode.recorder => RecorderFace(recorder: _console!.recorder, services: _console!),
+                        },
+                      ),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-        );
+        ));
       },
     );
   }
