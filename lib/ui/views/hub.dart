@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/day_close.dart';
+import 'spaced_review_view.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show openNavRoute;
 import '../widgets/block_card.dart';
@@ -89,6 +90,7 @@ class _HubViewState extends State<HubView> {
                     )
                   : const SizedBox.shrink(),
             ),
+            const ReviewCard(),
             // ---- hero — date/due/review card, always first ----
             Panel(
               child: Column(

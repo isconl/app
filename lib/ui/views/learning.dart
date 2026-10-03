@@ -13,6 +13,7 @@ import '../../data/modules.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../../util/reader_prefs.dart';
+import '../../util/spaced_review.dart';
 import '../shell.dart' show ShellAppBar, SyncIndicator, openMenu;
 import '../widgets/common.dart';
 import '../widgets/listen_bar.dart';
@@ -1365,6 +1366,7 @@ class _LessonScreenState extends State<LessonScreen> {
             revertTo,
             force: true,
           );
+          SpacedReview.instance.withdraw(widget.course, widget.file, db: services.db);
         },
       );
     }
@@ -1409,6 +1411,13 @@ class _LessonScreenState extends State<LessonScreen> {
           widget.file,
           'done',
         );
+        // BI26100145: a finished module enters the 1, 7 and 30 day review schedule.
+        SpacedReview.instance.enrol(
+            course: widget.course,
+            file: widget.file,
+            title: widget.title.isEmpty ? widget.file : widget.title,
+            now: DateTime.now(),
+            db: services.db);
       },
       child: const Text('Mark as done'),
     );
