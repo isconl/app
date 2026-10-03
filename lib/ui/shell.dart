@@ -24,6 +24,8 @@ import 'views/finance.dart';
 import 'views/github.dart';
 import 'views/hosted_services.dart';
 import 'views/hub.dart';
+import 'views/codex.dart';
+import 'views/identity.dart';
 import 'views/ideas.dart';
 import 'views/inbox.dart';
 import 'views/jira.dart';
@@ -255,7 +257,7 @@ class _ShellState extends State<Shell> {
     _SubTab('Rhythm',    RhythmView(onOpenSub: _switchSub)),
     const _SubTab('Study',  LearningView()),
     const _SubTab('Holdings',   FinanceView()),
-    const _SubTab('Journal',   JournalView()),
+    const _SubTab('Codex',   CodexView()),
   ];
 
   List<_SubTab> _subsFor(int tab) => switch (tab) {
@@ -901,11 +903,13 @@ class MenuSheet extends StatelessWidget {
               () => go(const LearningView(), 'Study')),
           _item(ctx, Icons.account_balance_wallet_rounded, 'Holdings',
               () => go(const FinanceView(), 'Holdings')),
-          _item(ctx, Icons.auto_stories_rounded, 'Journal',
-              () => go(const JournalView(), 'Journal')),
-          _item(ctx, Icons.lightbulb_rounded, 'Ideas',
-              () => go(const IdeasView(), 'Ideas'),
+          // BI26100207: Journal and Ideas are one item, Codex, each still on its own route.
+          _item(ctx, Icons.auto_stories_rounded, 'Codex',
+              () => go(const CodexView(), 'Codex'),
               badge: ideasCount > 0 ? '$ideasCount' : null),
+          // BI26100207: the archetype spaces live under Identity, as on the web.
+          _item(ctx, Icons.badge_rounded, 'Identity',
+              () => go(const IdentityView(), 'Identity')),
           // ── CIRCLE ───────────────────────────────────────────
           const SectionLabel('Circle'),
           _item(ctx, Icons.favorite_rounded, 'Family',
@@ -920,12 +924,6 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Spaces'),
           _item(ctx, Icons.hub_rounded, 'All Spaces',
               () => go(const SpacesView(), 'Spaces')),
-          _item(ctx, Icons.visibility_rounded, 'Visionary',
-              () => go(const SpacesView(axis: 'VIS'), 'Visionary')),
-          _item(ctx, Icons.engineering_rounded, 'Innovator',
-              () => go(const SpacesView(axis: 'INN'), 'Innovator')),
-          _item(ctx, Icons.palette_rounded, 'Creator',
-              () => go(const SpacesView(axis: 'CRE'), 'Creator')),
           // ── SYSTEMS ──────────────────────────────────────────
           // BN26090611: "System" -> "Systems", matching the web panel's
           // own rename (RG26090501). Ops added (new this session, wasn't
@@ -1087,6 +1085,8 @@ class SecondaryScreen extends StatelessWidget {
     'rhythm' => (const RhythmView(), 'Rhythm'),
     'study' || 'learning' => (const LearningView(), 'Study'),
     'holdings' || 'finance' => (const FinanceView(), 'Holdings'),
+    'codex' => (const CodexView(), 'Codex'),
+    'identity' => (const IdentityView(), 'Identity'),
     'journal' => (const JournalView(), 'Journal'),
     'ideas' => (const IdeasView(), 'Ideas'),
     'circle' || 'contacts' => (const ContactsView(), 'Contacts'),

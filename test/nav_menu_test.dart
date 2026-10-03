@@ -42,7 +42,10 @@ void main() {
     expect(navRouteFor(const NavItemDef(view: 'today', label: 'Hub')), 'hub');
     expect(navRouteFor(const NavItemDef(view: 'projects', label: 'Platforms', attrs: {'data-cat': 'platform'})), 'platforms');
     expect(navRouteFor(const NavItemDef(view: 'circle', label: 'Family', attrs: {'data-ring': 'family'})), 'family');
-    expect(navRouteFor(const NavItemDef(view: 'codex', label: 'Codex')), isNull);
+    // BI26092651 and BI26100207: Codex and Identity used to have no view in the app; both open one now.
+    expect(navRouteFor(const NavItemDef(view: 'codex', label: 'Codex')), 'codex');
+    expect(navRouteFor(const NavItemDef(view: 'identity', label: 'Identity')), 'identity');
+    expect(navRouteFor(const NavItemDef(view: 'hologram', label: 'Nope')), isNull);
   });
 
   test('the theme line splits eqShort and adds the tagline when present', () {

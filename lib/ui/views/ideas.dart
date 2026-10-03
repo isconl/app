@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import 'codex.dart' show PromoteOutcome, promoteIdeaToTask;
 
 /// Spark: the idea pipeline.
 ///
@@ -301,6 +302,27 @@ class _IdeaTile extends StatelessWidget {
           KvRow('Domain', fmt.s(idea['DOMAIN'])),
           KvRow('Tags', fmt.s(idea['TAGS'])),
           KvRow('Captured', fmt.shortDate(idea['CREATED_AT'])),
+          const SizedBox(height: 14),
+          // BI26092651: an idea becomes a task without leaving the sheet.
+          OutlinedButton.icon(
+            key: const ValueKey('idea-make-task'),
+            onPressed: () async {
+              final services = AppScope.of(context);
+              Navigator.pop(ctx);
+              final r = await promoteIdeaToTask(services, idea, stages);
+              if (!context.mounted) return;
+              switch (r.outcome) {
+                case PromoteOutcome.done:
+                  toast(context, r.stageMoved ? 'Task created, idea marked acted' : 'Task created');
+                case PromoteOutcome.queued:
+                  toast(context, 'Task queued - will sync');
+                case PromoteOutcome.failed:
+                  toast(context, r.error ?? 'Could not make a task', error: true);
+              }
+            },
+            icon: const Icon(Icons.task_alt_rounded, size: 18),
+            label: const Text('Make it a task'),
+          ),
           const SizedBox(height: 14),
           Text('MOVE TO STAGE', style: T.label.copyWith(letterSpacing: 0.6)),
           const SizedBox(height: 8),

@@ -100,7 +100,7 @@ String? navRouteFor(NavItemDef i) {
     case 'isconl' || 'xkeel' || 'qspace' || 'qgrand':
       return 'spaces';
     case 'identity' || 'codex':
-      return null;
+      return i.view;
     default:
       return viewForNavRoute(i.view) != null ? i.view : null;
   }
@@ -110,8 +110,6 @@ String? navRouteFor(NavItemDef i) {
 /// one. The only list in the menu not served by hub.
 const List<(String, IconData, String)> kMobileOnlyItems = [
   ('Channels', Icons.dashboard_rounded, 'channels'),
-  ('Journal', Icons.auto_stories_rounded, 'journal'),
-  ('Ideas', Icons.lightbulb_rounded, 'ideas'),
   ('Articles', Icons.article_rounded, 'articles'),
   ('Decisions & Risks', Icons.gavel_rounded, 'decisions'),
   ('Services', Icons.apps_rounded, 'services'),

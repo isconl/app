@@ -27,6 +27,15 @@ class TestApiClient extends ApiClient {
   bool failSignals = false;
   Map<String, dynamic>? signalsResponse;
 
+  /// Every write the app made through this client, for tests to assert on.
+  final posts = <({String path, Map<String, dynamic> body})>[];
+
+  @override
+  Future<dynamic> postJson(String path, Map<String, dynamic> body, {bool cold = false}) async {
+    posts.add((path: path, body: body));
+    return {'ok': true};
+  }
+
   @override
   Future<dynamic> getJson(String path, {bool cold = false}) async {
     if (path.startsWith('/api/signals')) {
