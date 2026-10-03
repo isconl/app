@@ -195,7 +195,7 @@ class _ShellState extends State<Shell> {
   // (PersonalHomeView -> RhythmView, a real content view replacing a
   // generic dashboard landing).
   List<_SubTab> get _channelSubs => [
-    const _SubTab('Inbox',   InboxView()),
+    _SubTab('Inbox',   InboxView(onOpenSub: _switchSub)),
     const _SubTab('Teams',   TeamsView()),
     const _SubTab('Kanban',  JiraView()),
     const _SubTab('Buffer',  SocialView()),

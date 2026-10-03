@@ -5,6 +5,8 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import 'channels_dash_model.dart';
+import 'channels_dashboard.dart';
 import 'circle.dart' show PersonScreen;
 import 'inbox_threads.dart';
 
@@ -12,8 +14,41 @@ import 'inbox_threads.dart';
 /// Tapping a person opens [InboxThreadView], the conversation as chat bubbles. Senders with no person yet
 /// sit under Unknown, with Link to person and Create person. The grouping and the display rules live in
 /// inbox_threads.dart so they are tested without a widget.
-class InboxView extends StatelessWidget {
-  const InboxView({super.key});
+class InboxView extends StatefulWidget {
+  const InboxView({super.key, this.onOpenSub});
+
+  /// Switches the Channels tab to another sub-tab (Teams 1, Kanban 2, Buffer 3).
+  final void Function(int sub)? onOpenSub;
+
+  @override
+  State<InboxView> createState() => _InboxViewState();
+}
+
+class _InboxViewState extends State<InboxView> {
+  final _scroll = ScrollController();
+  bool _pinned = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(() {
+      final past = _scroll.hasClients && _scroll.offset > 360;
+      if (past != _pinned) setState(() => _pinned = past);
+    });
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  ChannelsDash _dash(AppServices services, List<Map<String, dynamic>> feed) => ChannelsDash.from(
+        feed: feed,
+        jiraIssues: fmt.lm(fmt.m(services.store.jira.value)['issues']),
+        buffer: fmt.m(services.store.buffer.value),
+        now: DateTime.now(),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +57,7 @@ class InboxView extends StatelessWidget {
       children: [
         SnapshotView(
           snapshot: services.store.state,
+          controller: _scroll,
           builder: (context, data) {
             final feed = fmt.lm(fmt.m(data)['feed']);
             if (feed.isEmpty) {
@@ -48,6 +84,13 @@ class InboxView extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                ListenableBuilder(
+                  listenable: Listenable.merge([services.store.jira, services.store.buffer]),
+                  builder: (context, _) => Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: ChannelsDashboard(dash: _dash(services, feed), onOpenSub: widget.onOpenSub),
+                  ),
+                ),
                 for (final t in groups.people)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
@@ -79,6 +122,18 @@ class InboxView extends StatelessWidget {
               ],
             );
           },
+        ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: ListenableBuilder(
+            listenable: Listenable.merge([services.store.state, services.store.jira, services.store.buffer]),
+            builder: (context, _) => ChannelsSummaryBar(
+              dash: _dash(services, fmt.lm(fmt.m(services.store.state.value)['feed'])),
+              visible: _pinned,
+            ),
+          ),
         ),
         Positioned(
           right: 16,
