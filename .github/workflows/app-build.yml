@@ -85,6 +85,7 @@ jobs:
             gh release create "$TAG" \
               --target "${{ github.sha }}" \
               --title "iSconl v${{ steps.read.outputs.version }}" \
+              --draft \
               --notes "$NOTES"
           fi
 
@@ -207,12 +208,26 @@ jobs:
           TAG: apk-v${{ needs.version.outputs.version }}
         run: gh release upload "$TAG" "$ARTEFACT" --clobber
 
+  # BI26100126: the release is opened as a DRAFT and published only here, after the
+  # APK is confirmed attached. A failed build leaves a draft, never an empty
+  # "latest" release that hides the real one.
+  publish:
+    needs: [version, verify]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: apk-v${{ needs.version.outputs.version }}
+        run: gh release edit "$TAG" --draft=false --latest
+
   # The update path on an installed phone is unfixable remotely, so it gets an
   # explicit assertion rather than an assumption. If the APK is missing, this
   # fails the run loudly instead of leaving a half-published release behind.
   verify:
     needs: [version, build]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Assert the Android artefact reached the release
