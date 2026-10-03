@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../theme.dart';
+import 'reader_prefs.dart';
 
 /// How much room the renderer is being given.
 ///
@@ -49,7 +50,7 @@ class Markdown extends StatelessWidget {
     final style = baseStyle ??
         (_reading
             ? T.body.copyWith(
-                fontSize: 15.5, height: 1.72, color: C.text, letterSpacing: 0.1)
+                fontSize: 15.5, height: 1.72 + ReaderPrefs.instance.lineBoost, color: C.text, letterSpacing: 0.1)
             : T.body2.copyWith(color: C.text, height: 1.55));
     final blocks = _parseBlocks(source);
     final children = <Widget>[];
@@ -132,7 +133,7 @@ class Markdown extends StatelessWidget {
                     color: C.text2,
                     fontSize: 15.5,
                     fontStyle: FontStyle.italic,
-                    height: 1.68)
+                    height: 1.68 + ReaderPrefs.instance.lineBoost)
                 : style.copyWith(color: C.text2),
           )),
         );
@@ -224,7 +225,7 @@ class Markdown extends StatelessWidget {
             style.copyWith(
               color: C.text,
               fontSize: _reading ? 15 : 13,
-              height: 1.62,
+              height: 1.62 + (_reading ? ReaderPrefs.instance.lineBoost : 0),
               fontStyle: c.kind == 'quote' ? FontStyle.italic : null,
             ),
           )),
@@ -294,7 +295,7 @@ class Markdown extends StatelessWidget {
   Widget _table(_Block block, TextStyle style) {
     final rows = block.rows;
     if (rows.isEmpty) return const SizedBox.shrink();
-    final cellStyle = style.copyWith(fontSize: _reading ? 13.5 : 12, height: 1.45);
+    final cellStyle = style.copyWith(fontSize: _reading ? 13.5 : 12, height: 1.45 + (_reading ? ReaderPrefs.instance.lineBoost : 0));
     return Container(
       margin: EdgeInsets.symmetric(vertical: _reading ? 16 : 6),
       decoration: BoxDecoration(

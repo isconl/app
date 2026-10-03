@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
@@ -11,6 +12,7 @@ import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
+import '../../util/reader_prefs.dart';
 import '../shell.dart' show ShellAppBar, SyncIndicator, openMenu;
 import '../widgets/common.dart';
 import '../widgets/listen_bar.dart';
@@ -1091,6 +1093,9 @@ class _LessonScreenState extends State<LessonScreen> {
   Timer? _resumeDebounce;
   bool _restoredResume = false;
   bool _showScrollTop = false;
+
+  /// BI26100141: focus mode hides the bar and buttons while scrolling down.
+  bool _barVisible = true;
   String? _currentContent;
 
   Map<String, dynamic>? get _computedNextLesson {
@@ -1155,12 +1160,37 @@ class _LessonScreenState extends State<LessonScreen> {
       }
     });
     _scroll.addListener(_onScroll);
+    ReaderPrefs.instance.addListener(_onPrefs);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ReaderPrefs.instance.ensureLoaded(AppScope.of(context).db);
+    });
+  }
+
+  void _onPrefs() {
+    if (!mounted) return;
+    setState(() {
+      if (!ReaderPrefs.instance.focus) _barVisible = true;
+    });
+  }
+
+  /// Scrolling down hides the bar and buttons; scrolling up, or the top of the page, brings them back.
+  void _updateBarVisibility() {
+    if (!_scroll.hasClients || !ReaderPrefs.instance.focus) return;
+    final dir = _scroll.position.userScrollDirection;
+    var visible = _barVisible;
+    if (_scroll.offset < 24 || dir == ScrollDirection.forward) {
+      visible = true;
+    } else if (dir == ScrollDirection.reverse) {
+      visible = false;
+    }
+    if (visible != _barVisible) setState(() => _barVisible = visible);
   }
 
   // BI26092613: local, always-on scroll-position tracking -- written
   // to local db and queued in outbox in the same call, debounced to 2 s
   // while scrolling and on leaving the screen, as a fraction 0 to 1.
   void _onScroll() {
+    _updateBarVisibility();
     if (!_scroll.hasClients || _scroll.position.maxScrollExtent <= 0) return;
     // BI26092614: scroll-to-top appears only after scrolling past one screen height.
     final show = _scroll.offset > MediaQuery.of(context).size.height;
@@ -1301,6 +1331,7 @@ class _LessonScreenState extends State<LessonScreen> {
     _undoTimer?.cancel();
     _saveResumeNow();
     _scroll.removeListener(_onScroll);
+    ReaderPrefs.instance.removeListener(_onPrefs);
     _scroll.dispose();
     super.dispose();
   }
@@ -1392,10 +1423,25 @@ class _LessonScreenState extends State<LessonScreen> {
       '/api/learning/lesson?course=${Uri.encodeComponent(widget.course)}&file=${Uri.encodeComponent(widget.file)}',
     );
     final heading = widget.title.isEmpty ? widget.file : widget.title;
+    final prefs = ReaderPrefs.instance;
+    final mq = MediaQuery.of(context);
+    final textScale = prefs.effectiveScale(mq.textScaler.scale(1.0));
+    final barShown = !prefs.focus || _barVisible;
+    // With focus mode on, the body runs behind the bar so hiding it never shifts the text.
+    final topPad = prefs.focus ? mq.padding.top + kToolbarHeight : 0.0;
 
     return Scaffold(
+      extendBodyBehindAppBar: prefs.focus,
       // Notes stays fixed in the corner; scroll-to-top appears above it (BI26100122).
-      floatingActionButton: Column(
+      floatingActionButton: IgnorePointer(
+        ignoring: !barShown,
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 180),
+          offset: Offset(0, barShown ? 0 : 2),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            opacity: barShown ? 1 : 0,
+            child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -1436,15 +1482,34 @@ class _LessonScreenState extends State<LessonScreen> {
             onPressed: () => _openNotesSheet(context),
           ),
         ],
+            ),
+          ),
+        ),
       ),
-      appBar: ShellAppBar(
-        title: heading,
-        showBrand: false,
-        actions: [
-          _ExportPdfButton(course: widget.course, file: widget.file),
-        ],
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 180),
+          offset: Offset(0, barShown ? 0 : -1.2),
+          child: ShellAppBar(
+            title: heading,
+            showBrand: false,
+            actions: [
+              IconButton(
+                key: const Key('reader-aa'),
+                tooltip: 'Text size and spacing',
+                icon: Text('Aa', style: T.w600(T.body2).copyWith(color: C.text)),
+                onPressed: () => showReaderComfortSheet(context),
+              ),
+              _ExportPdfButton(course: widget.course, file: widget.file),
+            ],
+          ),
+        ),
       ),
-      body: Column(
+      body: MediaQuery(
+        data: mq.copyWith(textScaler: TextScaler.linear(textScale)),
+        child: Stack(children: [
+      Column(
         children: [
           ReadingProgress(controller: _scroll),
           Expanded(
@@ -1454,7 +1519,7 @@ class _LessonScreenState extends State<LessonScreen> {
               // The reading surface owns its own margins, so the scroll view
               // contributes nothing horizontally. Bottom room is for the
               // thumb, not for a nav bar - this screen is pushed, not tabbed.
-              padding: const EdgeInsets.fromLTRB(0, 0, 0, 56),
+              padding: EdgeInsets.fromLTRB(0, topPad, 0, 56),
               builder: (context, data) {
                 final lessonMap = fmt.m(data);
                 final content = fmt.s(lessonMap['content']);
@@ -1604,8 +1669,98 @@ class _LessonScreenState extends State<LessonScreen> {
           ),
         ],
       ),
+          if (!barShown)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: mq.padding.top + 28,
+              child: GestureDetector(
+                key: const Key('reader-top-edge'),
+                behavior: HitTestBehavior.translucent,
+                onTap: () => setState(() => _barVisible = true),
+              ),
+            ),
+        ]),
+      ),
     );
   }
+}
+
+/// BI26100141: text size, line spacing and focus mode. Changes apply live and are remembered.
+Future<void> showReaderComfortSheet(BuildContext context) {
+  final db = AppScope.of(context).db;
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: C.panel,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
+      side: BorderSide(color: C.border),
+    ),
+    builder: (ctx) => SafeArea(
+      child: ListenableBuilder(
+        listenable: ReaderPrefs.instance,
+        builder: (ctx, _) {
+          final p = ReaderPrefs.instance;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('TEXT SIZE', style: T.label),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (var i = 0; i < ReaderPrefs.sizeLabels.length; i++)
+                      ChoiceChip(
+                        key: Key('size-${ReaderPrefs.sizeLabels[i]}'),
+                        label: Text(ReaderPrefs.sizeLabels[i]),
+                        selected: p.sizeStep == i,
+                        onSelected: (_) => p.update(size: i, db: db),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text('LINE SPACING', style: T.label),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ChoiceChip(
+                      key: const Key('spacing-normal'),
+                      label: const Text('Normal'),
+                      selected: !p.relaxed,
+                      onSelected: (_) => p.update(relaxed: false, db: db),
+                    ),
+                    ChoiceChip(
+                      key: const Key('spacing-relaxed'),
+                      label: const Text('Relaxed'),
+                      selected: p.relaxed,
+                      onSelected: (_) => p.update(relaxed: true, db: db),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                SwitchListTile(
+                  key: const Key('focus-switch'),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Focus mode', style: T.body2),
+                  subtitle: Text(
+                    'Hide the bar and buttons while you scroll down',
+                    style: T.tiny,
+                  ),
+                  value: p.focus,
+                  onChanged: (v) => p.update(focus: v, db: db),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    ),
+  );
 }
 
 /// Margin notes on a lesson.
