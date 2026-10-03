@@ -15,6 +15,7 @@ class StatTile extends StatelessWidget {
     this.delta,
     this.deltaGoodWhenUp = true,
     this.trend = const [],
+    this.caption,
     this.onTap,
     this.updatedAt,
     this.error,
@@ -30,6 +31,9 @@ class StatTile extends StatelessWidget {
   final num? delta;
   final bool deltaGoodWhenUp;
   final List<double> trend;
+
+  /// One short line under the number, for context such as "booking not live yet".
+  final String? caption;
   final VoidCallback? onTap;
   final DateTime? updatedAt;
   final String? error;
@@ -69,6 +73,7 @@ class StatTile extends StatelessWidget {
                     if (delta != null) _Delta(delta!, deltaGoodWhenUp),
                   ],
                 ),
+                if (caption != null) Text(caption!, style: T.tiny),
                 if (trend.length > 1) ...[
                   const SizedBox(height: 6),
                   Sparkline(

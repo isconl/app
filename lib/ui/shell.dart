@@ -89,11 +89,12 @@ const _commandSubs = [
 // BI26092324: now a real PracticeView (Documents = PortfolioView unchanged,
 // plus honest placeholders for Overview/Practices/Codex/Enquiries), matching
 // the web console's renderPractice()/PRACTICE_TABS tab for tab.
-const _projectsSubs = [
-  _SubTab('Practice',  PracticeView()),
-  _SubTab('Corporate', CorporateView()),
-  _SubTab('Products',  ProjectsView(cat: 'product')),
-  _SubTab('Platforms', ProjectsView(cat: 'platform')),
+// BI26100129: Practice carries the Projects dashboard, whose tiles open the siblings.
+List<_SubTab> _projectsSubsFor(void Function(int) openSub) => [
+  _SubTab('Practice',  PracticeView(onOpenSub: openSub)),
+  const _SubTab('Corporate', CorporateView()),
+  const _SubTab('Products',  ProjectsView(cat: 'product')),
+  const _SubTab('Platforms', ProjectsView(cat: 'platform')),
 ];
 
 // BN26090606: target confirmed by Sconl -- Settings, Files, Ops, Security.
@@ -216,7 +217,7 @@ class _ShellState extends State<Shell> {
   List<_SubTab> _subsFor(int tab) => switch (tab) {
     0 => _commandSubs,
     1 => _channelSubs,
-    2 => _projectsSubs,
+    2 => _projectsSubsFor(_switchSub),
     3 => _personalSubs,
     4 => _settingsSubs,
     _ => _commandSubs,
