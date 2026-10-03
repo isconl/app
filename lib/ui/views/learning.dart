@@ -14,6 +14,7 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../../util/reader_prefs.dart';
 import '../../util/spaced_review.dart';
+import 'study_search_view.dart';
 import '../shell.dart' show ShellAppBar, SyncIndicator, openMenu;
 import '../widgets/common.dart';
 import '../widgets/listen_bar.dart';
@@ -103,6 +104,7 @@ class _LearningViewState extends State<LearningView> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const Padding(padding: EdgeInsets.only(bottom: 10), child: StudySearchEntry()),
               // ── transient prefetch progress only - the idle summary moved
               // down to each track card, where "how much of THIS is offline"
               // is actually actionable rather than one global number nobody
@@ -1069,7 +1071,15 @@ class LessonScreen extends StatefulWidget {
     this.trackColor = C.green,
     this.reviewedAt,
     this.version,
+    this.initialParagraph,
+    this.foundText,
   });
+
+  /// BI26100156: open at this paragraph (as the reader counts them), from a search result.
+  final int? initialParagraph;
+
+  /// The matched paragraph's text, shown briefly so the jump is visible.
+  final String? foundText;
 
   final String course;
   final String file;
@@ -1097,6 +1107,9 @@ class _LessonScreenState extends State<LessonScreen> {
 
   /// BI26100141: focus mode hides the bar and buttons while scrolling down.
   bool _barVisible = true;
+
+  /// BI26100156: the matched text is shown for a few seconds after a search jump.
+  bool _showFound = false;
   String? _currentContent;
 
   Map<String, dynamic>? get _computedNextLesson {
@@ -1316,6 +1329,22 @@ class _LessonScreenState extends State<LessonScreen> {
     _restoredResume = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || !_scroll.hasClients) return;
+      final jump = widget.initialParagraph;
+      if (jump != null) {
+        // A search result wins over the saved reading position.
+        final total = _currentContent == null
+            ? 0
+            : _currentContent!.split(RegExp(r'\n\s*\n')).where((p) => p.trim().isNotEmpty).length;
+        if (total > 0) {
+          final target = _scroll.position.maxScrollExtent * (jump / total);
+          _scroll.jumpTo(target.clamp(0, _scroll.position.maxScrollExtent));
+          setState(() => _showFound = true);
+          Future.delayed(const Duration(seconds: 4), () {
+            if (mounted) setState(() => _showFound = false);
+          });
+        }
+        return;
+      }
       final frac = await AppScope.of(context).db.lessonResumeFractionLocal(
             course: widget.course,
             file: widget.file,
@@ -1678,6 +1707,21 @@ class _LessonScreenState extends State<LessonScreen> {
           ),
         ],
       ),
+          if (_showFound && widget.foundText != null)
+            Positioned(
+              top: topPad,
+              left: 12,
+              right: 12,
+              child: Material(
+                key: const Key('found-banner'),
+                color: C.greenBg,
+                borderRadius: BorderRadius.circular(Sz.rMd),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Text(widget.foundText!, maxLines: 3, overflow: TextOverflow.ellipsis, style: T.small.copyWith(color: C.text)),
+                ),
+              ),
+            ),
           if (!barShown)
             Positioned(
               top: 0,
