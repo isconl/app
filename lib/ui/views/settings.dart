@@ -627,8 +627,11 @@ class _DayCloseSettingsState extends State<_DayCloseSettings> {
     final p = DayClosePrefs.instance;
     final db = AppScope.of(context).db;
     final time = '${p.hour.toString().padLeft(2, '0')}:${p.minute.toString().padLeft(2, '0')}';
+    // ListTiles paint on the nearest Material; the Panel's decoration would hide them.
     return Panel(
-      child: Column(children: [
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(children: [
         SwitchListTile(
           key: const Key('dayclose-enabled'),
           contentPadding: EdgeInsets.zero,
@@ -669,6 +672,7 @@ class _DayCloseSettingsState extends State<_DayCloseSettings> {
                 },
         ),
       ]),
+      ),
     );
   }
 }
