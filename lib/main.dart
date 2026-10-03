@@ -5,15 +5,18 @@ import 'package:local_auth/local_auth.dart';
 import 'package:sqflite/sqflite.dart' show databaseFactory;
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
+import 'app_nav.dart';
 import 'app_scope.dart';
 import 'services/alerts.dart';
 import 'services/branding.dart';
+import 'services/day_close_planner.dart';
 import 'services/platform.dart';
 import 'theme.dart';
 import 'ui/widgets/brand.dart' as brand;
 import 'ui/widgets/brand.dart' show BrandMotion;
 import 'ui/adaptive_shell.dart';
 import 'ui/login.dart';
+import 'ui/views/day_close.dart';
 import 'ui/widgets/common.dart';
 
 Future<void> main() async {
@@ -46,6 +49,7 @@ class IsconlApp extends StatelessWidget {
       services: services,
       child: MaterialApp(
         title: 'iSconl',
+        navigatorKey: rootNavigatorKey,
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
         home: const RootGate(),
@@ -70,7 +74,11 @@ class _RootGateState extends State<RootGate> {
   @override
   void initState() {
     super.initState();
-    AlertService.instance.init();
+    AlertService.instance.init().then((_) {
+      if (mounted) replanDayClose(AppScope.of(context));
+    });
+    AlertService.instance.onDayClose = () => rootNavigatorKey.currentState
+        ?.push(MaterialPageRoute<void>(builder: (_) => const DayCloseScreen()));
     PlatformBridge.instance.onSharedText = _captureShare;
     PlatformBridge.instance.getSharedText().then((text) {
       if (text != null && text.trim().isNotEmpty) _captureShare(text);

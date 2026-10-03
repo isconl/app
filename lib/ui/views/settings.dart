@@ -6,6 +6,8 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/integrations_section.dart';
+import '../../services/day_close_planner.dart';
+import '../../util/day_close.dart';
 import 'systems_dashboard.dart';
 
 /// Connection, security, sync, update-on-cue, appearance, about.
@@ -57,6 +59,11 @@ class _SettingsViewState extends State<SettingsView> {
                   padding: const EdgeInsets.only(bottom: 14),
                   child: SystemsDashboardHost(onOpenSub: widget.onOpenSub),
                 ),
+              // ---- the end-of-day review ----
+              const SectionLabel('Day close'),
+              _DayCloseSettings(
+                  onChanged: () => replanDayClose(services)),
+
               // ---- automatic context ----
               const SectionLabel('Automatic context'),
               const SmsCard(),
@@ -581,6 +588,87 @@ class _Stat extends StatelessWidget {
           Text(label, style: T.tiny.copyWith(fontSize: 9.5)),
         ],
       ),
+    );
+  }
+}
+
+
+/// BI26100143: when the end-of-day review notification fires, and whether weekends are skipped.
+class _DayCloseSettings extends StatefulWidget {
+  const _DayCloseSettings({required this.onChanged});
+  final VoidCallback onChanged;
+
+  @override
+  State<_DayCloseSettings> createState() => _DayCloseSettingsState();
+}
+
+class _DayCloseSettingsState extends State<_DayCloseSettings> {
+  @override
+  void initState() {
+    super.initState();
+    DayClosePrefs.instance.addListener(_refresh);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) DayClosePrefs.instance.ensureLoaded(AppScope.of(context).db);
+    });
+  }
+
+  @override
+  void dispose() {
+    DayClosePrefs.instance.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = DayClosePrefs.instance;
+    final db = AppScope.of(context).db;
+    final time = '${p.hour.toString().padLeft(2, '0')}:${p.minute.toString().padLeft(2, '0')}';
+    return Panel(
+      child: Column(children: [
+        SwitchListTile(
+          key: const Key('dayclose-enabled'),
+          contentPadding: EdgeInsets.zero,
+          title: Text('End-of-day review', style: T.body2),
+          subtitle: Text('One notification to close the day', style: T.tiny),
+          value: p.enabled,
+          onChanged: (v) async {
+            await p.update(enabled: v, db: db);
+            widget.onChanged();
+          },
+        ),
+        ListTile(
+          key: const Key('dayclose-time'),
+          contentPadding: EdgeInsets.zero,
+          enabled: p.enabled,
+          title: Text('Time', style: T.body2),
+          trailing: Text(time, style: T.mono),
+          onTap: !p.enabled
+              ? null
+              : () async {
+                  final picked = await showTimePicker(
+                      context: context, initialTime: TimeOfDay(hour: p.hour, minute: p.minute));
+                  if (picked == null) return;
+                  await p.update(hour: picked.hour, minute: picked.minute, db: db);
+                  widget.onChanged();
+                },
+        ),
+        SwitchListTile(
+          key: const Key('dayclose-weekends'),
+          contentPadding: EdgeInsets.zero,
+          title: Text('Skip weekends', style: T.body2),
+          value: p.skipWeekends,
+          onChanged: !p.enabled
+              ? null
+              : (v) async {
+                  await p.update(skipWeekends: v, db: db);
+                  widget.onChanged();
+                },
+        ),
+      ]),
     );
   }
 }
