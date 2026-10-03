@@ -4,6 +4,8 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import 'personal_dash_model.dart';
+import 'personal_dashboard.dart';
 
 /// Rhythm: today's habits and the year behind them.
 ///
@@ -12,7 +14,10 @@ import '../widgets/common.dart';
 /// as evidence, not as checkboxes, because a tick that the next sync overwrites
 /// is a lie about who is in control.
 class RhythmView extends StatelessWidget {
-  const RhythmView({super.key});
+  const RhythmView({super.key, this.onOpenSub});
+
+  /// Switches the Personal tab to another sub-tab (Study 1, Holdings 2, Journal 3).
+  final void Function(int sub)? onOpenSub;
 
   static const _autoHabits = {'h-gh', 'h-learn', 'h-journal', 'h-tasks'};
 
@@ -32,9 +37,21 @@ class RhythmView extends StatelessWidget {
         final doneToday =
             habits.where((h) => fmt.b(todayLog[fmt.s(h['id'])])).length;
 
+        final now = DateTime.now();
+        final fin = fmt.m(services.store.finance.value);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: PersonalDashboard(
+                blocks: blocksProgress(fmt.lm(fmt.m(services.store.dayBlock.value)['blocks']), now),
+                habits: topHabits(habits, logs, DateTime(now.year, now.month, now.day)),
+                netWorth: fmt.m(fin['netWorth'])['net'],
+                currency: fmt.s(fin['currency']).isEmpty ? 'KES' : fmt.s(fin['currency']),
+                onOpenSub: onOpenSub,
+              ),
+            ),
             Row(
               children: [
                 Expanded(

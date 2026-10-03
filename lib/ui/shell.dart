@@ -208,7 +208,7 @@ class _ShellState extends State<Shell> {
   // Ideas dropped to hit the 4-sub-tab target -- still reachable via the
   // hamburger menu (Sconl's explicit call, 6 Sep 2026).
   List<_SubTab> get _personalSubs => [
-    const _SubTab('Rhythm',    RhythmView()),
+    _SubTab('Rhythm',    RhythmView(onOpenSub: _switchSub)),
     const _SubTab('Study',  LearningView()),
     const _SubTab('Holdings',   FinanceView()),
     const _SubTab('Journal',   JournalView()),
