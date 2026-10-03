@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
+import '../util/equicycle.dart';
 import '../data/sync.dart' show SyncPhase;
 import '../main.dart' show BrandMark;
 import '../services/alerts.dart';
@@ -261,8 +262,14 @@ class _ShellState extends State<Shell> {
           MaterialPageRoute(builder: (_) => SecondaryScreen(title: title, child: page)),
         );
     final fallback = FreshnessChipSource(services, open);
-    final onBacklog = _tab == 4 && _sub == 3;
-    return ChipSelector(onBacklog ? BacklogChipSource(services, open) : null, fallback);
+    if (_tab == 0) EquicycleYears.instance.ensureLoaded(services.api, services.db);
+    final StatusChipSource? specific = switch ((_tab, _sub)) {
+      (4, 3) => BacklogChipSource(services, open),
+      (4, 2) => OpsChipSource(services, open),
+      (0, _) => CycleChipSource(open),
+      _ => null,
+    };
+    return ChipSelector(specific, fallback);
   }
 
   @override
