@@ -179,6 +179,23 @@ class _LearningViewState extends State<LearningView> {
   }
 }
 
+/// BI26100404: a module title is never a front-matter line. The server derives titles from the
+/// front matter or the first heading; this guards a cached or older response that still carries
+/// `---`, falling back to the humanised file name.
+String safeModuleTitle(String title, String file) {
+  final t = title.trim();
+  if (t.isNotEmpty && !t.startsWith('---')) return t;
+  final base = file
+      .replaceAll(RegExp(r'\.md$', caseSensitive: false), '')
+      .replaceFirst(RegExp(r'^\d{8}_'), '')
+      .replaceFirst(RegExp(r'_v\d+_\d+_\d+$', caseSensitive: false), '')
+      .replaceFirst(RegExp(r'^\d+[-_]'), '')
+      .replaceAll(RegExp(r'[_-]+'), ' ')
+      .trim();
+  if (base.isEmpty) return file;
+  return base[0].toUpperCase() + base.substring(1);
+}
+
 /// Strips emoji codepoints from [text] (BI26092611).
 String stripEmoji(String text) {
   if (text.isEmpty) return text;
@@ -923,7 +940,7 @@ class LessonRow extends StatelessWidget {
 
     final tVal = fmt.s(lesson['TITLE']);
     final rawTitle = tVal.isNotEmpty ? tVal : fmt.s(lesson['title'] ?? file);
-    final title = stripEmoji(rawTitle);
+    final title = safeModuleTitle(stripEmoji(rawTitle), file);
 
     final subVal = fmt.s(lesson['SUBTITLE']);
     final rawSubtitle = subVal.isNotEmpty ? subVal : fmt.s(lesson['subtitle']);
@@ -1558,7 +1575,7 @@ class _LessonScreenState extends State<LessonScreen> {
 
     return Scaffold(
       extendBodyBehindAppBar: prefs.focus,
-      // Notes stays fixed in the corner; scroll-to-top appears above it (BI26100122).
+      // BI26100405: scroll-to-top is the one primary FAB; notes is a secondary above it.
       floatingActionButton: IgnorePointer(
         ignoring: !barShown,
         child: AnimatedSlide(
@@ -1567,27 +1584,14 @@ class _LessonScreenState extends State<LessonScreen> {
           child: AnimatedOpacity(
             duration: const Duration(milliseconds: 180),
             opacity: barShown ? 1 : 0,
-            child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 160),
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: SizeTransition(
-                sizeFactor: animation,
-                child: child,
-              ),
-            ),
-            child: _showScrollTop
-                ? Padding(
-                    key: const ValueKey('fab_scroll_top_visible'),
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: CircleFab(
+            // One primary, bottom-right: scroll to top (it appears once you have scrolled a screen).
+            // Notes is secondary: small and grey, above it. Same pattern as the holdings view.
+            child: FabStack(
+              primary: _showScrollTop
+                  ? FabAction(
                       heroTag: 'fab_lesson_scroll_top',
                       tooltip: 'Scroll to top',
-                      icon: const Icon(Icons.vertical_align_top_rounded),
+                      icon: Icons.vertical_align_top_rounded,
                       onPressed: () {
                         if (_scroll.hasClients) {
                           _scroll.animateTo(
@@ -1597,17 +1601,16 @@ class _LessonScreenState extends State<LessonScreen> {
                           );
                         }
                       },
-                    ),
-                  )
-                : const SizedBox.shrink(key: ValueKey('fab_scroll_top_hidden')),
-          ),
-          CircleFab(
-            heroTag: 'fab_lesson_notes',
-            tooltip: 'Notes',
-            icon: const Icon(Icons.edit_note_rounded),
-            onPressed: () => _openNotesSheet(context),
-          ),
-        ],
+                    )
+                  : null,
+              secondary: [
+                FabAction(
+                  heroTag: 'fab_lesson_notes',
+                  tooltip: 'Notes',
+                  icon: Icons.edit_note_rounded,
+                  onPressed: () => _openNotesSheet(context),
+                ),
+              ],
             ),
           ),
         ),

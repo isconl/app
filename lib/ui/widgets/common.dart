@@ -629,3 +629,53 @@ class CircleFab extends StatelessWidget {
   }
 }
 
+
+/// One floating action (BI26100405).
+class FabAction {
+  const FabAction({required this.icon, required this.tooltip, required this.onPressed, this.heroTag});
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final Object? heroTag;
+}
+
+/// The one floating-button pattern: at most ONE primary (green, bottom-right) and any number of
+/// secondaries (small, grey, stacked above it on the same right edge). A screen never has two green
+/// buttons. Matches the holdings view: add is primary; paste and receipt are secondary.
+class FabStack extends StatelessWidget {
+  const FabStack({super.key, this.primary, this.secondary = const []});
+
+  final FabAction? primary;
+  final List<FabAction> secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        for (var i = 0; i < secondary.length; i++) ...[
+          FloatingActionButton.small(
+            key: Key('fab-secondary-$i'),
+            heroTag: secondary[i].heroTag ?? 'fab-secondary-${secondary[i].tooltip}',
+            tooltip: secondary[i].tooltip,
+            backgroundColor: C.surface,
+            foregroundColor: C.text2,
+            shape: const CircleBorder(),
+            onPressed: secondary[i].onPressed,
+            child: Icon(secondary[i].icon, size: 18),
+          ),
+          if (i < secondary.length - 1 || primary != null) const SizedBox(height: 10),
+        ],
+        if (primary != null)
+          CircleFab(
+            key: const Key('fab-primary'),
+            heroTag: primary!.heroTag ?? 'fab-primary-${primary!.tooltip}',
+            tooltip: primary!.tooltip,
+            icon: Icon(primary!.icon),
+            onPressed: primary!.onPressed,
+          ),
+      ],
+    );
+  }
+}
