@@ -101,6 +101,11 @@ Future<AppServices> buildTestServices({bool online = true}) async {
             file TEXT NOT NULL,
             scroll_pct INTEGER NOT NULL,
             fraction REAL,
+            block_index INTEGER,
+            movement TEXT,
+            blocks_total INTEGER,
+            words_left INTEGER,
+            title TEXT,
             updated_at INTEGER NOT NULL,
             PRIMARY KEY (course, file)
           )''');

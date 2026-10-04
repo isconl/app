@@ -8,6 +8,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app_scope.dart';
 import '../../data/db.dart';
+import '../../util/markdown.dart' show MarkdownAnchors;
 import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
 import '../../study/cdm/cdm_lesson_body.dart';
@@ -1039,6 +1040,9 @@ class LessonRow extends StatelessWidget {
                         style: T.tiny.copyWith(color: C.text3),
                       ),
                     ],
+                    // BI26100325: how far through an unfinished module.
+                    if (status != 'done' && status != 'new')
+                      ReadingBar(course: courseId, file: file, color: trackColor),
                   ],
                 ),
               ),
@@ -1056,6 +1060,46 @@ class LessonRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// BI26100325: a thin progress bar under an unfinished module, from the saved
+/// reading position. Hidden until there is one, and when no database is in scope.
+@visibleForTesting
+class ReadingBar extends StatelessWidget {
+  const ReadingBar({super.key, required this.course, required this.file, required this.color});
+  final String course;
+  final String file;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    AppDb db;
+    try {
+      db = AppScope.of(context).db;
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
+    return FutureBuilder<double?>(
+      future: db.lessonResumeFractionLocal(course: course, file: file),
+      builder: (context, snap) {
+        final f = snap.data;
+        if (f == null || f < 0.02) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 6, right: 10),
+          child: ClipRRect(
+            key: const Key('reading-bar'),
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: f.clamp(0.0, 1.0),
+              minHeight: 3,
+              backgroundColor: C.surface,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1104,6 +1148,10 @@ class _LessonScreenState extends State<LessonScreen> {
   final _scroll = ScrollController();
   Timer? _resumeDebounce;
   bool _restoredResume = false;
+
+  /// BI26100325: block anchors for the module body, so "where I stopped" is a
+  /// block, not a pixel offset.
+  final _anchors = MarkdownAnchors();
   bool _showScrollTop = false;
 
   /// BI26100141: focus mode hides the bar and buttons while scrolling down.
@@ -1243,17 +1291,32 @@ class _LessonScreenState extends State<LessonScreen> {
         .clamp(0.0, 1.0);
     final pct = (fraction * 100).round().clamp(0, 100);
     final services = AppScope.of(context);
+    // BI26100325: by block as well, so a font-size change lands on the same block.
+    ReadingAnchor? anchor;
+    if (_anchors.count > 0) {
+      final block = _anchors.topVisible(_scroll);
+      anchor = ReadingAnchor(
+        block: block,
+        movement: _anchors.movementOf(block),
+        blocksTotal: _anchors.count,
+        wordsLeft: _anchors.wordsFrom(block),
+        title: widget.title.isEmpty ? widget.file : widget.title,
+      );
+    }
     services.db.saveLessonResumeLocal(
       course: widget.course,
       file: widget.file,
       scrollPct: pct,
       fraction: fraction,
+      anchor: anchor,
     );
     services.mutations.saveLessonResume(
       course: widget.course,
       lesson: widget.file,
       scrollPct: pct,
       fraction: fraction,
+      block: anchor?.block,
+      movement: anchor?.movement,
     );
   }
 
@@ -1346,7 +1409,22 @@ class _LessonScreenState extends State<LessonScreen> {
         }
         return;
       }
-      final frac = await AppScope.of(context).db.lessonResumeFractionLocal(
+      final db = AppScope.of(context).db;
+      // BI26100325: the saved block wins; if it no longer exists, the start of
+      // its movement; only then the old scroll fraction.
+      final anchor = await db.lessonAnchorLocal(course: widget.course, file: widget.file);
+      if (!mounted || !_scroll.hasClients) return;
+      if (anchor != null && _anchors.count > 0) {
+        var i = anchor.block;
+        if (i < 0 || i >= _anchors.count) {
+          i = _anchors.firstBlockOf(anchor.movement) ?? -1;
+        }
+        if (i >= 0) {
+          if (i > 0 && _anchors.reveal(i)) return;
+          if (i == 0) return;
+        }
+      }
+      final frac = await db.lessonResumeFractionLocal(
             course: widget.course,
             file: widget.file,
           );
@@ -1630,6 +1708,7 @@ class _LessonScreenState extends State<LessonScreen> {
                         fallback: content.isEmpty
                             ? _lessonOfflineNote()
                             : ReadingBody(content,
+                                anchors: _anchors,
                                 courseId: widget.course,
                                 baseUrl: services.api.baseUrl,
                                 token: services.api.token),
@@ -1638,6 +1717,7 @@ class _LessonScreenState extends State<LessonScreen> {
                       _lessonOfflineNote()
                     else
                       ReadingBody(content,
+                          anchors: _anchors,
                           courseId: widget.course,
                           baseUrl: services.api.baseUrl,
                           token: services.api.token),

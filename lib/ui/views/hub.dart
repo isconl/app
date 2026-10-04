@@ -1,3 +1,4 @@
+import 'continue_reading.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -91,6 +92,7 @@ class _HubViewState extends State<HubView> {
                   : const SizedBox.shrink(),
             ),
             const ReviewCard(),
+            const ContinueReadingCard(),
             // ---- hero — date/due/review card, always first ----
             Panel(
               child: Column(

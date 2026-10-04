@@ -52,7 +52,11 @@ class AppDb {
       // vault_schema.dart) alongside the pre-existing generic snapshot
       // cache, which stays as-is. onUpgrade only needs to ADD the new
       // tables for an existing install; onCreate covers both for a fresh one.
-      version: 6,
+      // v7 (BI26100325): lesson_resume also remembers WHERE by block (index,
+      // movement, how many blocks, words left, title), so reading resumes at the
+      // same block after a font-size or renderer change, and Today can offer
+      // "Continue reading" without opening the module.
+      version: 7,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE snapshots (
@@ -86,6 +90,11 @@ class AppDb {
             file TEXT NOT NULL,
             scroll_pct INTEGER NOT NULL,
             fraction REAL,
+            block_index INTEGER,
+            movement TEXT,
+            blocks_total INTEGER,
+            words_left INTEGER,
+            title TEXT,
             updated_at INTEGER NOT NULL,
             PRIMARY KEY (course, file)
           )''');
@@ -146,6 +155,19 @@ class AppDb {
           } catch (_) {}
         }
         if (oldVersion < 6) await CdmCache.createTables(db);
+        if (oldVersion < 7) {
+          for (final col in const [
+            'block_index INTEGER',
+            'movement TEXT',
+            'blocks_total INTEGER',
+            'words_left INTEGER',
+            'title TEXT',
+          ]) {
+            try {
+              await db.execute('ALTER TABLE lesson_resume ADD COLUMN $col');
+            } catch (_) {}
+          }
+        }
       },
     );
     return AppDb._(db);
@@ -293,6 +315,7 @@ class AppDb {
     required int scrollPct,
     double? fraction,
     int? updatedAt,
+    ReadingAnchor? anchor,
   }) async {
     final now = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
     final existing = await _db.query(
@@ -318,7 +341,11 @@ class AppDb {
     try {
       await _db.insert(
         'lesson_resume',
-        {...data, 'fraction': effectiveFraction},
+        {
+          ...data,
+          'fraction': effectiveFraction,
+          if (anchor != null) ...anchor.toColumns(),
+        },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     } catch (_) {
@@ -345,6 +372,39 @@ class AppDb {
     );
     if (rows.isEmpty) return null;
     return rows.first['scroll_pct'] as int?;
+  }
+
+  /// The saved block anchor for one lesson, or null when none was saved
+  /// (positions saved before v7 only have a fraction).
+  Future<ReadingAnchor?> lessonAnchorLocal({
+    required String course,
+    required String file,
+  }) async {
+    try {
+      final rows = await _db.query('lesson_resume',
+          where: 'course = ? AND file = ?', whereArgs: [course, file], limit: 1);
+      if (rows.isEmpty) return null;
+      return ReadingAnchor.fromRow(rows.first);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// BI26100325: the most recently read module that is not finished, for the
+  /// Today "Continue reading" card. Finished modules (status done) drop off.
+  Future<ReadingAnchor?> latestUnfinishedReading() async {
+    try {
+      final rows = await _db.rawQuery('''
+        SELECT r.* FROM lesson_resume r
+        LEFT JOIN lesson_progress p ON p.course = r.course AND p.file = r.file
+        WHERE r.block_index IS NOT NULL
+          AND COALESCE(lower(p.status), '') != 'done'
+        ORDER BY r.updated_at DESC LIMIT 1''');
+      if (rows.isEmpty) return null;
+      return ReadingAnchor.fromRow(rows.first);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// The saved scroll fraction (0.0 to 1.0) for one lesson, or null if none saved.
@@ -643,3 +703,54 @@ Future<dynamic> overlayLessonProgressLocal(
   return base;
 }
 
+
+/// Where a reader stopped in a module, by block (BI26100325).
+class ReadingAnchor {
+  const ReadingAnchor({
+    this.course = '',
+    this.file = '',
+    required this.block,
+    required this.movement,
+    required this.blocksTotal,
+    required this.wordsLeft,
+    this.title = '',
+    this.updatedAt = 0,
+  });
+
+  final String course;
+  final String file;
+
+  /// Index of the first visible block.
+  final int block;
+  final String movement;
+  final int blocksTotal;
+  final int wordsLeft;
+  final String title;
+  final int updatedAt;
+
+  /// About how many minutes of reading remain, at 200 words a minute (min 1 when any words are left).
+  int get minutesLeft => wordsLeft <= 0 ? 0 : (wordsLeft / 200).ceil();
+
+  Map<String, Object?> toColumns() => {
+        'block_index': block,
+        'movement': movement,
+        'blocks_total': blocksTotal,
+        'words_left': wordsLeft,
+        'title': title,
+      };
+
+  static ReadingAnchor? fromRow(Map<String, Object?> r) {
+    final b = r['block_index'];
+    if (b is! int) return null;
+    return ReadingAnchor(
+      course: (r['course'] ?? '').toString(),
+      file: (r['file'] ?? '').toString(),
+      block: b,
+      movement: (r['movement'] ?? '').toString(),
+      blocksTotal: (r['blocks_total'] as int?) ?? 0,
+      wordsLeft: (r['words_left'] as int?) ?? 0,
+      title: (r['title'] ?? '').toString(),
+      updatedAt: (r['updated_at'] as int?) ?? 0,
+    );
+  }
+}

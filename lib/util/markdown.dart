@@ -25,12 +25,17 @@ enum MarkdownVariant { compact, reading }
 class Markdown extends StatelessWidget {
   const Markdown(this.source,
       {super.key,
+      this.anchors,
       this.baseStyle,
       this.variant = MarkdownVariant.compact,
       this.courseId = '',
       this.baseUrl = '',
       this.token = ''});
   final String source;
+
+  /// BI26100325: when given, every rendered block gets a key so the reader can
+  /// save and restore "where I stopped" by block rather than by pixels.
+  final MarkdownAnchors? anchors;
   final TextStyle? baseStyle;
   final MarkdownVariant variant;
   /// If set, `![alt](_assets/file.ext)` paths resolve to
@@ -54,10 +59,21 @@ class Markdown extends StatelessWidget {
             : T.body2.copyWith(color: C.text, height: 1.55));
     final blocks = _parseBlocks(source);
     final children = <Widget>[];
+    final movements = <String>[];
+    final words = <int>[];
+    var movement = '';
     for (var i = 0; i < blocks.length; i++) {
       final w = _renderBlock(blocks[i], style, first: i == 0);
-      if (w != null) children.add(w);
+      if (w == null) continue;
+      final b = blocks[i];
+      if (b.kind == _Kind.heading && b.level <= 2) movement = b.text.trim();
+      movements.add(movement);
+      words.add(RegExp(r'\S+').allMatches(b.text.isNotEmpty ? b.text : b.quizBody).length);
+      children.add(anchors == null
+          ? w
+          : KeyedSubtree(key: anchors!.keyFor(children.length), child: w));
     }
+    anchors?._describe(movements, words);
     if (children.isEmpty) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
   }
@@ -974,6 +990,67 @@ class _QuizRevealState extends State<_QuizReveal> {
         ],
       ),
     );
+  }
+}
+
+/// Where the reader is, by block (BI26100325). A block is one rendered child of
+/// a module (heading, paragraph, callout, table...), so a saved position
+/// survives a font-size change or a renderer update: re-open the same block, and
+/// fall back to the movement or the top when the block no longer exists.
+class MarkdownAnchors {
+  final Map<int, GlobalKey> _keys = {};
+  List<String> _movements = const [];
+  List<int> _words = const [];
+
+  /// How many blocks the last build rendered.
+  int get count => _movements.length;
+
+  GlobalKey keyFor(int i) => _keys.putIfAbsent(i, GlobalKey.new);
+
+  void _describe(List<String> movements, List<int> words) {
+    _movements = movements;
+    _words = words;
+  }
+
+  /// The movement (the nearest `##` or `#` heading at or before block [i]).
+  String movementOf(int i) => i >= 0 && i < _movements.length ? _movements[i] : '';
+
+  /// Words from block [i] to the end of the module.
+  int wordsFrom(int i) {
+    var n = 0;
+    for (var k = i < 0 ? 0 : i; k < _words.length; k++) {
+      n += _words[k];
+    }
+    return n;
+  }
+
+  /// The first block whose bottom edge is below the top of the scroll viewport,
+  /// or 0 when nothing is laid out yet.
+  int topVisible(ScrollController controller) {
+    if (!controller.hasClients) return 0;
+    final vp = controller.position.context.storageContext.findRenderObject();
+    if (vp is! RenderBox || !vp.attached) return 0;
+    final top = vp.localToGlobal(Offset.zero).dy;
+    for (var i = 0; i < count; i++) {
+      final ro = _keys[i]?.currentContext?.findRenderObject();
+      if (ro is! RenderBox || !ro.attached) continue;
+      if (ro.localToGlobal(Offset.zero).dy + ro.size.height > top + 1) return i;
+    }
+    return count > 0 ? count - 1 : 0;
+  }
+
+  /// Scrolls so block [i] sits at the top. False when it does not exist or is not laid out.
+  bool reveal(int i) {
+    final ctx = _keys[i]?.currentContext;
+    if (i < 0 || i >= count || ctx == null) return false;
+    Scrollable.ensureVisible(ctx, alignment: 0, duration: Duration.zero);
+    return true;
+  }
+
+  /// The first block of the movement named [name], or null.
+  int? firstBlockOf(String name) {
+    final i = _movements.indexOf(name);
+    return i < 0 ? null : i;
   }
 }
 

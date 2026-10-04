@@ -57,8 +57,11 @@ class ReadingSurface extends StatelessWidget {
 /// paragraph is quote it.
 class ReadingBody extends StatelessWidget {
   const ReadingBody(this.markdown,
-      {super.key, this.courseId = '', this.baseUrl = '', this.token = ''});
+      {super.key, this.courseId = '', this.baseUrl = '', this.token = '', this.anchors});
   final String markdown;
+
+  /// BI26100325: lets the lesson screen save and restore the reading position by block.
+  final MarkdownAnchors? anchors;
   /// Passed to [Markdown] so `_assets/` image paths resolve to the hub API.
   final String courseId;
   final String baseUrl;
@@ -73,6 +76,7 @@ class ReadingBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return SelectionArea(
       child: Markdown(markdown,
+          anchors: anchors,
           variant: MarkdownVariant.reading,
           courseId: courseId,
           baseUrl: baseUrl,
