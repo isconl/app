@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../services/branding.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
+import '../update_flow.dart';
 import '../widgets/common.dart';
 import '../widgets/integrations_section.dart';
 import '../../services/day_close_planner.dart';
@@ -290,22 +291,7 @@ class _SettingsViewState extends State<SettingsView> {
                         FilledButton.icon(
                           onPressed: updater.busy || !sync.online
                               ? null
-                              : () async {
-                                  final newer = await updater.check();
-                                  if (newer != null && context.mounted) {
-                                    final size = fmt.s(
-                                        updater.available?['sizeLabel']);
-                                    final go = await confirmDialog(
-                                        context,
-                                        'Update to v$newer?',
-                                        'The agent hands over the signed build'
-                                            '${size.isEmpty ? '' : ' ($size)'} '
-                                            'and Android installs it over this '
-                                            'version. Your data stays.',
-                                        action: 'Update');
-                                    if (go) await updater.downloadAndInstall();
-                                  }
-                                },
+                              : () => runUpdateFlow(context, updater),
                           icon: updater.busy
                               ? const MiniSpinner()
                               : const Icon(Icons.system_update_rounded,

@@ -6,6 +6,7 @@ import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/dashboard/dashboard.dart';
 import 'systems_dash_model.dart';
+import '../update_flow.dart';
 
 /// BI26100131: the Systems landing as a dashboard. Engines marked down show
 /// red and open Ops; the backlog split opens Backlog. Figures with no source
@@ -96,7 +97,7 @@ class SystemsDashboard extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: OutlinedButton(
                 onPressed: updateBusy ? null : onCheckUpdate,
-                child: Text(updateBusy ? 'Checking...' : 'Check for updates'),
+                child: Text(updateBusy ? 'Working...' : 'Check for updates'),
               ),
             ),
           ]),
@@ -152,7 +153,7 @@ class _SystemsDashboardHostState extends State<SystemsDashboardHost> {
           updateState: u.state,
           updateBusy: u.busy,
           onOpenSub: widget.onOpenSub,
-          onCheckUpdate: () => u.check(),
+          onCheckUpdate: () => runUpdateFlow(context, u),
         );
       },
     );

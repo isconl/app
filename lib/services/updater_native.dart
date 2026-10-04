@@ -70,8 +70,10 @@ Future<bool> downloadAndInstall(UpdateService service, ApiClient api) async {
 
     service.state = 'Handing to installer...';
     service.bump();
-    await PlatformBridge.instance.installApk(file.path);
-    service.state = 'Installer launched.';
+    final how = await PlatformBridge.instance.installApk(file.path);
+    service.state = how == 'needs_permission'
+        ? 'Allow "Install unknown apps" for iSconl, then come back: the install starts by itself.'
+        : 'Installer opened: tap Install.';
     return true;
   } on OfflineException {
     service.state = 'Offline - cannot download.';
