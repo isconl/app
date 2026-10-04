@@ -78,7 +78,9 @@ void main() {
     await expectLater(find.byKey(key), matchesGoldenFile('goldens/module_artefacts_dark.png'));
     await tester.pumpWidget(_app(_read('grid_table.md'), key: key));
     await expectLater(find.byKey(key), matchesGoldenFile('goldens/module_grid_table_dark.png'));
-  });
+    // Pixel goldens are font-engine specific: generated and checked on Linux
+    // only, so the Windows CI job does not fail on anti-aliasing.
+  }, skip: !Platform.isLinux);
 
   final dir = Platform.environment['MODULES_DIR'];
   testWidgets('all modules render with no raw artefacts and every heading',
