@@ -60,13 +60,22 @@ void main() {
     expect(ageText(const Duration(hours: 30)), '1 d');
   });
 
+  testWidgets('App tile says a newer build is available, with no button', (t) async {
+    final dash = SystemsDash.from(opsStatus: ops, backlog: backlog, fetchTimes: [now], now: now);
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: SystemsDashboard(
+      dash: dash, outboxPending: 0, installedVersion: '0.3.44', updateState: 'v0.3.57 available.',
+      updateBusy: false, latestVersion: '0.3.57', updateAvailable: true)))));
+    await t.pump();
+    expect(find.textContaining('v0.3.57 available: install it from Settings'), findsOneWidget);
+    expect(find.byType(OutlinedButton), findsNothing);
+  });
+
   for (final w in [390.0, 1280.0]) {
     testWidgets('renders at $w px; a down engine shows red and opens Ops; update reason shows', (t) async {
       t.view.physicalSize = Size(w, 1800);
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
       final opened = <int>[];
-      var checked = 0;
       final dash = SystemsDash.from(opsStatus: ops, backlog: backlog, fetchTimes: [now.subtract(const Duration(minutes: 3))], now: now);
       await t.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -79,7 +88,6 @@ void main() {
               updateState: 'Latest release v0.3.23 has no APK attached.',
               updateBusy: false,
               onOpenSub: opened.add,
-              onCheckUpdate: () => checked++,
             ),
           ),
         ),
@@ -93,8 +101,8 @@ void main() {
       await t.tap(find.text('FLEET HEALTH'));
       await t.tap(find.text('SLATE ROWS, LIVE'));
       expect(opened, [2, 3]);
-      await t.tap(find.text('Check for updates'));
-      expect(checked, 1);
+      // The App tile only shows state; installing lives in Settings.
+      expect(find.text('Check for updates'), findsNothing);
     });
   }
 }

@@ -6,7 +6,6 @@ import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/dashboard/dashboard.dart';
 import 'systems_dash_model.dart';
-import '../update_flow.dart';
 
 /// BI26100131: the Systems landing as a dashboard. Engines marked down show
 /// red and open Ops; the backlog split opens Backlog. Figures with no source
@@ -20,7 +19,8 @@ class SystemsDashboard extends StatelessWidget {
     required this.updateState,
     required this.updateBusy,
     this.onOpenSub,
-    this.onCheckUpdate,
+    this.latestVersion,
+    this.updateAvailable = false,
   });
   final SystemsDash dash;
   final int outboxPending;
@@ -30,7 +30,9 @@ class SystemsDashboard extends StatelessWidget {
   final String? updateState;
   final bool updateBusy;
   final void Function(int sub)? onOpenSub;
-  final VoidCallback? onCheckUpdate;
+  /// The newest build the agent offers, once the quiet check has run.
+  final String? latestVersion;
+  final bool updateAvailable;
 
   static const _typeColors = {
     'plan': C.violet,
@@ -91,13 +93,17 @@ class SystemsDashboard extends StatelessWidget {
           label: 'App',
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(installedVersion.isEmpty ? 'version unknown' : 'v$installedVersion', style: T.title.copyWith(fontFeatures: kTabular)),
-            if (updateState != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(updateState!, style: T.tiny)),
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton(
-                onPressed: updateBusy ? null : onCheckUpdate,
-                child: Text(updateBusy ? 'Working...' : 'Check for updates'),
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                updateBusy && latestVersion == null
+                    ? 'Checking for a newer build...'
+                    : latestVersion == null
+                        ? (updateState ?? '')
+                        : updateAvailable
+                            ? 'v$latestVersion available: install it from Settings › Check for update'
+                            : 'Up to date',
+                style: updateAvailable ? T.tiny.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600) : T.tiny,
               ),
             ),
           ]),
@@ -123,6 +129,9 @@ class _SystemsDashboardHostState extends State<SystemsDashboardHost> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // The App tile is state-aware on its own: a quiet look for a newer build,
+      // shown as text. Installing stays in Settings (runUpdateFlow).
+      AppScope.of(context).updater.refreshAvailability();
       final store = AppScope.of(context).store;
       for (final s in [store.opsStatus, store.backlog]) {
         s.hydrate().then((_) {
@@ -153,7 +162,8 @@ class _SystemsDashboardHostState extends State<SystemsDashboardHost> {
           updateState: u.state,
           updateBusy: u.busy,
           onOpenSub: widget.onOpenSub,
-          onCheckUpdate: () => runUpdateFlow(context, u),
+          latestVersion: u.latestVersion,
+          updateAvailable: u.updateAvailable,
         );
       },
     );

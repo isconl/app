@@ -37,6 +37,22 @@ class UpdateService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// True once a check has found a build newer than the installed one.
+  bool get updateAvailable =>
+      latestVersion != null && compareVersions(latestVersion!, installedVersion) > 0;
+
+  DateTime? _lastQuietCheck;
+
+  /// A passive look for a newer build, for status displays (the Systems
+  /// dashboard's App tile). It never offers or installs anything: installing is
+  /// runUpdateFlow's job (lib/ui/update_flow.dart). At most once in 30 minutes.
+  Future<void> refreshAvailability() async {
+    final now = DateTime.now();
+    if (busy || (_lastQuietCheck != null && now.difference(_lastQuietCheck!) < const Duration(minutes: 30))) return;
+    _lastQuietCheck = now;
+    await check();
+  }
+
   /// Returns the newer version string, or null when up to date or unreachable.
   Future<String?> check() async {
     busy = true;
