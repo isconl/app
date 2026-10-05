@@ -4,7 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
-import 'codex.dart' show CodexControls, PromoteOutcome, codexCell, codexVisibilityOf, promoteIdeaToTask;
+import 'codex.dart' show CodexControls, PromoteOutcome, codexVisibilityOf, promoteIdeaToTask;
 
 /// Spark: the idea pipeline.
 ///
