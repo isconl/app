@@ -38,7 +38,7 @@ class JournalView extends StatelessWidget {
                         child: _stat(
                             'MOOD 7D',
                             fmt.dOrNull(stats['mood7']) == null
-                                ? '—'
+                                ? '-'
                                 : fmt.d(stats['mood7']).toStringAsFixed(1),
                             C.amber)),
                   ],

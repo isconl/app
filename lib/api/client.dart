@@ -9,7 +9,13 @@ import 'package:http/http.dart' as http;
 ///  - Auth is `Authorization: Bearer <static token | session token>`.
 ///  - EVERY auth failure is HTTP 404, never 401. A 404 on a known-good route
 ///    (like /api/state) means the session died.
-///  - Render free tier sleeps: first request after idle can take ~60s.
+///  - The first request after a long idle can be slow (cold start), so cold
+///    calls get a longer timeout.
+///
+/// The contract this client implements is written down in canon:
+/// work/_arc/iSconl/20261005_canon_client_api_contract_isconl_v1_0_0.md
+/// (hub as the one entry point, auth order, /api/nav, errors, offline outbox).
+/// A change to how this client talks to hub changes that document first.
 class ApiException implements Exception {
   ApiException(this.status, this.message, {this.authSuspect = false});
   final int status;

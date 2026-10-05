@@ -552,7 +552,7 @@ class _CalendarViewState extends State<CalendarView> {
                 height: h,
                 child: GestureDetector(
                   onTap: () =>
-                      _plannerBlockPopup(name, '$startClock – $endClock'),
+                      _plannerBlockPopup(name, '$startClock to $endClock'),
                   child: Container(
                     decoration: BoxDecoration(
                       color: _plannerTone(axis).withValues(alpha: 0.35),
@@ -911,7 +911,7 @@ class _KeyDates extends StatelessWidget {
   }
 
   String _daysBadge(int days) {
-    if (days < 0) return '—';
+    if (days < 0) return '-';
     if (days == 0) return 'today';
     return 'in ${days}d';
   }

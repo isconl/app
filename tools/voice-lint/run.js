@@ -15,7 +15,7 @@ const { spawnSync } = require('child_process');
 const args = process.argv.slice(2);
 const strict = args.includes('--strict');
 const xi = args.indexOf('--extractor');
-const extractorPath = path.resolve(xi >= 0 ? args[xi + 1] : path.join(__dirname, 'extract-hub.js'));
+const extractorPath = path.resolve(xi >= 0 ? args[xi + 1] : path.join(__dirname, 'extract-dart.js'));
 const root = path.resolve(__dirname, '..', '..');
 
 const { extract } = require(extractorPath);

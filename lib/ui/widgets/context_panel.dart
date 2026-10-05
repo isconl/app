@@ -127,7 +127,7 @@ class _ContextPanelState extends State<ContextPanel> {
                   const SizedBox(height: 6),
                   Text(
                     top.isEmpty
-                        ? 'Queue clear — no active vectors'
+                        ? 'Queue clear: no active vectors'
                         : fmt.s(top['TITLE']),
                     style: T.w600(T.body2.copyWith(color: C.text)),
                   ),

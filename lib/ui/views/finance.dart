@@ -50,7 +50,7 @@ class FinanceView extends StatelessWidget {
                       child: _stat(
                           'RUNWAY',
                           fin['runwayMonths'] == null
-                              ? '—'
+                              ? '-'
                               : '${fmt.d(fin['runwayMonths']).toStringAsFixed(1)} mo',
                           C.cyan),
                     ),
