@@ -74,7 +74,7 @@ IconData navIcon(String view) => switch (view) {
       'codex' => Icons.auto_stories_rounded,
       'circle' => Icons.favorite_rounded,
       'contacts' => Icons.contacts_rounded,
-      'isconl' || 'xkeel' || 'qspace' || 'qgrand' => Icons.hub_rounded,
+      'isconl' || 'xkeel' || 'qprow' || 'qspace' || 'qgrand' => Icons.hub_rounded,
       'ops' => Icons.dns_rounded,
       'files' => Icons.folder_rounded,
       'media' => Icons.play_circle_filled_rounded,
@@ -97,7 +97,7 @@ String? navRouteFor(NavItemDef i) {
         'social' => 'social_circle',
         _ => null,
       };
-    case 'isconl' || 'xkeel' || 'qspace' || 'qgrand':
+    case 'isconl' || 'xkeel' || 'qprow' || 'qspace' || 'qgrand':
       return 'spaces';
     case 'identity' || 'codex':
       return i.view;
