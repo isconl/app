@@ -769,6 +769,8 @@ class Mutations {
     required String lesson,
     required int scrollPct,
     double? fraction,
+    int? block,
+    String? movement,
   }) async {
     await _db?.saveLessonResumeLocal(
       course: course,
@@ -783,6 +785,8 @@ class Mutations {
         'lesson': lesson,
         'scrollPct': scrollPct,
         'fraction': ?fraction,
+        'block': ?block,
+        'movement': ?movement,
       },
       label: 'Resume point · $lesson',
       view: 'learning',

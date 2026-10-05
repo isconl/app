@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
+import '../util/equicycle.dart';
+import '../data/store.dart' show Snapshot;
 import '../data/sync.dart' show SyncPhase;
 import '../main.dart' show BrandMark;
 import '../services/alerts.dart';
@@ -11,6 +13,7 @@ import 'views/articles.dart';
 import 'views/audit.dart';
 import 'views/backlog.dart';
 import 'views/calendar.dart';
+import 'views/channel_subs.dart';
 import 'views/channels_home.dart';
 import 'views/chat.dart';
 import 'views/circle.dart';
@@ -21,6 +24,8 @@ import 'views/finance.dart';
 import 'views/github.dart';
 import 'views/hosted_services.dart';
 import 'views/hub.dart';
+import 'views/codex.dart';
+import 'views/identity.dart';
 import 'views/ideas.dart';
 import 'views/inbox.dart';
 import 'views/jira.dart';
@@ -89,11 +94,12 @@ const _commandSubs = [
 // BI26092324: now a real PracticeView (Documents = PortfolioView unchanged,
 // plus honest placeholders for Overview/Practices/Codex/Enquiries), matching
 // the web console's renderPractice()/PRACTICE_TABS tab for tab.
-const _projectsSubs = [
-  _SubTab('Practice',  PracticeView()),
-  _SubTab('Corporate', CorporateView()),
-  _SubTab('Products',  ProjectsView(cat: 'product')),
-  _SubTab('Platforms', ProjectsView(cat: 'platform')),
+// BI26100129: Practice carries the Projects dashboard, whose tiles open the siblings.
+List<_SubTab> _projectsSubsFor(void Function(int) openSub) => [
+  _SubTab('Practice',  PracticeView(onOpenSub: openSub)),
+  const _SubTab('Corporate', CorporateView()),
+  const _SubTab('Products',  ProjectsView(cat: 'product')),
+  const _SubTab('Platforms', ProjectsView(cat: 'platform')),
 ];
 
 // BN26090606: target confirmed by Sconl -- Settings, Files, Ops, Security.
@@ -104,11 +110,12 @@ const _projectsSubs = [
 // renders as a section inside OpsView, so this row was down to 3
 // sub-tabs. BG26091303: Backlog added as the 4th, and the tab itself
 // relabelled Settings -> Systems (SettingsView() stays index 0/default).
-const _settingsSubs = [
-  _SubTab('Settings', SettingsView()),
-  _SubTab('Files',    FilesView()),
-  _SubTab('Ops',      OpsView()),
-  _SubTab('Backlog',  BacklogView()),
+// BI26100131: Settings carries the Systems dashboard, whose tiles open Ops and Backlog.
+List<_SubTab> _settingsSubsFor(void Function(int) openSub) => [
+  _SubTab('Settings', SettingsView(onOpenSub: openSub)),
+  const _SubTab('Files',    FilesView()),
+  const _SubTab('Ops',      OpsView()),
+  const _SubTab('Backlog',  BacklogView()),
 ];
 
 class _ShellState extends State<Shell> {
@@ -122,6 +129,7 @@ class _ShellState extends State<Shell> {
   // guarantee landing at sub 0); tapping a sub-tab animates it with easeOut
   // (240 ms); _sub is committed only in the sub PageView's onPageChanged.
   late final List<PageController> _subControllers;
+  Snapshot? _nav;
 
   @override
   void initState() {
@@ -134,6 +142,9 @@ class _ShellState extends State<Shell> {
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final services = AppScope.of(context);
+      _nav = services.store.nav;
+      _nav!.hydrate();
+      _nav!.addListener(_onNav);
       services.sync.onNewAlerts =
           (fresh) => AlertService.instance.showAgentAlerts(fresh);
       services.sync.start();
@@ -147,10 +158,20 @@ class _ShellState extends State<Shell> {
 
   @override
   void dispose() {
+    _nav?.removeListener(_onNav);
     for (final c in _subControllers) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  /// A new nav can change how many Channels sub-tabs there are; keep the page index inside them.
+  void _onNav() {
+    if (!mounted) return;
+    setState(() {
+      final n = _subsFor(_tab).length;
+      if (_sub >= n) _sub = n - 1;
+    });
   }
 
   void _switchTab(int t) {
@@ -194,12 +215,38 @@ class _ShellState extends State<Shell> {
   // menu), same precedent BN26090606 already set for Personal
   // (PersonalHomeView -> RhythmView, a real content view replacing a
   // generic dashboard landing).
-  List<_SubTab> get _channelSubs => [
-    const _SubTab('Inbox',   InboxView()),
-    const _SubTab('Teams',   TeamsView()),
-    const _SubTab('Kanban',  JiraView()),
-    const _SubTab('Buffer',  SocialView()),
-  ];
+  // BI26092637: the sub-tabs come from /api/nav (flow group): Inbox, Deck, Teams, Tools
+  // (Kanban, Buffer and GitHub folded into Tools). Press is not a mobile sub-tab.
+  List<_SubTab> get _channelSubs {
+    final nav = AppScope.of(context).store.nav.value;
+    final tools = toolViewsIn(nav);
+    return [
+      for (final p in channelPlan(nav))
+        _SubTab(
+          p.label,
+          switch (p.kind) {
+            ChannelKind.inbox => InboxView(onOpenView: _openChannelView),
+            ChannelKind.deck => const DeckChannelView(),
+            ChannelKind.teams => const TeamsView(),
+            ChannelKind.tools => ToolsView(views: tools),
+          },
+        ),
+    ];
+  }
+
+  /// Opens the Channels sub-tab that holds [view] (a nav view slug), selecting the tool inside Tools.
+  void _openChannelView(String view) {
+    final plan = channelPlan(AppScope.of(context).store.nav.value);
+    final kind = switch (view) {
+      'jira' || 'social' || 'github' => ChannelKind.tools,
+      'teams' => ChannelKind.teams,
+      'canvas' || 'deck' => ChannelKind.deck,
+      _ => ChannelKind.inbox,
+    };
+    if (toolViews.contains(view)) ToolsPrefs.instance.select(view, db: AppScope.of(context).db);
+    final i = plan.indexWhere((p) => p.kind == kind);
+    if (i >= 0) _switchSub(i);
+  }
 
   // BN26090606: hub-style sub swapped from PersonalHomeView to RhythmView
   // (was built but never wired into this tab) and relabeled Personal ->
@@ -207,18 +254,18 @@ class _ShellState extends State<Shell> {
   // Ideas dropped to hit the 4-sub-tab target -- still reachable via the
   // hamburger menu (Sconl's explicit call, 6 Sep 2026).
   List<_SubTab> get _personalSubs => [
-    const _SubTab('Rhythm',    RhythmView()),
+    _SubTab('Rhythm',    RhythmView(onOpenSub: _switchSub)),
     const _SubTab('Study',  LearningView()),
     const _SubTab('Holdings',   FinanceView()),
-    const _SubTab('Journal',   JournalView()),
+    const _SubTab('Codex',   CodexView()),
   ];
 
   List<_SubTab> _subsFor(int tab) => switch (tab) {
     0 => _commandSubs,
     1 => _channelSubs,
-    2 => _projectsSubs,
+    2 => _projectsSubsFor(_switchSub),
     3 => _personalSubs,
-    4 => _settingsSubs,
+    4 => _settingsSubsFor(_switchSub),
     _ => _commandSubs,
   };
 
@@ -259,8 +306,14 @@ class _ShellState extends State<Shell> {
           MaterialPageRoute(builder: (_) => SecondaryScreen(title: title, child: page)),
         );
     final fallback = FreshnessChipSource(services, open);
-    final onBacklog = _tab == 4 && _settingsSubs[_sub.clamp(0, _settingsSubs.length - 1)].label == 'Backlog';
-    return ChipSelector(onBacklog ? BacklogChipSource(services, open) : null, fallback);
+    if (_tab == 0) EquicycleYears.instance.ensureLoaded(services.api, services.db);
+    final StatusChipSource? specific = switch ((_tab, _sub)) {
+      (4, 3) => BacklogChipSource(services, open),
+      (4, 2) => OpsChipSource(services, open),
+      (0, _) => CycleChipSource(open),
+      _ => null,
+    };
+    return ChipSelector(specific, fallback);
   }
 
   @override
@@ -850,11 +903,13 @@ class MenuSheet extends StatelessWidget {
               () => go(const LearningView(), 'Study')),
           _item(ctx, Icons.account_balance_wallet_rounded, 'Holdings',
               () => go(const FinanceView(), 'Holdings')),
-          _item(ctx, Icons.auto_stories_rounded, 'Journal',
-              () => go(const JournalView(), 'Journal')),
-          _item(ctx, Icons.lightbulb_rounded, 'Ideas',
-              () => go(const IdeasView(), 'Ideas'),
+          // BI26100207: Journal and Ideas are one item, Codex, each still on its own route.
+          _item(ctx, Icons.auto_stories_rounded, 'Codex',
+              () => go(const CodexView(), 'Codex'),
               badge: ideasCount > 0 ? '$ideasCount' : null),
+          // BI26100207: the archetype spaces live under Identity, as on the web.
+          _item(ctx, Icons.badge_rounded, 'Identity',
+              () => go(const IdentityView(), 'Identity')),
           // ── CIRCLE ───────────────────────────────────────────
           const SectionLabel('Circle'),
           _item(ctx, Icons.favorite_rounded, 'Family',
@@ -869,12 +924,6 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Spaces'),
           _item(ctx, Icons.hub_rounded, 'All Spaces',
               () => go(const SpacesView(), 'Spaces')),
-          _item(ctx, Icons.visibility_rounded, 'Visionary',
-              () => go(const SpacesView(axis: 'VIS'), 'Visionary')),
-          _item(ctx, Icons.engineering_rounded, 'Innovator',
-              () => go(const SpacesView(axis: 'INN'), 'Innovator')),
-          _item(ctx, Icons.palette_rounded, 'Creator',
-              () => go(const SpacesView(axis: 'CRE'), 'Creator')),
           // ── SYSTEMS ──────────────────────────────────────────
           // BN26090611: "System" -> "Systems", matching the web panel's
           // own rename (RG26090501). Ops added (new this session, wasn't
@@ -1036,6 +1085,8 @@ class SecondaryScreen extends StatelessWidget {
     'rhythm' => (const RhythmView(), 'Rhythm'),
     'study' || 'learning' => (const LearningView(), 'Study'),
     'holdings' || 'finance' => (const FinanceView(), 'Holdings'),
+    'codex' => (const CodexView(), 'Codex'),
+    'identity' => (const IdentityView(), 'Identity'),
     'journal' => (const JournalView(), 'Journal'),
     'ideas' => (const IdeasView(), 'Ideas'),
     'circle' || 'contacts' => (const ContactsView(), 'Contacts'),

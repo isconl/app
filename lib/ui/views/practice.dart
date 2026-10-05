@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import '../widgets/common.dart';
+import '../../app_scope.dart';
+import '../../util/fmt.dart' as fmt;
 import 'portfolio.dart';
+import 'projects_dash_model.dart';
+import 'projects_dashboard.dart';
 
 /// BI26092324 (mobile twin of BI26092323's web row): Practice replaces
 /// Portfolio as the Projects space's first tab. Documents is
@@ -12,22 +16,26 @@ import 'portfolio.dart';
 /// hub/web/static/app.js's renderPractice()/PRACTICE_TABS exactly, tab
 /// for tab, so a later full build (BI26092652) lands on the same shape
 /// both platforms already show.
-enum _PracticeTab { documents, overview, practices, codex, enquiries }
+enum _PracticeTab { dashboard, documents, overview, practices, codex, enquiries }
 
 const _practiceLater = ['Bookings', 'Orders', 'Newsletter', 'Portfolios'];
 const _soon = 'Arrives when the sconl-practice engine is live.';
 
 class PracticeView extends StatefulWidget {
-  const PracticeView({super.key});
+  const PracticeView({super.key, this.onOpenSub});
+
+  /// Opens a sibling Projects sub-tab (Corporate 1, Products 2, Platforms 3).
+  final void Function(int sub)? onOpenSub;
 
   @override
   State<PracticeView> createState() => _PracticeViewState();
 }
 
 class _PracticeViewState extends State<PracticeView> {
-  _PracticeTab _tab = _PracticeTab.documents;
+  _PracticeTab _tab = _PracticeTab.dashboard;
 
   String _label(_PracticeTab t) => switch (t) {
+        _PracticeTab.dashboard => 'Dashboard',
         _PracticeTab.documents => 'Documents',
         _PracticeTab.overview => 'Overview',
         _PracticeTab.practices => 'Practices',
@@ -93,6 +101,13 @@ class _PracticeViewState extends State<PracticeView> {
         // The tab body fills what is left. Documents scroll themselves; the rest scroll here.
         Expanded(
           child: switch (_tab) {
+            _PracticeTab.dashboard => SnapshotView(
+                snapshot: AppScope.of(context).store.projects,
+                builder: (context, data) => ProjectsDashboard(
+                  dash: ProjectsDash.from(fmt.lm(fmt.m(data)['projects'])),
+                  onOpenSub: widget.onOpenSub,
+                ),
+              ),
             _PracticeTab.documents => const PortfolioView(),
             _PracticeTab.overview => SingleChildScrollView(child: _overviewBody()),
             _ => SingleChildScrollView(child: _placeholder(_label(_tab))),

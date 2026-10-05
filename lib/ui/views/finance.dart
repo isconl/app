@@ -349,31 +349,25 @@ class FinanceView extends StatelessWidget {
         Positioned(
           right: 16,
           bottom: 16,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FloatingActionButton.small(
+          child: FabStack(
+            primary: FabAction(
+              heroTag: 'tx',
+              tooltip: 'Add a transaction',
+              icon: Icons.add_rounded,
+              onPressed: () => _addTxSheet(context),
+            ),
+            secondary: [
+              FabAction(
                 heroTag: 'paste',
-                backgroundColor: C.surface,
-                foregroundColor: C.text2,
+                tooltip: 'Paste a message',
+                icon: Icons.content_paste_rounded,
                 onPressed: () => _pasteMessage(context),
-                child: const Icon(Icons.content_paste_rounded, size: 18),
               ),
-              const SizedBox(height: 10),
-              FloatingActionButton.small(
+              FabAction(
                 heroTag: 'receipt',
-                backgroundColor: C.surface,
-                foregroundColor: C.text2,
+                tooltip: 'Capture a receipt',
+                icon: Icons.receipt_long_rounded,
                 onPressed: () => _captureReceipt(context),
-                child: const Icon(Icons.receipt_long_rounded, size: 18),
-              ),
-              const SizedBox(height: 10),
-              FloatingActionButton(
-                heroTag: 'tx',
-                backgroundColor: C.greenDim,
-                foregroundColor: Colors.white,
-                onPressed: () => _addTxSheet(context),
-                child: const Icon(Icons.add_rounded),
               ),
             ],
           ),

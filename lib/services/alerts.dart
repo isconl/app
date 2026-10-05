@@ -3,6 +3,9 @@ import 'dart:ui' show Color;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
+
 import '../util/fmt.dart' as fmt;
 
 /// System notifications for high-severity agent alerts discovered on sync.
@@ -15,11 +18,22 @@ class AlertService {
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
 
+  /// BI26100143: opens the Day close screen when its notification is tapped.
+  void Function()? onDayClose;
+  static const dayClosePayload = 'day-close';
+  static const _dayCloseBase = 9100;
+  static const _dayCloseSlots = 16;
+
   Future<void> init() async {
     if (_ready || kIsWeb) return;
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    tzdata.initializeTimeZones();
     await _plugin.initialize(
-        const InitializationSettings(android: android));
+      const InitializationSettings(android: android),
+      onDidReceiveNotificationResponse: (r) {
+        if (r.payload == dayClosePayload) onDayClose?.call();
+      },
+    );
     await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
@@ -47,6 +61,44 @@ class AlertService {
         fmt.truncate(fmt.s(n['BODY']), 180),
         details,
       );
+    }
+  }
+
+  /// BI26100143: one notification per day at the review time for the next
+  /// few days (rescheduled whenever the settings or the counts change). Each
+  /// is a one-shot so a skipped weekend is simply not scheduled.
+  Future<void> scheduleDayClose(List<DateTime> times, String body) async {
+    if (!_ready) return;
+    for (var i = 0; i < _dayCloseSlots; i++) {
+      await _plugin.cancel(_dayCloseBase + i);
+    }
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'isconl_dayclose',
+        'Day close',
+        channelDescription: 'The end-of-day review',
+        importance: Importance.defaultImportance,
+        color: Color.fromARGB(255, 0x3F, 0xB9, 0x50),
+      ),
+    );
+    var i = 0;
+    for (final t in times.take(_dayCloseSlots)) {
+      await _plugin.zonedSchedule(
+        _dayCloseBase + i++,
+        'Close the day',
+        body,
+        tz.TZDateTime.from(t, tz.UTC),
+        details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: dayClosePayload,
+      );
+    }
+  }
+
+  Future<void> cancelDayClose() async {
+    if (!_ready) return;
+    for (var i = 0; i < _dayCloseSlots; i++) {
+      await _plugin.cancel(_dayCloseBase + i);
     }
   }
 }

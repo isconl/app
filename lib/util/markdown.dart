@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../theme.dart';
+import 'reader_prefs.dart';
 
 /// How much room the renderer is being given.
 ///
@@ -24,12 +25,17 @@ enum MarkdownVariant { compact, reading }
 class Markdown extends StatelessWidget {
   const Markdown(this.source,
       {super.key,
+      this.anchors,
       this.baseStyle,
       this.variant = MarkdownVariant.compact,
       this.courseId = '',
       this.baseUrl = '',
       this.token = ''});
   final String source;
+
+  /// BI26100325: when given, every rendered block gets a key so the reader can
+  /// save and restore "where I stopped" by block rather than by pixels.
+  final MarkdownAnchors? anchors;
   final TextStyle? baseStyle;
   final MarkdownVariant variant;
   /// If set, `![alt](_assets/file.ext)` paths resolve to
@@ -49,14 +55,25 @@ class Markdown extends StatelessWidget {
     final style = baseStyle ??
         (_reading
             ? T.body.copyWith(
-                fontSize: 15.5, height: 1.72, color: C.text, letterSpacing: 0.1)
+                fontSize: 15.5, height: 1.72 + ReaderPrefs.instance.lineBoost, color: C.text, letterSpacing: 0.1)
             : T.body2.copyWith(color: C.text, height: 1.55));
     final blocks = _parseBlocks(source);
     final children = <Widget>[];
+    final movements = <String>[];
+    final words = <int>[];
+    var movement = '';
     for (var i = 0; i < blocks.length; i++) {
       final w = _renderBlock(blocks[i], style, first: i == 0);
-      if (w != null) children.add(w);
+      if (w == null) continue;
+      final b = blocks[i];
+      if (b.kind == _Kind.heading && b.level <= 2) movement = b.text.trim();
+      movements.add(movement);
+      words.add(RegExp(r'\S+').allMatches(b.text.isNotEmpty ? b.text : b.quizBody).length);
+      children.add(anchors == null
+          ? w
+          : KeyedSubtree(key: anchors!.keyFor(children.length), child: w));
     }
+    anchors?._describe(movements, words);
     if (children.isEmpty) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
   }
@@ -132,7 +149,7 @@ class Markdown extends StatelessWidget {
                     color: C.text2,
                     fontSize: 15.5,
                     fontStyle: FontStyle.italic,
-                    height: 1.68)
+                    height: 1.68 + ReaderPrefs.instance.lineBoost)
                 : style.copyWith(color: C.text2),
           )),
         );
@@ -224,7 +241,7 @@ class Markdown extends StatelessWidget {
             style.copyWith(
               color: C.text,
               fontSize: _reading ? 15 : 13,
-              height: 1.62,
+              height: 1.62 + (_reading ? ReaderPrefs.instance.lineBoost : 0),
               fontStyle: c.kind == 'quote' ? FontStyle.italic : null,
             ),
           )),
@@ -294,7 +311,7 @@ class Markdown extends StatelessWidget {
   Widget _table(_Block block, TextStyle style) {
     final rows = block.rows;
     if (rows.isEmpty) return const SizedBox.shrink();
-    final cellStyle = style.copyWith(fontSize: _reading ? 13.5 : 12, height: 1.45);
+    final cellStyle = style.copyWith(fontSize: _reading ? 13.5 : 12, height: 1.45 + (_reading ? ReaderPrefs.instance.lineBoost : 0));
     return Container(
       margin: EdgeInsets.symmetric(vertical: _reading ? 16 : 6),
       decoration: BoxDecoration(
@@ -372,9 +389,11 @@ class Markdown extends StatelessWidget {
             children: [
               const Icon(Icons.bar_chart_rounded, size: 16, color: C.cyan),
               const SizedBox(width: 6),
-              Text(
-                title.isNotEmpty ? title : 'CHART',
-                style: T.label.copyWith(color: C.cyan, fontSize: 11),
+              Expanded(
+                child: Text(
+                  title.isNotEmpty ? title : 'CHART',
+                  style: T.label.copyWith(color: C.cyan, fontSize: 11),
+                ),
               ),
             ],
           ),
@@ -388,7 +407,8 @@ class Markdown extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(it.label, style: T.body2.copyWith(fontSize: 12.5)),
+                      Expanded(child: Text(it.label, style: T.body2.copyWith(fontSize: 12.5))),
+                      const SizedBox(width: 8),
                       Text('${it.value}', style: T.mono.copyWith(fontSize: 12, color: C.text2)),
                     ],
                   ),
@@ -626,7 +646,7 @@ class Markdown extends StatelessWidget {
     // afterwards -- that keeps every existing two-field marker matching
     // exactly as before rather than needing a second pattern.
     final pattern = RegExp(
-        r'(\[\[link:([^|\]]+)\|(https?://[^\]]+)\]\])|(\[\[([^|\]]+)\|([^\]]+)\]\])|(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))',
+        r'(\[\[link:([^|\]]+)\|(https?://[^\]]+)\]\])|(\[\[([^|\]]+)\|([^\]]+)\]\])|(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))|(\[\[([^|\]:]+)\]\])',
         caseSensitive: false);
     var pos = 0;
     for (final match in pattern.allMatches(text)) {
@@ -645,9 +665,15 @@ class Markdown extends StatelessWidget {
           example: parts.length > 2 ? parts[2].trim() : null,
         ));
       } else if (match.group(7) != null) {
-        spans.add(TextSpan(
-            text: match.group(8),
-            style: const TextStyle(fontWeight: FontWeight.w600)));
+        // A glossary marker inside bold must still resolve, not show raw `[[`.
+        final inner = match.group(8)!;
+        spans.add(inner.contains('[[')
+            ? TextSpan(
+                style: const TextStyle(fontWeight: FontWeight.w600),
+                children: [_inline(inner, style)])
+            : TextSpan(
+                text: inner,
+                style: const TextStyle(fontWeight: FontWeight.w600)));
       } else if (match.group(9) != null) {
         spans.add(TextSpan(
             text: match.group(10),
@@ -666,6 +692,12 @@ class Markdown extends StatelessWidget {
         ));
       } else if (match.group(15) != null) {
         spans.add(_externalLinkSpan(match.group(16)!, match.group(17)!));
+      } else if (match.group(18) != null) {
+        // §12.1 bare `[[term]]`: the app has no glossary lookup, so it
+        // degrades to the plain term (the standard's own fallback).
+        spans.add(TextSpan(
+            text: match.group(19)!.trim(),
+            style: TextStyle(color: C.violet, fontWeight: FontWeight.w500)));
       }
       pos = match.end;
     }
@@ -961,6 +993,67 @@ class _QuizRevealState extends State<_QuizReveal> {
   }
 }
 
+/// Where the reader is, by block (BI26100325). A block is one rendered child of
+/// a module (heading, paragraph, callout, table...), so a saved position
+/// survives a font-size change or a renderer update: re-open the same block, and
+/// fall back to the movement or the top when the block no longer exists.
+class MarkdownAnchors {
+  final Map<int, GlobalKey> _keys = {};
+  List<String> _movements = const [];
+  List<int> _words = const [];
+
+  /// How many blocks the last build rendered.
+  int get count => _movements.length;
+
+  GlobalKey keyFor(int i) => _keys.putIfAbsent(i, GlobalKey.new);
+
+  void _describe(List<String> movements, List<int> words) {
+    _movements = movements;
+    _words = words;
+  }
+
+  /// The movement (the nearest `##` or `#` heading at or before block [i]).
+  String movementOf(int i) => i >= 0 && i < _movements.length ? _movements[i] : '';
+
+  /// Words from block [i] to the end of the module.
+  int wordsFrom(int i) {
+    var n = 0;
+    for (var k = i < 0 ? 0 : i; k < _words.length; k++) {
+      n += _words[k];
+    }
+    return n;
+  }
+
+  /// The first block whose bottom edge is below the top of the scroll viewport,
+  /// or 0 when nothing is laid out yet.
+  int topVisible(ScrollController controller) {
+    if (!controller.hasClients) return 0;
+    final vp = controller.position.context.storageContext.findRenderObject();
+    if (vp is! RenderBox || !vp.attached) return 0;
+    final top = vp.localToGlobal(Offset.zero).dy;
+    for (var i = 0; i < count; i++) {
+      final ro = _keys[i]?.currentContext?.findRenderObject();
+      if (ro is! RenderBox || !ro.attached) continue;
+      if (ro.localToGlobal(Offset.zero).dy + ro.size.height > top + 1) return i;
+    }
+    return count > 0 ? count - 1 : 0;
+  }
+
+  /// Scrolls so block [i] sits at the top. False when it does not exist or is not laid out.
+  bool reveal(int i) {
+    final ctx = _keys[i]?.currentContext;
+    if (i < 0 || i >= count || ctx == null) return false;
+    Scrollable.ensureVisible(ctx, alignment: 0, duration: Duration.zero);
+    return true;
+  }
+
+  /// The first block of the movement named [name], or null.
+  int? firstBlockOf(String name) {
+    final i = _movements.indexOf(name);
+    return i < 0 ? null : i;
+  }
+}
+
 enum _Kind { paragraph, heading, code, quote, rule, listItem, table, callout, chart, map, equation, image, quiz }
 
 /// The five lesson callouts.
@@ -975,7 +1068,7 @@ class _Callout {
 
 final _callouts = <_Callout>[
   _Callout('learn', 'Objective', C.callLearn, C.callLearnBg,
-      RegExp(r'^\*\*(?:What you will learn|What will be learnt|You will be able to|Objective|Learning outcomes?):?\*\*\s*',
+      RegExp(r'^\*\*(?:What you will learn|What will be learnt|You will be able to|Objective|Outcome|Learning outcomes?):?\*\*\s*',
           caseSensitive: false)),
   _Callout('jargon', 'Jargon', C.callJargon, C.callJargonBg,
       RegExp(r'^\*\*(?:Jargon|In plain language|Plain language|The word):?\*\*\s*',
@@ -991,6 +1084,11 @@ final _callouts = <_Callout>[
           caseSensitive: false)),
   _Callout('research', 'Research', C.callResearch, C.callResearchBg,
       RegExp(r'^\*\*Research:?\*\*\s*', caseSensitive: false)),
+  // Course standard 3.1.0 §8.1: Story (SEE) and Probe (PROBE) are callouts.
+  _Callout('story', 'Story', C.callJargon, C.callJargonBg,
+      RegExp(r'^\*\*(?:Story|Example):?\*\*\s*', caseSensitive: false)),
+  _Callout('probe', 'Probe', C.callQuiz, C.callQuizBg,
+      RegExp(r'^\*\*Probe:?\*\*\s*', caseSensitive: false)),
   _Callout('fact', 'Fact', C.callFact, C.callFactBg,
       RegExp(r'^\*\*(?:Fun fact|Fact):?\*\*\s*', caseSensitive: false)),
 ];
@@ -1044,8 +1142,94 @@ class _Block {
   String quizBody = '';
 }
 
+/// Course modules are authored with things a reader must never see: HTML
+/// comments (generation provenance), YAML front matter, and legacy ASCII grid
+/// tables. BI26100324: strip the first two and turn the third into pipe tables
+/// before block parsing. Exposed for tests and the all-modules report.
+String normalizeModuleSource(String source) {
+  var t = source.replaceAll('\r\n', '\n');
+  t = t.replaceFirst(RegExp(r'^\s+'), '');
+  // Comments and grid tables are rewritten only OUTSIDE fenced code: an ASCII
+  // diagram in a fence is shown verbatim on purpose.
+  String outsideFences(String x, String Function(String) f) {
+    final out = StringBuffer();
+    var pos = 0;
+    for (final m in RegExp(r'^[ \t]*```[\s\S]*?^[ \t]*```[^\n]*$', multiLine: true).allMatches(x)) {
+      out.write(f(x.substring(pos, m.start)));
+      out.write(m.group(0));
+      pos = m.end;
+    }
+    out.write(f(x.substring(pos)));
+    return out.toString();
+  }
+
+  t = outsideFences(t, (x) => x.replaceAll(RegExp(r'<!--[\s\S]*?-->'), ''));
+  t = t.replaceFirst(RegExp(r'^\s+'), '');
+  final fm = RegExp(r'^---[ \t]*\n[\s\S]*?\n---[ \t]*(?:\n|$)').firstMatch(t);
+  if (fm != null) t = t.substring(fm.end);
+  return outsideFences(t, _gridTablesToPipe).trimLeft();
+}
+
+bool _isGridBorder(String l) => RegExp(r'^\s*\+[-=:+]{2,}\+\s*$').hasMatch(l);
+bool _isGridRow(String l) => RegExp(r'^\s*\|.*\|\s*$').hasMatch(l);
+
+String _gridTablesToPipe(String text) {
+  final lines = text.split('\n');
+  final out = <String>[];
+  var i = 0;
+  while (i < lines.length) {
+    if (!_isGridBorder(lines[i])) {
+      out.add(lines[i]);
+      i++;
+      continue;
+    }
+    // Gather the whole grid: borders and rows.
+    final grid = <String>[];
+    while (i < lines.length && (_isGridBorder(lines[i]) || _isGridRow(lines[i]))) {
+      grid.add(lines[i]);
+      i++;
+    }
+    // Row groups are separated by borders; a `=` border marks the header.
+    final groups = <List<List<String>>>[];
+    var cur = <List<String>>[];
+    var headerGroups = 0;
+    for (final l in grid) {
+      if (_isGridBorder(l)) {
+        if (cur.isNotEmpty) {
+          groups.add(cur);
+          if (l.contains('=') && headerGroups == 0) headerGroups = groups.length;
+          cur = <List<String>>[];
+        }
+      } else {
+        cur.add(_splitRow(l));
+      }
+    }
+    if (cur.isNotEmpty) groups.add(cur);
+    if (groups.isEmpty) continue;
+    // Merge wrapped cell lines within one group into single cells.
+    final rows = <List<String>>[];
+    for (final g in groups) {
+      final cols = g.map((r) => r.length).reduce((a, b) => a > b ? a : b);
+      rows.add(List<String>.generate(
+          cols,
+          (c) => g.map((r) => c < r.length ? r[c] : '').where((x) => x.isNotEmpty).join(' ')));
+    }
+    final width = rows.map((r) => r.length).reduce((a, b) => a > b ? a : b);
+    String fmt(List<String> r) =>
+        '| ${List<String>.generate(width, (c) => c < r.length ? r[c].replaceAll('|', '/') : '').join(' | ')} |';
+    out.add('');
+    out.add(fmt(rows.first));
+    out.add('|${List.filled(width, ' --- ').join('|')}|');
+    for (final r in rows.skip(1)) {
+      out.add(fmt(r));
+    }
+    out.add('');
+  }
+  return out.join('\n');
+}
+
 List<_Block> _parseBlocks(String source) {
-  final lines = source.replaceAll('\r\n', '\n').split('\n');
+  final lines = normalizeModuleSource(source).split('\n');
   final blocks = <_Block>[];
   var idx = 0;
   final para = <String>[];
@@ -1139,8 +1323,8 @@ List<_Block> _parseBlocks(String source) {
     final imgMatch = RegExp(r'^!\[([^\]]*)\]\(([^\s)]+)(?:\s+"([^"]*)")?\)$').firstMatch(trimmed);
     if (imgMatch != null) {
       flushPara();
-      final alt = imgMatch.group(1)!.trim();
-      final title = imgMatch.group(3)?.trim() ?? '';
+      final alt = _plainMarkers(imgMatch.group(1)!.trim());
+      final title = _plainMarkers(imgMatch.group(3)?.trim() ?? '');
       blocks.add(_Block(_Kind.image)
         ..imageAlt = alt
         ..imageCaption = title.isNotEmpty ? title : alt
@@ -1160,6 +1344,14 @@ List<_Block> _parseBlocks(String source) {
       while (idx < lines.length && lines[idx].trimRight().startsWith('|')) {
         rows.add(_splitRow(lines[idx].trimRight()));
         idx++;
+      }
+      // A ragged row (a missing or extra `|`) must not throw: Flutter's Table
+      // refuses uneven rows and the whole module went blank. Pad to the widest.
+      final width = rows.map((r) => r.length).reduce((x, y) => x > y ? x : y);
+      for (final r in rows) {
+        while (r.length < width) {
+          r.add('');
+        }
       }
       blocks.add(_Block(_Kind.table, rows: rows));
       continue;
@@ -1272,9 +1464,36 @@ List<_Block> _parseBlocks(String source) {
   return blocks;
 }
 
+/// Captions and alt text are plain strings, so a glossary marker there
+/// collapses to its term instead of showing `[[term|definition]]` raw.
+String _plainMarkers(String x) => x.replaceAllMapped(
+    RegExp(r'\[\[(?:link:)?([^|\]]+)(?:\|[^\]]*)?\]\]'), (m) => m.group(1)!.trim());
+
 List<String> _splitRow(String row) {
   var body = row.trim();
   if (body.startsWith('|')) body = body.substring(1);
   if (body.endsWith('|')) body = body.substring(0, body.length - 1);
-  return body.split('|').map((c) => c.trim()).toList();
+  // A `|` inside a `[[term|definition]]` marker belongs to the marker, not to
+  // the table: splitting there tore the marker in two and showed raw `[[`.
+  final cells = <String>[];
+  final cur = StringBuffer();
+  var depth = 0;
+  for (var i = 0; i < body.length; i++) {
+    if (body.startsWith('[[', i)) {
+      depth++;
+      cur.write('[[');
+      i++;
+    } else if (depth > 0 && body.startsWith(']]', i)) {
+      depth--;
+      cur.write(']]');
+      i++;
+    } else if (body[i] == '|' && depth == 0) {
+      cells.add(cur.toString().trim());
+      cur.clear();
+    } else {
+      cur.write(body[i]);
+    }
+  }
+  cells.add(cur.toString().trim());
+  return cells;
 }

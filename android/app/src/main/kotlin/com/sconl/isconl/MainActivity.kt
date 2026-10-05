@@ -7,6 +7,8 @@ import android.provider.Telephony
 import androidx.core.app.ActivityCompat
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -21,6 +23,9 @@ class MainActivity : FlutterFragmentActivity() {
     private var pickResult: MethodChannel.Result? = null
     private val pickRequestCode = 7301
     private val smsRequestCode = 7302
+    // An update waiting for "Install unknown apps" to be allowed: installed
+    // automatically in onResume once Sconl comes back from that settings page.
+    private var pendingInstall: File? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -37,8 +42,9 @@ class MainActivity : FlutterFragmentActivity() {
                         result.error("ARG", "path required", null)
                     } else {
                         try {
-                            installApk(File(path))
-                            result.success(true)
+                            // "installing" or "needs_permission" (Settings opened; the
+                            // install resumes by itself in onResume once allowed).
+                            result.success(installApk(File(path)))
                         } catch (e: Exception) {
                             result.error("INSTALL", e.message, null)
                         }
@@ -216,7 +222,33 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    private fun installApk(file: File) {
+    override fun onResume() {
+        super.onResume()
+        val f = pendingInstall ?: return
+        if (canInstall()) {
+            pendingInstall = null
+            if (f.exists()) launchInstaller(f)
+        }
+    }
+
+    private fun canInstall(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()
+
+    /** Hands [file] to the system installer, first asking for "Install unknown
+     *  apps" when Android hasn't granted it to iSconl yet (the silent failure
+     *  behind "v0.3.54 available" with no install, 4 Oct 2026). */
+    private fun installApk(file: File): String {
+        if (!canInstall()) {
+            pendingInstall = file
+            startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return "needs_permission"
+        }
+        launchInstaller(file)
+        return "installing"
+    }
+
+    private fun launchInstaller(file: File) {
         val uri: Uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
         val install = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")

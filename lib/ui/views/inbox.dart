@@ -5,15 +5,100 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import 'channels_dash_model.dart';
+import 'channels_dashboard.dart';
 import 'circle.dart' show PersonScreen;
+import '../../util/snooze.dart';
+import 'inbox_swipe.dart';
 import 'inbox_threads.dart';
 
 /// BI26092641: the Inbox is a people list, one row per person with every channel merged into one thread.
 /// Tapping a person opens [InboxThreadView], the conversation as chat bubbles. Senders with no person yet
 /// sit under Unknown, with Link to person and Create person. The grouping and the display rules live in
 /// inbox_threads.dart so they are tested without a widget.
-class InboxView extends StatelessWidget {
-  const InboxView({super.key});
+class InboxView extends StatefulWidget {
+  const InboxView({super.key, this.onOpenView});
+
+  /// Opens the Channels sub-tab that holds a nav view (jira, social, github, teams).
+  final void Function(String view)? onOpenView;
+
+  @override
+  State<InboxView> createState() => _InboxViewState();
+}
+
+class _InboxViewState extends State<InboxView> {
+  final _scroll = ScrollController();
+  bool _pinned = false;
+
+  /// Threads swiped away this session, hidden at once so the dismissed row leaves the tree
+  /// before the server round-trip lands. Undo takes a key back out.
+  final _hidden = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    SnoozeStore.instance.addListener(_onSnooze);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) SnoozeStore.instance.ensureLoaded(AppScope.of(context).db);
+    });
+    _scroll.addListener(() {
+      final past = _scroll.hasClients && _scroll.offset > 360;
+      if (past != _pinned) setState(() => _pinned = past);
+    });
+  }
+
+  void _onSnooze() {
+    if (mounted) setState(() {});
+  }
+
+  /// Marks every open message in the thread done, and offers an undo that restores each status.
+  void _done(BuildContext context, AppServices services, InboxThread t) {
+    final prior = <String, String>{
+      for (final m in t.messages)
+        if (fmt.s(m['STATUS']) != 'done' && messageKind(m) != MessageKind.system) fmt.s(m['ID']): fmt.s(m['STATUS']),
+    };
+    setState(() => _hidden.add(t.key));
+    for (final id in prior.keys) {
+      services.mutations.inboxUpdate(id, status: 'done');
+    }
+    showUndoBar(context, 'Marked done', () {
+      setState(() => _hidden.remove(t.key));
+      for (final e in prior.entries) {
+        services.mutations.inboxUpdate(e.key, status: e.value.isEmpty ? 'new' : e.value);
+      }
+    });
+  }
+
+  void _snooze(BuildContext context, AppServices services, InboxThread t, SnoozeChoice c) {
+    setState(() => _hidden.add(t.key));
+    SnoozeStore.instance.snooze(t.key, c.until, services.db);
+    showUndoBar(context, 'Snoozed until ${c.label.toLowerCase()}', () {
+      setState(() => _hidden.remove(t.key));
+      SnoozeStore.instance.unsnooze(t.key, services.db);
+    });
+  }
+
+  Widget _swipe(BuildContext context, AppServices services, InboxThread t, Widget tile) => SwipeThread(
+        key: ValueKey('swipe-${t.key}'),
+        onDone: () => _done(context, services, t),
+        chooseSnooze: () => showSnoozeSheet(context, DateTime.now()),
+        onSnooze: (c) => _snooze(context, services, t, c),
+        child: tile,
+      );
+
+  @override
+  void dispose() {
+    SnoozeStore.instance.removeListener(_onSnooze);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  ChannelsDash _dash(AppServices services, List<Map<String, dynamic>> feed) => ChannelsDash.from(
+        feed: feed,
+        jiraIssues: fmt.lm(fmt.m(services.store.jira.value)['issues']),
+        buffer: fmt.m(services.store.buffer.value),
+        now: DateTime.now(),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +107,7 @@ class InboxView extends StatelessWidget {
       children: [
         SnapshotView(
           snapshot: services.store.state,
+          controller: _scroll,
           builder: (context, data) {
             final feed = fmt.lm(fmt.m(data)['feed']);
             if (feed.isEmpty) {
@@ -35,6 +121,11 @@ class InboxView extends StatelessWidget {
             final people = fmt.lm(fmt.m(services.store.circle.value)['people']);
             final personById = {for (final p in people) fmt.s(p['ID']): p};
             final groups = groupThreads(feed);
+            final snoozeNow = DateTime.now();
+            bool shown(InboxThread t) =>
+                !_hidden.contains(t.key) &&
+                !SnoozeStore.instance.isSnoozed(t.key, snoozeNow) &&
+                !t.messages.where((m) => messageKind(m) != MessageKind.system).every((m) => fmt.s(m['STATUS']) == 'done');
             final now = DateTime.now();
 
             String nameOf(InboxThread t) {
@@ -48,10 +139,17 @@ class InboxView extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final t in groups.people)
+                ListenableBuilder(
+                  listenable: Listenable.merge([services.store.jira, services.store.buffer]),
+                  builder: (context, _) => Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: ChannelsDashboard(dash: _dash(services, feed), onOpenView: widget.onOpenView),
+                  ),
+                ),
+                for (final t in groups.people.where(shown))
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: ConversationTile(
+                    child: _swipe(context, services, t, ConversationTile(
                       name: nameOf(t),
                       latest: t.latest,
                       unread: t.unread,
@@ -66,19 +164,31 @@ class InboxView extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ),
+                    )),
                   ),
-                if (groups.unknown.isNotEmpty) ...[
+                if (groups.unknown.where(shown).isNotEmpty) ...[
                   const SectionLabel('Unknown'),
-                  for (final t in groups.unknown)
+                  for (final t in groups.unknown.where(shown))
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: _UnknownTile(thread: t, name: nameOf(t), now: now, people: people),
+                      child: _swipe(context, services, t, _UnknownTile(thread: t, name: nameOf(t), now: now, people: people)),
                     ),
                 ],
               ],
             );
           },
+        ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: ListenableBuilder(
+            listenable: Listenable.merge([services.store.state, services.store.jira, services.store.buffer]),
+            builder: (context, _) => ChannelsSummaryBar(
+              dash: _dash(services, fmt.lm(fmt.m(services.store.state.value)['feed'])),
+              visible: _pinned,
+            ),
+          ),
         ),
         Positioned(
           right: 16,

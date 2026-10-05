@@ -4,8 +4,12 @@ import '../../app_scope.dart';
 import '../../services/branding.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
+import '../update_flow.dart';
 import '../widgets/common.dart';
 import '../widgets/integrations_section.dart';
+import '../../services/day_close_planner.dart';
+import '../../util/day_close.dart';
+import 'systems_dashboard.dart';
 
 /// Connection, security, sync, update-on-cue, appearance, about.
 ///
@@ -15,8 +19,12 @@ import '../widgets/integrations_section.dart';
 /// as Buffer's compose gate: a phone typing a Jira API token is a bad
 /// afternoon. DesktopShell passes true; the mobile Shell's default is false.
 class SettingsView extends StatefulWidget {
-  const SettingsView({super.key, this.showIntegrations = false});
+  const SettingsView({super.key, this.showIntegrations = false, this.onOpenSub});
   final bool showIntegrations;
+
+  /// Set on the Systems landing: shows the dashboard above the settings and
+  /// lets its tiles open Ops (2) and Backlog (3).
+  final void Function(int sub)? onOpenSub;
 
   @override
   State<SettingsView> createState() => _SettingsViewState();
@@ -47,6 +55,16 @@ class _SettingsViewState extends State<SettingsView> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.onOpenSub != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: SystemsDashboardHost(onOpenSub: widget.onOpenSub),
+                ),
+              // ---- the end-of-day review ----
+              const SectionLabel('Day close'),
+              _DayCloseSettings(
+                  onChanged: () => replanDayClose(services)),
+
               // ---- automatic context ----
               const SectionLabel('Automatic context'),
               const SmsCard(),
@@ -273,22 +291,7 @@ class _SettingsViewState extends State<SettingsView> {
                         FilledButton.icon(
                           onPressed: updater.busy || !sync.online
                               ? null
-                              : () async {
-                                  final newer = await updater.check();
-                                  if (newer != null && context.mounted) {
-                                    final size = fmt.s(
-                                        updater.available?['sizeLabel']);
-                                    final go = await confirmDialog(
-                                        context,
-                                        'Update to v$newer?',
-                                        'The agent hands over the signed build'
-                                            '${size.isEmpty ? '' : ' ($size)'} '
-                                            'and Android installs it over this '
-                                            'version. Your data stays.',
-                                        action: 'Update');
-                                    if (go) await updater.downloadAndInstall();
-                                  }
-                                },
+                              : () => runUpdateFlow(context, updater),
                           icon: updater.busy
                               ? const MiniSpinner()
                               : const Icon(Icons.system_update_rounded,
@@ -570,6 +573,91 @@ class _Stat extends StatelessWidget {
           Text(value, style: T.mono.copyWith(color: C.text, fontSize: 15)),
           Text(label, style: T.tiny.copyWith(fontSize: 9.5)),
         ],
+      ),
+    );
+  }
+}
+
+
+/// BI26100143: when the end-of-day review notification fires, and whether weekends are skipped.
+class _DayCloseSettings extends StatefulWidget {
+  const _DayCloseSettings({required this.onChanged});
+  final VoidCallback onChanged;
+
+  @override
+  State<_DayCloseSettings> createState() => _DayCloseSettingsState();
+}
+
+class _DayCloseSettingsState extends State<_DayCloseSettings> {
+  @override
+  void initState() {
+    super.initState();
+    DayClosePrefs.instance.addListener(_refresh);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) DayClosePrefs.instance.ensureLoaded(AppScope.of(context).db);
+    });
+  }
+
+  @override
+  void dispose() {
+    DayClosePrefs.instance.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = DayClosePrefs.instance;
+    final db = AppScope.of(context).db;
+    final time = '${p.hour.toString().padLeft(2, '0')}:${p.minute.toString().padLeft(2, '0')}';
+    // ListTiles paint on the nearest Material; the Panel's decoration would hide them.
+    return Panel(
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(children: [
+        SwitchListTile(
+          key: const Key('dayclose-enabled'),
+          contentPadding: EdgeInsets.zero,
+          title: Text('End-of-day review', style: T.body2),
+          subtitle: Text('One notification to close the day', style: T.tiny),
+          value: p.enabled,
+          onChanged: (v) async {
+            await p.update(enabled: v, db: db);
+            widget.onChanged();
+          },
+        ),
+        ListTile(
+          key: const Key('dayclose-time'),
+          contentPadding: EdgeInsets.zero,
+          enabled: p.enabled,
+          title: Text('Time', style: T.body2),
+          trailing: Text(time, style: T.mono),
+          onTap: !p.enabled
+              ? null
+              : () async {
+                  final picked = await showTimePicker(
+                      context: context, initialTime: TimeOfDay(hour: p.hour, minute: p.minute));
+                  if (picked == null) return;
+                  await p.update(hour: picked.hour, minute: picked.minute, db: db);
+                  widget.onChanged();
+                },
+        ),
+        SwitchListTile(
+          key: const Key('dayclose-weekends'),
+          contentPadding: EdgeInsets.zero,
+          title: Text('Skip weekends', style: T.body2),
+          value: p.skipWeekends,
+          onChanged: !p.enabled
+              ? null
+              : (v) async {
+                  await p.update(skipWeekends: v, db: db);
+                  widget.onChanged();
+                },
+        ),
+      ]),
       ),
     );
   }

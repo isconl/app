@@ -8,6 +8,9 @@
     <!-- Alerts raised after sync (Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- BI26092648: the Console card's Recorder. Asked for at runtime, on first use,
+         after the app has explained why. Recording to a file only; nothing streams. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
     <!-- SMS ingestion. Reading his messages is how M-Pesa movements and the
          people in them reach the agent without him typing anything.

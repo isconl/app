@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
+import '../../util/equicycle.dart';
 import 'common.dart';
 
 /// BI26092508: this cycle's and next cycle's focus mix, primary/secondary/
@@ -28,34 +29,22 @@ class _CycleRef {
   _CycleRef(this.eqYear, this.cycleNum);
   final int eqYear;
   final int cycleNum;
-  String get key => '$eqYear-$cycleNum';
+  String get key => eq2CycleKey(eqYear, cycleNum);
   String get defaultWord => _rotation[(cycleNum - 1).clamp(0, 12)];
   _CycleRef get next =>
       cycleNum >= 13 ? _CycleRef(eqYear + 1, 1) : _CycleRef(eqYear, cycleNum + 1);
 
-  /// The equicycle year starts on the first Sunday of June (calendar.dart).
-  /// BI26092521: eqYear is the year of the most recent first-Sunday-of-June
-  /// on or before today, not simply "this year from June, else last year" --
-  /// kept in step with calendar.dart's _EqContext and the web/pulse copies.
-  static DateTime _firstSundayOfJune(int year) {
-    final june1 = DateTime(year, 6, 1);
-    final daysAhead = (7 - june1.weekday % 7) % 7;
-    return DateTime(year, 6, 1 + daysAhead);
-  }
-
-  static _CycleRef today() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    var eqYear = today.year;
-    if (today.isBefore(_firstSundayOfJune(eqYear))) eqYear -= 1;
-    final start = _firstSundayOfJune(eqYear);
-    final days = today.difference(start).inDays;
-    return _CycleRef(eqYear, (days < 0 ? 0 : days) ~/ 28 + 1);
+  /// BI26100205: today's cycle comes from the cached Equicycle 2 year table
+  /// (util/equicycle.dart). Null when no table covers today yet.
+  static _CycleRef? today() {
+    final p = EquicycleYears.instance.positionFor(DateTime.now());
+    return p == null ? null : _CycleRef(p.year, p.cycle);
   }
 }
 
 /// The `<eqYear>-<cycle>` key of today's cycle, as `/api/cycle-theme?cycleKey=` takes it.
-String currentCycleKey() => _CycleRef.today().key;
+/// Null until a year table covers today (first run, offline).
+String? currentCycleKey() => _CycleRef.today()?.key;
 
 class _Mix {
   _Mix(this.words, this.weights, this.tagline);
@@ -84,16 +73,45 @@ class _Mix {
 class _CycleMixCardState extends State<CycleMixCard> {
   final _mixes = <String, _Mix?>{};
   final _loaded = <String>{};
-  late final _CycleRef _now = _CycleRef.today();
+  _CycleRef? _now;
 
   static const _tones = [C.green, C.amber, Color(0xFF58A6FF)];
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    for (final c in [_now, _now.next]) {
+  void initState() {
+    super.initState();
+    EquicycleYears.instance.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    EquicycleYears.instance.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (!mounted) return;
+    setState(_resolve);
+    _loadCycles();
+  }
+
+  void _resolve() => _now = _CycleRef.today();
+
+  void _loadCycles() {
+    final now = _now;
+    if (now == null) return;
+    for (final c in [now, now.next]) {
       _load(c.key);
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final services = AppScope.of(context);
+    EquicycleYears.instance.ensureLoaded(services.api, services.db);
+    _resolve();
+    _loadCycles();
   }
 
   Future<void> _load(String key) async {
@@ -246,13 +264,18 @@ class _CycleMixCardState extends State<CycleMixCard> {
 
   @override
   Widget build(BuildContext context) {
+    final now = _now;
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Cycle focus', style: T.w500(T.body2)),
-          _row('This cycle', _now),
-          _row('Next cycle', _now.next),
+          if (now == null)
+            Text('Calendar unavailable', style: T.small.copyWith(color: C.text3))
+          else ...[
+            _row('This cycle', now),
+            _row('Next cycle', now.next),
+          ],
         ],
       ),
     );

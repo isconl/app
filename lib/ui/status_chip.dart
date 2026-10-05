@@ -4,7 +4,11 @@ import '../app_scope.dart';
 import '../data/sync.dart' show SyncPhase;
 import '../theme.dart';
 import '../util/fmt.dart' as fmt;
+import '../util/equicycle.dart';
 import 'views/backlog.dart';
+import 'views/ops.dart';
+import 'views/planning.dart';
+import 'views/systems_dash_model.dart';
 import 'widgets/common.dart';
 
 /// BI26092622: one succinct, very subtle piece of status after a view's title in the app bar.
@@ -51,6 +55,61 @@ int? backlogRowCount(dynamic snapshotValue) {
   final projects = fmt.lm(fmt.m(snapshotValue)['projects']);
   if (projects.isEmpty) return null;
   return projects.fold<int>(0, (n, p) => n + fmt.lm(p['rows']).length);
+}
+
+/// Command: `reap d12/28`, the cycle word in lower case and the day of the 28-day cycle, or `stillweek d3`.
+/// The word is the default rotation; null when no year table covers today (first run, offline).
+String? cycleChipText(EqPosition? p) {
+  if (p == null) return null;
+  const rotation = ['plant', 'push', 'climb', 'reap', 'dig', 'weave', 'mend', 'scout', 'scale', 'make', 'run', 'stock', 'audit'];
+  if (p.stillweek) return 'stillweek d${p.stillweekDay}';
+  return '${rotation[(p.cycle - 1).clamp(0, 12)]} d${p.day}/28';
+}
+
+/// Systems > Ops: `vm ok` when every engine is up, else `vm 2 down`; null before the first status.
+String? opsChipText(dynamic opsStatusValue) {
+  final engines = SystemsDash.enginesFrom(fmt.m(opsStatusValue));
+  if (engines.isEmpty) return null;
+  final down = engines.where((e) => !e.up).length;
+  return down == 0 ? 'vm ok' : 'vm $down down';
+}
+
+/// Command: the cycle day, from the cached Equicycle year table. Opens Compass.
+class CycleChipSource implements StatusChipSource {
+  CycleChipSource(this.open, {EquicycleYears? years, DateTime Function()? clock})
+      : _years = years ?? EquicycleYears.instance,
+        _clock = clock ?? DateTime.now;
+  final OpenStatusPage open;
+  final EquicycleYears _years;
+  final DateTime Function() _clock;
+
+  @override
+  Listenable get changes => _years;
+
+  @override
+  StatusChip? current(BuildContext context) {
+    final text = cycleChipText(_years.positionFor(_clock()));
+    if (text == null) return null;
+    return StatusChip(text, (c) => open(c, 'Compass', const PlanningView()));
+  }
+}
+
+/// Systems > Ops: `vm ok` or `vm N down`, from the cached ops status. It never fetches; the snapshot
+/// is filled by the Systems landing and the Ops page. Opens Ops.
+class OpsChipSource implements StatusChipSource {
+  OpsChipSource(this.services, this.open);
+  final AppServices services;
+  final OpenStatusPage open;
+
+  @override
+  Listenable get changes => services.store.opsStatus;
+
+  @override
+  StatusChip? current(BuildContext context) {
+    final text = opsChipText(services.store.opsStatus.value);
+    if (text == null) return null;
+    return StatusChip(text, (c) => open(c, 'Ops', const OpsView()));
+  }
 }
 
 /// The default for every view: data freshness. Opens the Sync status page.

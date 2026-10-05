@@ -72,9 +72,9 @@ jobs:
 
       # Created here, exactly once, before any build runs. Three matrix jobs
       # racing to create-or-upload the same release is how you get two releases
-      # or a lost artefact. BI26100126: it is opened as a DRAFT, and only the
-      # verify job publishes it once an .apk is attached, so an empty release
-      # can never become "latest" and a failed build leaves nothing public.
+      # or a lost artefact. The agent skips `apk-v*` releases that carry no
+      # .apk, so this empty release is invisible to the phone until Android
+      # finishes uploading into it.
       - name: Open the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -208,12 +208,26 @@ jobs:
           TAG: apk-v${{ needs.version.outputs.version }}
         run: gh release upload "$TAG" "$ARTEFACT" --clobber
 
+  # BI26100126: the release is opened as a DRAFT and published only here, after the
+  # APK is confirmed attached. A failed build leaves a draft, never an empty
+  # "latest" release that hides the real one.
+  publish:
+    needs: [version, verify]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: apk-v${{ needs.version.outputs.version }}
+        run: gh release edit "$TAG" --draft=false --latest
+
   # The update path on an installed phone is unfixable remotely, so it gets an
   # explicit assertion rather than an assumption. If the APK is missing, this
   # fails the run loudly instead of leaving a half-published release behind.
   verify:
     needs: [version, build]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Assert the Android artefact reached the release
@@ -232,6 +246,3 @@ jobs:
             || echo "::warning::No Windows artefact on $TAG."
           echo "$ASSETS" | grep -qE '_linux_x64\.tar\.gz$' \
             || echo "::warning::No Linux artefact on $TAG."
-          # Only now does the release become public (and "latest").
-          gh release edit "$TAG" --draft=false --latest
-          echo "Published $TAG."

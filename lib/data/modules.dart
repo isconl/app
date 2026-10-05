@@ -97,6 +97,23 @@ class ModuleLibrary extends ChangeNotifier {
     return a is Map ? a.cast<String, dynamic>() : null;
   }
 
+  /// Modules the agent has narration for, with a title to show. BI26092648 offers
+  /// these in the Console player's queue.
+  List<({String course, String file, String title})> get narrated {
+    final out = <({String course, String file, String title})>[];
+    _manifest.forEach((k, e) {
+      final a = e['audio'];
+      if (a is! Map || a['available'] != true) return;
+      final i = k.indexOf('/');
+      if (i <= 0 || i == k.length - 1) return;
+      final file = k.substring(i + 1);
+      final title = fmt.s(e['title']);
+      out.add((course: k.substring(0, i), file: file, title: title.isEmpty ? file : title));
+    });
+    out.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    return out;
+  }
+
   ModuleStatus status(String course, String file) {
     final k = keyOf(course, file);
     final entry = _manifest[k];

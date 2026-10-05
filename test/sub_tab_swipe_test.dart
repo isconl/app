@@ -145,7 +145,7 @@ void main() {
   }
 
   group('BI26092605: Sub-tab swipe and navigation in Shell', () {
-    testWidgets('swiping on Channels moves Inbox -> Teams -> Kanban -> Buffer and stays on Channels', (tester) async {
+    testWidgets('swiping on Channels moves Inbox -> Deck -> Teams -> Tools and stays on Channels', (tester) async {
       final services = (await tester.runAsync(() => buildTestServices()))!;
 
       // Pre-seed stores so views render immediately
@@ -167,71 +167,50 @@ void main() {
 
       // Landing sub-tab is Inbox (index 0, uppercase section title; BI26092606)
       expect(find.text('INBOX'), findsOneWidget);
+      expect(find.text('Deck'), findsOneWidget);
       expect(find.text('Teams'), findsOneWidget);
-      expect(find.text('Kanban'), findsOneWidget);
-      expect(find.text('Buffer'), findsOneWidget);
+      expect(find.text('Tools'), findsOneWidget);
 
       final pageViewFinder = find.byKey(const ValueKey('tab_sub_pageview_1'));
       expect(pageViewFinder, findsOneWidget);
 
-      // Drag left 1: Inbox -> Teams
-      await tester.drag(pageViewFinder, const Offset(-500, 0));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      Future<void> swipe(double dx) async {
+        await tester.drag(pageViewFinder, Offset(dx, 0));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+      }
 
-      // Active view is Teams, bottom tab is still Channels
+      Color? tileColor(String label) {
+        final box = tester.widget<AnimatedContainer>(
+          find.ancestor(of: find.text(label), matching: find.byType(AnimatedContainer)).first,
+        );
+        return (box.decoration as BoxDecoration).color;
+      }
+
+      // Left 1: Inbox -> Deck, still on Channels
+      await swipe(-500);
       expect(find.widgetWithText(ShellAppBar, 'Channels'), findsOneWidget);
-      // In Teams, the Teams tab in _SubTabBar is now highlighted
-      final teamsTileFinder = find.ancestor(
-        of: find.text('Teams'),
-        matching: find.byType(AnimatedContainer),
-      );
-      final teamsBox = tester.widget<AnimatedContainer>(teamsTileFinder.first);
-      expect((teamsBox.decoration as BoxDecoration).color, C.greenBg);
+      expect(tileColor('Deck'), C.greenBg);
 
-      // Drag left 2: Teams -> Kanban
-      await tester.drag(pageViewFinder, const Offset(-500, 0));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
+      // Left 2: Deck -> Teams
+      await swipe(-500);
       expect(find.widgetWithText(ShellAppBar, 'Channels'), findsOneWidget);
-      final kanbanTileFinder = find.ancestor(
-        of: find.text('Kanban'),
-        matching: find.byType(AnimatedContainer),
-      );
-      final kanbanBox = tester.widget<AnimatedContainer>(kanbanTileFinder.first);
-      expect((kanbanBox.decoration as BoxDecoration).color, C.greenBg);
+      expect(tileColor('Teams'), C.greenBg);
 
-      // Drag left 3: Kanban -> Buffer
-      await tester.drag(pageViewFinder, const Offset(-500, 0));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
+      // Left 3: Teams -> Tools
+      await swipe(-500);
       expect(find.widgetWithText(ShellAppBar, 'Channels'), findsOneWidget);
-      final bufferTileFinder = find.ancestor(
-        of: find.text('Buffer'),
-        matching: find.byType(AnimatedContainer),
-      );
-      final bufferBox = tester.widget<AnimatedContainer>(bufferTileFinder.first);
-      expect((bufferBox.decoration as BoxDecoration).color, C.greenBg);
+      expect(tileColor('Tools'), C.greenBg);
 
-      // Drag left 4: Past Buffer (last sub-tab) -> edge bounce, stays on Buffer, NEVER jumps bottom tab!
-      await tester.drag(pageViewFinder, const Offset(-500, 0));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
+      // Left 4: past Tools (the last sub-tab) bounces and never jumps bottom tab
+      await swipe(-500);
       expect(find.widgetWithText(ShellAppBar, 'Channels'), findsOneWidget);
-      final bufferBoxAfterBounce = tester.widget<AnimatedContainer>(bufferTileFinder.first);
-      expect((bufferBoxAfterBounce.decoration as BoxDecoration).color, C.greenBg);
+      expect(tileColor('Tools'), C.greenBg);
 
-      // Now drag right to go back: Buffer -> Kanban
-      await tester.drag(pageViewFinder, const Offset(500, 0));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
+      // Back right: Tools -> Teams
+      await swipe(500);
       expect(find.widgetWithText(ShellAppBar, 'Channels'), findsOneWidget);
-      final kanbanBoxBack = tester.widget<AnimatedContainer>(kanbanTileFinder.first);
-      expect((kanbanBoxBack.decoration as BoxDecoration).color, C.greenBg);
+      expect(tileColor('Teams'), C.greenBg);
 
       await tester.pump(const Duration(seconds: 11));
     });
@@ -251,14 +230,14 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Tap Kanban
-      await tester.tap(find.text('Kanban'));
+      // Tap Teams
+      await tester.tap(find.text('Teams'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.widgetWithText(ShellAppBar, 'Channels'), findsOneWidget);
       final kanbanTileFinder = find.ancestor(
-        of: find.text('Kanban'),
+        of: find.text('Teams'),
         matching: find.byType(AnimatedContainer),
       );
       final kanbanBox = tester.widget<AnimatedContainer>(kanbanTileFinder.first);
@@ -282,8 +261,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Navigate to Kanban (sub 2)
-      await tester.tap(find.text('Kanban'));
+      // Navigate to Teams (sub 2)
+      await tester.tap(find.text('Teams'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -309,7 +288,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Title is Channels and lands on Inbox (sub 0), NOT Kanban!
+      // Title is Channels and lands on Inbox (sub 0), NOT Teams!
       expect(find.widgetWithText(ShellAppBar, 'Channels'), findsOneWidget);
       expect(find.text('INBOX'), findsOneWidget);
       final inboxContainer = tester.widget<Container>(
@@ -335,8 +314,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Tap Kanban (sub 2)
-      await tester.tap(find.text('Kanban'));
+      // Tap Teams (sub 2)
+      await tester.tap(find.text('Teams'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 

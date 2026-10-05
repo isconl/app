@@ -1,8 +1,11 @@
+import 'continue_reading.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
+import '../../util/day_close.dart';
+import 'spaced_review_view.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show openNavRoute;
 import '../widgets/block_card.dart';
@@ -33,6 +36,7 @@ class _HubViewState extends State<HubView> {
       if (mounted) {
         final store = AppScope.of(context).store;
         store.day.hydrate();
+        DayClosePrefs.instance.ensureLoaded(AppScope.of(context).db);
         final sig = store.signals;
         sig.hydrate().then((_) {
           if (mounted && sig.value == null) sig.refresh();
@@ -70,6 +74,25 @@ class _HubViewState extends State<HubView> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            ListenableBuilder(
+              listenable: DayClosePrefs.instance,
+              builder: (context, _) => DayClosePrefs.instance.closedToday(now)
+                  ? Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Panel(
+                        key: const Key('day-closed'),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        child: Row(children: [
+                          const Icon(Icons.check_circle_outline_rounded, size: 18, color: C.green),
+                          const SizedBox(width: 8),
+                          Text('Day closed', style: T.body2.copyWith(color: C.text)),
+                        ]),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            const ReviewCard(),
+            const ContinueReadingCard(),
             // ---- hero — date/due/review card, always first ----
             Panel(
               child: Column(

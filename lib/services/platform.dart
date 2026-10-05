@@ -48,9 +48,13 @@ class PlatformBridge {
 
   /// Hand a downloaded APK to the system installer. No-op on web - see
   /// updater_stub.dart, which never calls this on that platform anyway.
-  Future<void> installApk(String path) async {
-    if (kIsWeb) return;
-    await _channel.invokeMethod('installApk', {'path': path});
+  /// Returns "installing", or "needs_permission" when Android first has to
+  /// allow installs from iSconl (Settings is opened, and the install resumes by
+  /// itself when Sconl returns).
+  Future<String> installApk(String path) async {
+    if (kIsWeb) return 'unsupported';
+    final r = await _channel.invokeMethod<Object>('installApk', {'path': path});
+    return r is String ? r : 'installing';
   }
 
   /// System image picker; returns raw bytes or null if cancelled. Null on

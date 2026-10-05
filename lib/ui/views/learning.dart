@@ -2,15 +2,21 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app_scope.dart';
 import '../../data/db.dart';
+import '../../util/markdown.dart' show MarkdownAnchors;
 import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
+import '../../study/cdm/cdm_lesson_body.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
+import '../../util/reader_prefs.dart';
+import '../../util/spaced_review.dart';
+import 'study_search_view.dart';
 import '../shell.dart' show ShellAppBar, SyncIndicator, openMenu;
 import '../widgets/common.dart';
 import '../widgets/listen_bar.dart';
@@ -100,6 +106,7 @@ class _LearningViewState extends State<LearningView> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const Padding(padding: EdgeInsets.only(bottom: 10), child: StudySearchEntry()),
               // ── transient prefetch progress only - the idle summary moved
               // down to each track card, where "how much of THIS is offline"
               // is actually actionable rather than one global number nobody
@@ -170,6 +177,23 @@ class _LearningViewState extends State<LearningView> {
       ),
     );
   }
+}
+
+/// BI26100404: a module title is never a front-matter line. The server derives titles from the
+/// front matter or the first heading; this guards a cached or older response that still carries
+/// `---`, falling back to the humanised file name.
+String safeModuleTitle(String title, String file) {
+  final t = title.trim();
+  if (t.isNotEmpty && !t.startsWith('---')) return t;
+  final base = file
+      .replaceAll(RegExp(r'\.md$', caseSensitive: false), '')
+      .replaceFirst(RegExp(r'^\d{8}_'), '')
+      .replaceFirst(RegExp(r'_v\d+_\d+_\d+$', caseSensitive: false), '')
+      .replaceFirst(RegExp(r'^\d+[-_]'), '')
+      .replaceAll(RegExp(r'[_-]+'), ' ')
+      .trim();
+  if (base.isEmpty) return file;
+  return base[0].toUpperCase() + base.substring(1);
 }
 
 /// Strips emoji codepoints from [text] (BI26092611).
@@ -916,7 +940,7 @@ class LessonRow extends StatelessWidget {
 
     final tVal = fmt.s(lesson['TITLE']);
     final rawTitle = tVal.isNotEmpty ? tVal : fmt.s(lesson['title'] ?? file);
-    final title = stripEmoji(rawTitle);
+    final title = safeModuleTitle(stripEmoji(rawTitle), file);
 
     final subVal = fmt.s(lesson['SUBTITLE']);
     final rawSubtitle = subVal.isNotEmpty ? subVal : fmt.s(lesson['subtitle']);
@@ -1033,6 +1057,9 @@ class LessonRow extends StatelessWidget {
                         style: T.tiny.copyWith(color: C.text3),
                       ),
                     ],
+                    // BI26100325: how far through an unfinished module.
+                    if (status != 'done' && status != 'new')
+                      ReadingBar(course: courseId, file: file, color: trackColor),
                   ],
                 ),
               ),
@@ -1054,6 +1081,46 @@ class LessonRow extends StatelessWidget {
   }
 }
 
+/// BI26100325: a thin progress bar under an unfinished module, from the saved
+/// reading position. Hidden until there is one, and when no database is in scope.
+@visibleForTesting
+class ReadingBar extends StatelessWidget {
+  const ReadingBar({super.key, required this.course, required this.file, required this.color});
+  final String course;
+  final String file;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    AppDb db;
+    try {
+      db = AppScope.of(context).db;
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
+    return FutureBuilder<double?>(
+      future: db.lessonResumeFractionLocal(course: course, file: file),
+      builder: (context, snap) {
+        final f = snap.data;
+        if (f == null || f < 0.02) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 6, right: 10),
+          child: ClipRRect(
+            key: const Key('reading-bar'),
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: f.clamp(0.0, 1.0),
+              minHeight: 3,
+              backgroundColor: C.surface,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class LessonScreen extends StatefulWidget {
   const LessonScreen({
     super.key,
@@ -1066,7 +1133,15 @@ class LessonScreen extends StatefulWidget {
     this.trackColor = C.green,
     this.reviewedAt,
     this.version,
+    this.initialParagraph,
+    this.foundText,
   });
+
+  /// BI26100156: open at this paragraph (as the reader counts them), from a search result.
+  final int? initialParagraph;
+
+  /// The matched paragraph's text, shown briefly so the jump is visible.
+  final String? foundText;
 
   final String course;
   final String file;
@@ -1090,7 +1165,17 @@ class _LessonScreenState extends State<LessonScreen> {
   final _scroll = ScrollController();
   Timer? _resumeDebounce;
   bool _restoredResume = false;
+
+  /// BI26100325: block anchors for the module body, so "where I stopped" is a
+  /// block, not a pixel offset.
+  final _anchors = MarkdownAnchors();
   bool _showScrollTop = false;
+
+  /// BI26100141: focus mode hides the bar and buttons while scrolling down.
+  bool _barVisible = true;
+
+  /// BI26100156: the matched text is shown for a few seconds after a search jump.
+  bool _showFound = false;
   String? _currentContent;
 
   Map<String, dynamic>? get _computedNextLesson {
@@ -1155,12 +1240,37 @@ class _LessonScreenState extends State<LessonScreen> {
       }
     });
     _scroll.addListener(_onScroll);
+    ReaderPrefs.instance.addListener(_onPrefs);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ReaderPrefs.instance.ensureLoaded(AppScope.of(context).db);
+    });
+  }
+
+  void _onPrefs() {
+    if (!mounted) return;
+    setState(() {
+      if (!ReaderPrefs.instance.focus) _barVisible = true;
+    });
+  }
+
+  /// Scrolling down hides the bar and buttons; scrolling up, or the top of the page, brings them back.
+  void _updateBarVisibility() {
+    if (!_scroll.hasClients || !ReaderPrefs.instance.focus) return;
+    final dir = _scroll.position.userScrollDirection;
+    var visible = _barVisible;
+    if (_scroll.offset < 24 || dir == ScrollDirection.forward) {
+      visible = true;
+    } else if (dir == ScrollDirection.reverse) {
+      visible = false;
+    }
+    if (visible != _barVisible) setState(() => _barVisible = visible);
   }
 
   // BI26092613: local, always-on scroll-position tracking -- written
   // to local db and queued in outbox in the same call, debounced to 2 s
   // while scrolling and on leaving the screen, as a fraction 0 to 1.
   void _onScroll() {
+    _updateBarVisibility();
     if (!_scroll.hasClients || _scroll.position.maxScrollExtent <= 0) return;
     // BI26092614: scroll-to-top appears only after scrolling past one screen height.
     final show = _scroll.offset > MediaQuery.of(context).size.height;
@@ -1198,17 +1308,32 @@ class _LessonScreenState extends State<LessonScreen> {
         .clamp(0.0, 1.0);
     final pct = (fraction * 100).round().clamp(0, 100);
     final services = AppScope.of(context);
+    // BI26100325: by block as well, so a font-size change lands on the same block.
+    ReadingAnchor? anchor;
+    if (_anchors.count > 0) {
+      final block = _anchors.topVisible(_scroll);
+      anchor = ReadingAnchor(
+        block: block,
+        movement: _anchors.movementOf(block),
+        blocksTotal: _anchors.count,
+        wordsLeft: _anchors.wordsFrom(block),
+        title: widget.title.isEmpty ? widget.file : widget.title,
+      );
+    }
     services.db.saveLessonResumeLocal(
       course: widget.course,
       file: widget.file,
       scrollPct: pct,
       fraction: fraction,
+      anchor: anchor,
     );
     services.mutations.saveLessonResume(
       course: widget.course,
       lesson: widget.file,
       scrollPct: pct,
       fraction: fraction,
+      block: anchor?.block,
+      movement: anchor?.movement,
     );
   }
 
@@ -1285,7 +1410,38 @@ class _LessonScreenState extends State<LessonScreen> {
     _restoredResume = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || !_scroll.hasClients) return;
-      final frac = await AppScope.of(context).db.lessonResumeFractionLocal(
+      final jump = widget.initialParagraph;
+      if (jump != null) {
+        // A search result wins over the saved reading position.
+        final total = _currentContent == null
+            ? 0
+            : _currentContent!.split(RegExp(r'\n\s*\n')).where((p) => p.trim().isNotEmpty).length;
+        if (total > 0) {
+          final target = _scroll.position.maxScrollExtent * (jump / total);
+          _scroll.jumpTo(target.clamp(0, _scroll.position.maxScrollExtent));
+          setState(() => _showFound = true);
+          Future.delayed(const Duration(seconds: 4), () {
+            if (mounted) setState(() => _showFound = false);
+          });
+        }
+        return;
+      }
+      final db = AppScope.of(context).db;
+      // BI26100325: the saved block wins; if it no longer exists, the start of
+      // its movement; only then the old scroll fraction.
+      final anchor = await db.lessonAnchorLocal(course: widget.course, file: widget.file);
+      if (!mounted || !_scroll.hasClients) return;
+      if (anchor != null && _anchors.count > 0) {
+        var i = anchor.block;
+        if (i < 0 || i >= _anchors.count) {
+          i = _anchors.firstBlockOf(anchor.movement) ?? -1;
+        }
+        if (i >= 0) {
+          if (i > 0 && _anchors.reveal(i)) return;
+          if (i == 0) return;
+        }
+      }
+      final frac = await db.lessonResumeFractionLocal(
             course: widget.course,
             file: widget.file,
           );
@@ -1301,6 +1457,7 @@ class _LessonScreenState extends State<LessonScreen> {
     _undoTimer?.cancel();
     _saveResumeNow();
     _scroll.removeListener(_onScroll);
+    ReaderPrefs.instance.removeListener(_onPrefs);
     _scroll.dispose();
     super.dispose();
   }
@@ -1334,6 +1491,7 @@ class _LessonScreenState extends State<LessonScreen> {
             revertTo,
             force: true,
           );
+          SpacedReview.instance.withdraw(widget.course, widget.file, db: services.db);
         },
       );
     }
@@ -1378,10 +1536,26 @@ class _LessonScreenState extends State<LessonScreen> {
           widget.file,
           'done',
         );
+        // BI26100145: a finished module enters the 1, 7 and 30 day review schedule.
+        SpacedReview.instance.enrol(
+            course: widget.course,
+            file: widget.file,
+            title: widget.title.isEmpty ? widget.file : widget.title,
+            now: DateTime.now(),
+            db: services.db);
       },
       child: const Text('Mark as done'),
     );
   }
+
+  Widget _lessonOfflineNote() => Padding(
+        padding: const EdgeInsets.only(top: 26),
+        child: Text(
+          'Lesson content loads when online, then stays cached '
+          'on this device for reading offline.',
+          style: T.body2.copyWith(color: C.text3, height: 1.6),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -1392,30 +1566,32 @@ class _LessonScreenState extends State<LessonScreen> {
       '/api/learning/lesson?course=${Uri.encodeComponent(widget.course)}&file=${Uri.encodeComponent(widget.file)}',
     );
     final heading = widget.title.isEmpty ? widget.file : widget.title;
+    final prefs = ReaderPrefs.instance;
+    final mq = MediaQuery.of(context);
+    final textScale = prefs.effectiveScale(mq.textScaler.scale(1.0));
+    final barShown = !prefs.focus || _barVisible;
+    // With focus mode on, the body runs behind the bar so hiding it never shifts the text.
+    final topPad = prefs.focus ? mq.padding.top + kToolbarHeight : 0.0;
 
     return Scaffold(
-      // Notes stays fixed in the corner; scroll-to-top appears above it (BI26100122).
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 160),
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: SizeTransition(
-                sizeFactor: animation,
-                child: child,
-              ),
-            ),
-            child: _showScrollTop
-                ? Padding(
-                    key: const ValueKey('fab_scroll_top_visible'),
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: CircleFab(
+      extendBodyBehindAppBar: prefs.focus,
+      // BI26100405: scroll-to-top is the one primary FAB; notes is a secondary above it.
+      floatingActionButton: IgnorePointer(
+        ignoring: !barShown,
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 180),
+          offset: Offset(0, barShown ? 0 : 2),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            opacity: barShown ? 1 : 0,
+            // One primary, bottom-right: scroll to top (it appears once you have scrolled a screen).
+            // Notes is secondary: small and grey, above it. Same pattern as the holdings view.
+            child: FabStack(
+              primary: _showScrollTop
+                  ? FabAction(
                       heroTag: 'fab_lesson_scroll_top',
                       tooltip: 'Scroll to top',
-                      icon: const Icon(Icons.vertical_align_top_rounded),
+                      icon: Icons.vertical_align_top_rounded,
                       onPressed: () {
                         if (_scroll.hasClients) {
                           _scroll.animateTo(
@@ -1425,26 +1601,44 @@ class _LessonScreenState extends State<LessonScreen> {
                           );
                         }
                       },
-                    ),
-                  )
-                : const SizedBox.shrink(key: ValueKey('fab_scroll_top_hidden')),
+                    )
+                  : null,
+              secondary: [
+                FabAction(
+                  heroTag: 'fab_lesson_notes',
+                  tooltip: 'Notes',
+                  icon: Icons.edit_note_rounded,
+                  onPressed: () => _openNotesSheet(context),
+                ),
+              ],
+            ),
           ),
-          CircleFab(
-            heroTag: 'fab_lesson_notes',
-            tooltip: 'Notes',
-            icon: const Icon(Icons.edit_note_rounded),
-            onPressed: () => _openNotesSheet(context),
+        ),
+      ),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 180),
+          offset: Offset(0, barShown ? 0 : -1.2),
+          child: ShellAppBar(
+            title: heading,
+            showBrand: false,
+            actions: [
+              IconButton(
+                key: const Key('reader-aa'),
+                tooltip: 'Text size and spacing',
+                icon: Text('Aa', style: T.w600(T.body2).copyWith(color: C.text)),
+                onPressed: () => showReaderComfortSheet(context),
+              ),
+              _ExportPdfButton(course: widget.course, file: widget.file),
+            ],
           ),
-        ],
+        ),
       ),
-      appBar: ShellAppBar(
-        title: heading,
-        showBrand: false,
-        actions: [
-          _ExportPdfButton(course: widget.course, file: widget.file),
-        ],
-      ),
-      body: Column(
+      body: MediaQuery(
+        data: mq.copyWith(textScaler: TextScaler.linear(textScale)),
+        child: Stack(children: [
+      Column(
         children: [
           ReadingProgress(controller: _scroll),
           Expanded(
@@ -1454,7 +1648,7 @@ class _LessonScreenState extends State<LessonScreen> {
               // The reading surface owns its own margins, so the scroll view
               // contributes nothing horizontally. Bottom room is for the
               // thumb, not for a nav bar - this screen is pushed, not tabbed.
-              padding: const EdgeInsets.fromLTRB(0, 0, 0, 56),
+              padding: EdgeInsets.fromLTRB(0, topPad, 0, 56),
               builder: (context, data) {
                 final lessonMap = fmt.m(data);
                 final content = fmt.s(lessonMap['content']);
@@ -1466,6 +1660,8 @@ class _LessonScreenState extends State<LessonScreen> {
                 final version = fmt.s(lessonMap['version'] ??
                     lessonMap['VERSION'] ??
                     widget.version);
+                final docId = fmt.s(lessonMap['docId'] ?? lessonMap['doc_id']);
+                final docVersion = fmt.s(lessonMap['docVersion'] ?? lessonMap['doc_version']);
                 _currentContent = content;
                 _maybeRestoreResume();
                 return ReadingSurface(
@@ -1505,17 +1701,26 @@ class _LessonScreenState extends State<LessonScreen> {
                           course: widget.course,
                           file: widget.file,
                           markdown: content),
-                    if (content.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 26),
-                        child: Text(
-                          'Lesson content loads when online, then stays cached '
-                          'on this device for reading offline.',
-                          style: T.body2.copyWith(color: C.text3, height: 1.6),
-                        ),
+                    if (docId.isNotEmpty && docVersion.isNotEmpty)
+                      // BI26092620: a module served as a deck document is drawn natively
+                      // from the version-keyed cache; the markdown reader is its fallback.
+                      CdmLessonBody(
+                        docId: docId,
+                        version: docVersion,
+                        courseId: widget.course,
+                        fallback: content.isEmpty
+                            ? _lessonOfflineNote()
+                            : ReadingBody(content,
+                                anchors: _anchors,
+                                courseId: widget.course,
+                                baseUrl: services.api.baseUrl,
+                                token: services.api.token),
                       )
+                    else if (content.isEmpty)
+                      _lessonOfflineNote()
                     else
                       ReadingBody(content,
+                          anchors: _anchors,
                           courseId: widget.course,
                           baseUrl: services.api.baseUrl,
                           token: services.api.token),
@@ -1604,8 +1809,113 @@ class _LessonScreenState extends State<LessonScreen> {
           ),
         ],
       ),
+          if (_showFound && widget.foundText != null)
+            Positioned(
+              top: topPad,
+              left: 12,
+              right: 12,
+              child: Material(
+                key: const Key('found-banner'),
+                color: C.greenBg,
+                borderRadius: BorderRadius.circular(Sz.rMd),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Text(widget.foundText!, maxLines: 3, overflow: TextOverflow.ellipsis, style: T.small.copyWith(color: C.text)),
+                ),
+              ),
+            ),
+          if (!barShown)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: mq.padding.top + 28,
+              child: GestureDetector(
+                key: const Key('reader-top-edge'),
+                behavior: HitTestBehavior.translucent,
+                onTap: () => setState(() => _barVisible = true),
+              ),
+            ),
+        ]),
+      ),
     );
   }
+}
+
+/// BI26100141: text size, line spacing and focus mode. Changes apply live and are remembered.
+Future<void> showReaderComfortSheet(BuildContext context) {
+  final db = AppScope.of(context).db;
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: C.panel,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
+      side: BorderSide(color: C.border),
+    ),
+    builder: (ctx) => SafeArea(
+      child: ListenableBuilder(
+        listenable: ReaderPrefs.instance,
+        builder: (ctx, _) {
+          final p = ReaderPrefs.instance;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('TEXT SIZE', style: T.label),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (var i = 0; i < ReaderPrefs.sizeLabels.length; i++)
+                      ChoiceChip(
+                        key: Key('size-${ReaderPrefs.sizeLabels[i]}'),
+                        label: Text(ReaderPrefs.sizeLabels[i]),
+                        selected: p.sizeStep == i,
+                        onSelected: (_) => p.update(size: i, db: db),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text('LINE SPACING', style: T.label),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ChoiceChip(
+                      key: const Key('spacing-normal'),
+                      label: const Text('Normal'),
+                      selected: !p.relaxed,
+                      onSelected: (_) => p.update(relaxed: false, db: db),
+                    ),
+                    ChoiceChip(
+                      key: const Key('spacing-relaxed'),
+                      label: const Text('Relaxed'),
+                      selected: p.relaxed,
+                      onSelected: (_) => p.update(relaxed: true, db: db),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                SwitchListTile(
+                  key: const Key('focus-switch'),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Focus mode', style: T.body2),
+                  subtitle: Text(
+                    'Hide the bar and buttons while you scroll down',
+                    style: T.tiny,
+                  ),
+                  value: p.focus,
+                  onChanged: (v) => p.update(focus: v, db: db),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    ),
+  );
 }
 
 /// Margin notes on a lesson.
