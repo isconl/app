@@ -98,3 +98,100 @@ Future<PromoteResult> promoteIdeaToTask(AppServices services, Map<String, dynami
   }
   return PromoteResult(made.queued ? PromoteOutcome.queued : PromoteOutcome.done, stageMoved: moved);
 }
+/// BI26092651: the Codex fields on a journal entry or an idea: who can see it, which practices it belongs to, and its
+/// Codex id once it has one. The id is minted by the server the first time the entry leaves private and never changes,
+/// so it is shown, never edited. [onSave] sends the change and says whether it was accepted (or queued); a refusal
+/// puts the control back where it was.
+const codexVisibilities = ['private', 'unlisted', 'public'];
+
+String codexVisibilityOf(Object? v) {
+  final s = fmt.s(v).trim().toLowerCase();
+  return codexVisibilities.contains(s) ? s : 'private';
+}
+
+/// '-' is how an empty cell arrives; it reads as nothing.
+String codexCell(Object? v) {
+  final s = fmt.s(v).trim();
+  return s == '-' ? '' : s;
+}
+
+class CodexControls extends StatefulWidget {
+  const CodexControls({super.key, required this.row, required this.onSave});
+
+  final Map<String, dynamic> row;
+  final Future<bool> Function(Map<String, dynamic> fields) onSave;
+
+  @override
+  State<CodexControls> createState() => _CodexControlsState();
+}
+
+class _CodexControlsState extends State<CodexControls> {
+  late String _visibility = codexVisibilityOf(widget.row['VISIBILITY']);
+  late final TextEditingController _practices = TextEditingController(text: codexCell(widget.row['PRACTICES']));
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _practices.dispose();
+    super.dispose();
+  }
+
+  Future<void> _setVisibility(String next) async {
+    if (_busy || next == _visibility) return;
+    final before = _visibility;
+    setState(() {
+      _visibility = next;
+      _busy = true;
+    });
+    final ok = await widget.onSave({'visibility': next});
+    if (!mounted) return;
+    setState(() {
+      if (!ok) _visibility = before;
+      _busy = false;
+    });
+  }
+
+  Future<void> _savePractices() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    await widget.onSave({'practices': _practices.text.trim()});
+    if (!mounted) return;
+    setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final codexId = codexCell(widget.row['CODEX_ID']);
+    final queued = fmt.s(widget.row['ID']) == 'QUEUED';
+    if (queued) {
+      return Text('Visibility and practices can be set once this has synced.', style: T.small.copyWith(color: C.text3));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('VISIBILITY', style: T.label.copyWith(letterSpacing: 0.6)),
+        const SizedBox(height: 8),
+        Wrap(
+          key: const ValueKey('codex-visibility'),
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final v in codexVisibilities)
+              Pill(v, selected: v == _visibility, onTap: () => _setVisibility(v)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Field(label: 'Practices', controller: _practices, hint: 'comma,separated'),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            key: const ValueKey('codex-save-practices'),
+            onPressed: _busy ? null : _savePractices,
+            child: const Text('Save practices'),
+          ),
+        ),
+        if (codexId.isNotEmpty) KvRow('Codex id', codexId, mono: true),
+      ],
+    );
+  }
+}

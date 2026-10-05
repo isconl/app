@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import 'codex.dart' show CodexControls, codexCell, codexVisibilityOf;
 
 /// Journal: entries with mood/energy, streaks, add offline.
 class JournalView extends StatelessWidget {
@@ -164,7 +165,9 @@ class _EntryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final queued = fmt.s(entry['ID']) == 'QUEUED';
+    final visibility = codexVisibilityOf(entry['VISIBILITY']);
     return Panel(
+      onTap: queued ? null : () => _detail(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -181,6 +184,7 @@ class _EntryTile extends StatelessWidget {
                 Badge2('energy ${fmt.s(entry['ENERGY'])}',
                     color: C.surface, textColor: C.text3),
               const Spacer(),
+              if (visibility != 'private') Badge2(visibility, color: C.cyanBg, textColor: C.cyan),
               if (queued)
                 const Badge2('queued', color: C.amberBg, textColor: C.amber),
             ],
@@ -209,6 +213,40 @@ class _EntryTile extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// BI26092651: the entry in full, with its Codex controls (visibility, practices, the Codex id once minted).
+  void _detail(BuildContext context) {
+    final services = AppScope.of(context);
+    showFormSheet(
+      context,
+      title: fmt.shortDate(entry['DATE']),
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(fmt.s(entry['BODY']), style: T.body2.copyWith(height: 1.55)),
+          ),
+          KvRow('ID', fmt.s(entry['ID']), mono: true),
+          if (codexCell(entry['TAGS']).isNotEmpty) KvRow('Tags', codexCell(entry['TAGS'])),
+          const SizedBox(height: 14),
+          CodexControls(
+            row: entry,
+            onSave: (fields) async {
+              final res = await services.mutations.updateJournal(fmt.s(entry['ID']), fields);
+              if (!context.mounted) return res.ok;
+              if (!res.ok) {
+                toast(context, res.error ?? 'Could not save', error: true);
+              } else if (res.queued) {
+                toast(context, 'Queued - will sync');
+              }
+              return res.ok;
+            },
+          ),
         ],
       ),
     );
