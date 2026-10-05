@@ -425,18 +425,6 @@ class Mutations {
 
   // ---------- journal ----------
 
-  /// BI26092651: change an entry's Codex fields (visibility, practices). The server mints the Codex id the first time
-  /// an entry leaves private. Queued offline like every write; the change reaches the server, and the id is minted,
-  /// when the outbox next syncs.
-  Future<MutationResult> updateJournal(String id, Map<String, dynamic> fields) =>
-      _write(
-        path: '/api/journal/update',
-        body: {'id': id, ...fields},
-        label: 'Journal update',
-        view: 'journal',
-        refresh: _store.journal,
-      );
-
   Future<MutationResult> addJournal({
     required String body,
     int? mood,

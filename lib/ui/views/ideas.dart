@@ -4,7 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
-import 'codex.dart' show CodexControls, PromoteOutcome, codexVisibilityOf, promoteIdeaToTask;
+import 'codex.dart' show PromoteOutcome, promoteIdeaToTask;
 
 /// Spark: the idea pipeline.
 ///
@@ -229,10 +229,6 @@ class _IdeaTile extends StatelessWidget {
               const SizedBox(width: 6),
               if (fmt.s(idea['TYPE']).isNotEmpty)
                 Badge2(fmt.s(idea['TYPE'])),
-              if (codexVisibilityOf(idea['VISIBILITY']) != 'private') ...[
-                const SizedBox(width: 6),
-                Badge2(codexVisibilityOf(idea['VISIBILITY']), color: C.cyanBg, textColor: C.cyan),
-              ],
               const Spacer(),
               if (queued)
                 const Badge2('queued', color: C.amberBg, textColor: C.amber)
@@ -306,22 +302,6 @@ class _IdeaTile extends StatelessWidget {
           KvRow('Domain', fmt.s(idea['DOMAIN'])),
           KvRow('Tags', fmt.s(idea['TAGS'])),
           KvRow('Captured', fmt.shortDate(idea['CREATED_AT'])),
-          const SizedBox(height: 14),
-          // BI26092651: visibility, practices and the Codex id.
-          CodexControls(
-            row: idea,
-            onSave: (fields) async {
-              final services = AppScope.of(context);
-              final res = await services.mutations.updateIdea(fmt.s(idea['ID']), fields);
-              if (!context.mounted) return res.ok;
-              if (!res.ok) {
-                toast(context, res.error ?? 'Could not save', error: true);
-              } else if (res.queued) {
-                toast(context, 'Queued - will sync');
-              }
-              return res.ok;
-            },
-          ),
           const SizedBox(height: 14),
           // BI26092651: an idea becomes a task without leaving the sheet.
           OutlinedButton.icon(
