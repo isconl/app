@@ -1,0 +1,9 @@
+{
+  "_comment": "BI26092602: vendored copies of _kit/bin/voice-lint.js and voice-rules.json (the relay repo is the source). Never edit them here: change the _kit copy, then re-copy and update these hashes. test/voice-lint-vendored.test.js fails if a vendored file no longer matches its hash, and, where the relay tree is reachable, if it no longer matches the _kit copy.",
+  "from": "_kit/bin",
+  "docVersion": "1.0.0",
+  "sha256": {
+    "voice-lint.js": "90dcf2de22c613f3def6bee7d851729eb416f38e1f6fc3577f8df50975d5df61",
+    "voice-rules.json": "1c15abc5219f1cbbc810f36a9c4dcf2ed6561bcef4a2db3739c3bda6b148cbb7"
+  }
+}
