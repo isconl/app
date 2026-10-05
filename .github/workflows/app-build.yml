@@ -72,9 +72,9 @@ jobs:
 
       # Created here, exactly once, before any build runs. Three matrix jobs
       # racing to create-or-upload the same release is how you get two releases
-      # or a lost artefact. The agent skips `apk-v*` releases that carry no
-      # .apk, so this empty release is invisible to the phone until Android
-      # finishes uploading into it.
+      # or a lost artefact. BI26100126: it is opened as a DRAFT, and only the
+      # verify job publishes it once an .apk is attached, so an empty release
+      # can never become "latest" and a failed build leaves nothing public.
       - name: Open the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -85,6 +85,7 @@ jobs:
             gh release create "$TAG" \
               --target "${{ github.sha }}" \
               --title "iSconl v${{ steps.read.outputs.version }}" \
+              --draft \
               --notes "$NOTES"
           fi
 
@@ -231,3 +232,6 @@ jobs:
             || echo "::warning::No Windows artefact on $TAG."
           echo "$ASSETS" | grep -qE '_linux_x64\.tar\.gz$' \
             || echo "::warning::No Linux artefact on $TAG."
+          # Only now does the release become public (and "latest").
+          gh release edit "$TAG" --draft=false --latest
+          echo "Published $TAG."
