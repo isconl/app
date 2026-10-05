@@ -277,7 +277,7 @@ class LearningGroup {
   /// any live group. Visibly flagged (amber, distinct label).
   static const ungrouped = LearningGroup(
     id: '_ungrouped',
-    label: 'Ungrouped — needs a GROUP_ID',
+    label: 'Ungrouped: needs a GROUP_ID',
     description: '',
     color: C.amber,
     tile: 'wide',

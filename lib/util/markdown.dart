@@ -525,7 +525,7 @@ class Markdown extends StatelessWidget {
   Widget _image(_Block block) {
     if (block.imageAlt.trim().isEmpty) {
       return _imageLintBlocked(
-          '[Image blocked: missing required alt text — add `![Descriptive alt text](${block.imageUrl})`]');
+          '[Image blocked: missing required alt text; add `![Descriptive alt text](${block.imageUrl})`]');
     }
     final isExternal = RegExp(r'^https?://', caseSensitive: false).hasMatch(block.imageUrl);
     final isAsset = block.imageUrl.startsWith('_assets/');

@@ -294,7 +294,7 @@ class KvRow extends StatelessWidget {
               child: Text(k, style: T.small.copyWith(color: C.text3))),
           Expanded(
             child: Text(
-              v.isEmpty ? '—' : v,
+              v.isEmpty ? '-' : v,
               style: mono
                   ? T.mono.copyWith(color: vColor ?? C.text2)
                   : T.small.copyWith(color: vColor ?? C.text),

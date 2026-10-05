@@ -385,7 +385,7 @@ class _OpsViewState extends State<OpsView> {
         children: [
           Row(
             children: [
-              Expanded(child: Text('$_logsFor — last 200 lines', style: T.title)),
+              Expanded(child: Text('$_logsFor (last 200 lines)', style: T.title)),
               InkWell(
                 onTap: () => setState(() => _logsFor = null),
                 child: Text('Close', style: T.small.copyWith(color: C.text3)),

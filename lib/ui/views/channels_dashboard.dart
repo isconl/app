@@ -42,7 +42,7 @@ class ChannelsDashboard extends StatelessWidget {
       )),
       DashItem(StatTile(
         label: 'Oldest unanswered',
-        value: age == null ? '–' : ChannelsDash.ageLabel(age),
+        value: age == null ? '-' : ChannelsDash.ageLabel(age),
         unit: age == null ? null : ChannelsDash.ageUnit(age),
         updatedAt: updatedAt,
       )),

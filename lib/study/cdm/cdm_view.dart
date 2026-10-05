@@ -276,7 +276,7 @@ class CdmView extends StatelessWidget {
         if (attribution != null)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text('— $attribution', style: T.body2.copyWith(color: C.text3)),
+            child: Text(attribution, style: T.body2.copyWith(color: C.text3)),
           ),
       ]),
     );
