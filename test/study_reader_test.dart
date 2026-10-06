@@ -16,6 +16,7 @@ import 'package:isconl/services/narration.dart';
 import 'package:isconl/services/session.dart';
 import 'package:isconl/services/sms_ingest.dart';
 import 'package:isconl/services/updater.dart';
+import 'package:isconl/theme.dart';
 import 'package:isconl/ui/views/learning.dart';
 import 'package:isconl/ui/widgets/common.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -453,6 +454,60 @@ void main() {
 
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
       await tester.pump();
+    });
+
+    testWidgets('BI26100537: module end shows a green Mark as done, then Previous Module and Next Module side by side', (tester) async {
+      tester.view.physicalSize = const Size(600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final services = (await tester.runAsync(() => buildTestServices(online: false)))!;
+      final api = services.session.api as _TestApiClient;
+      final lessonData = {'content': 'Short module.', 'reviewedAt': '2026-09-22', 'version': '4.0', 'status': 'new'};
+      api.lessonData = lessonData;
+      for (final f in ['00-a.md', '01-b.md', '02-c.md']) {
+        await tester.runAsync(() => services.db.putSnapshot('lesson:med-anatomy/$f', lessonData));
+        services.store.detail('lesson', 'med-anatomy/$f', '/api/learning/lesson?course=med-anatomy&file=$f').value = lessonData;
+      }
+      final all = [
+        for (final f in ['00-a.md', '01-b.md', '02-c.md']) {'file': f, 'title': f, 'status': 'new'},
+      ];
+
+      Future<void> open(String file) async {
+        await tester.pumpWidget(AppScope(
+          services: services,
+          child: MaterialApp(
+            key: UniqueKey(),
+            home: LessonScreen(course: 'med-anatomy', file: file, title: file, status: 'new', allLessons: all, trackColor: const Color(0xFF3355CC)),
+          ),
+        ));
+        await tester.pump();
+        await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
+        await tester.pump();
+      }
+
+      await open('01-b.md');
+      final done = find.byKey(const Key('mark-as-done'));
+      await tester.ensureVisible(done);
+      final doneStyle = tester.widget<FilledButton>(done).style!;
+      expect(doneStyle.backgroundColor!.resolve({}), C.green, reason: 'success green, not the track colour');
+      final prev = find.byKey(const Key('previous-module'));
+      final next = find.byKey(const Key('next-module'));
+      expect(find.text('Previous Module'), findsOneWidget);
+      expect(find.text('Next Module'), findsOneWidget);
+      expect(tester.getTopLeft(prev).dy, tester.getTopLeft(next).dy, reason: 'side by side');
+      expect(tester.getSize(prev).width, tester.getSize(next).width, reason: 'equal width');
+      expect(tester.getTopLeft(prev).dy, greaterThan(tester.getBottomLeft(done).dy - 1), reason: 'below Mark as done');
+      expect(tester.widget<OutlinedButton>(find.descendant(of: prev, matching: find.byType(OutlinedButton))).onPressed, isNotNull);
+
+      // The first module: Previous stays, disabled, with the same label.
+      await open('00-a.md');
+      await tester.ensureVisible(find.byKey(const Key('next-module')));
+      expect(find.text('Previous Module'), findsOneWidget);
+      expect(tester.widget<OutlinedButton>(find.descendant(of: find.byKey(const Key('previous-module')), matching: find.byType(OutlinedButton))).onPressed, isNull);
+      expect(tester.widget<OutlinedButton>(find.descendant(of: find.byKey(const Key('next-module')), matching: find.byType(OutlinedButton))).onPressed, isNotNull);
+      await open('02-c.md');
+      await tester.ensureVisible(find.byKey(const Key('previous-module')));
+      expect(tester.widget<OutlinedButton>(find.descendant(of: find.byKey(const Key('next-module')), matching: find.byType(OutlinedButton))).onPressed, isNull);
     });
   });
 }
