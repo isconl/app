@@ -134,15 +134,34 @@ class StatusDot extends StatelessWidget {
 /// Selectable pill chip row item.
 class Pill extends StatelessWidget {
   const Pill(this.label,
-      {super.key, this.selected = false, this.onTap, this.color});
+      {super.key, this.selected = false, this.onTap, this.color, this.stateColor});
   final String label;
   final bool selected;
   final VoidCallback? onTap;
   final Color? color;
 
+  /// BI26100538: when set, a selected pill is drawn entirely in this colour (border, tint and label),
+  /// as the Opened, Learning and Done chips are. Left null, the pill keeps its green selected look.
+  final Color? stateColor;
+
   @override
   Widget build(BuildContext context) {
-    final accent = color ?? C.green;
+    final accent = stateColor ?? color ?? C.green;
+    if (stateColor != null && selected) {
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: stateColor!.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: stateColor!),
+        ),
+        child: Text(
+          label,
+          style: T.small.copyWith(color: stateColor, fontWeight: FontWeight.w600),
+        ),
+      );
+    }
     return GestureDetector(
       onTap: onTap == null
           ? null

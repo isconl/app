@@ -507,5 +507,129 @@ void main() {
       expect(rows[1].isNext, isTrue, reason: 'first incomplete module should be marked isNext');
       expect(rows[2].isNext, isFalse);
     });
+
+    // ── BI26100538: study lists that hide nothing and read well ────────────────────────────────
+    test('BI26100538: a books course is first, then coverage order, then title; archived is separate', () {
+      final courses = [
+        {'ID': 'cx', 'TITLE': 'Zeta Practice', 'coverage_order': 3},
+        {'ID': 'cb', 'TITLE': 'Beta Practice', 'coverage_order': 2},
+        {'ID': 'topic-books', 'TITLE': 'Reading List', 'coverage_order': 9},
+        {'ID': 'ca', 'TITLE': 'Alpha Practice', 'coverage_order': 2},
+        {'ID': 'cz', 'TITLE': 'Archetype Books', 'archetype': 'books', 'SEQ': 50},
+        {'ID': 'old', 'TITLE': 'Retired One', 'STATUS': 'archived', 'coverage_order': 0},
+      ];
+      final live = orderedCourses(courses.where((c) => !isArchivedCourse(c)));
+      expect(live.map((c) => c['ID']), ['topic-books', 'cz', 'ca', 'cb', 'cx'],
+          reason: 'books first (by coverage), then coverage order, ties by title');
+      expect(orderedCourses(courses.where(isArchivedCourse)).map((c) => c['ID']), ['old']);
+      // Without coverage_order, SEQ still orders, as before.
+      expect(orderedCourses([{'ID': 'b', 'TITLE': 'B', 'SEQ': 2}, {'ID': 'a', 'TITLE': 'A', 'SEQ': 1}]).map((c) => c['ID']), ['a', 'b']);
+    });
+
+    testWidgets('BI26100538: an empty track still shows its card with the empty state and the courses owed', (tester) async {
+      final empty = LearningGroup.fromApi({
+        'id': 'identity', 'label': 'Identity & Self', 'color': '#8B5CF6', 'tile': 'square',
+        'sortOrder': 1, 'courseCount': 0, 'moduleCount': 0, 'progressPct': 0, 'coursesOwed': 3,
+      });
+      final none = LearningGroup.fromApi({'id': 'x', 'label': 'No Owed Count', 'sortOrder': 2});
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: Column(children: [
+          TrackCard(group: empty, courses: const []),
+          TrackCard(group: none, courses: const []),
+        ])),
+      ));
+      expect(find.text('Identity & Self'), findsOneWidget);
+      expect(find.byKey(const Key('track-empty')), findsNWidgets(2));
+      expect(find.text('No courses live yet'), findsNWidgets(2));
+      expect(find.text('3 courses on the way'), findsOneWidget);
+      expect(find.byKey(const Key('track-owed')), findsOneWidget, reason: 'no owed line when spark reports none');
+    });
+
+    testWidgets('BI26100538: archived courses are kept, under a collapsed Archived heading, and books come first', (tester) async {
+      final services = (await tester.runAsync(() => buildTestServices()))!;
+      final courses = [
+        {'ID': 'c-practice', 'TITLE': 'Practice Course', 'SUBTITLE': 'Doing the work', 'coverage_order': 1, 'modulesTotal': 3, 'modulesDone': 0},
+        {'ID': 'c-books', 'TITLE': 'Book Shelf', 'SUBTITLE': 'What the experts wrote about this', 'archetype': 'books', 'coverage_order': 5, 'modulesTotal': 3, 'modulesDone': 0},
+        {'ID': 'c-old', 'TITLE': 'Retired Course', 'STATUS': 'archived', 'modulesTotal': 2, 'modulesDone': 2},
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: AppScope(services: services, child: TrackDetailScreen(track: 'T', courses: courses, trackColor: const Color(0xFF2563EB))),
+      ));
+      await tester.pumpAndSettle();
+      final ids = tester.widgetList<CourseSummaryCard>(find.byType(CourseSummaryCard)).map((c) => c.course['ID']).toList();
+      expect(ids, ['c-books', 'c-practice'], reason: 'the books course first; the archived one is collapsed');
+      expect(find.text('Archived (1)'), findsOneWidget);
+      await tester.ensureVisible(find.text('Archived (1)'));
+      await tester.tap(find.text('Archived (1)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retired Course'), findsOneWidget, reason: 'archived courses stay reachable');
+      // Bold title over a smaller subtitle, at most two lines.
+      final title = tester.widget<Text>(find.byKey(const Key('course-title')).first);
+      final sub = tester.widget<Text>(find.byKey(const Key('course-subtitle')).first);
+      expect(title.style!.fontWeight, FontWeight.w600);
+      expect(sub.maxLines, 2);
+      expect(sub.style!.fontSize!, lessThan(title.style!.fontSize!));
+    });
+
+    testWidgets('BI26100538: a track with nothing live shows an empty state, not a blank page', (tester) async {
+      final services = (await tester.runAsync(() => buildTestServices()))!;
+      await tester.pumpWidget(MaterialApp(
+        home: AppScope(services: services, child: const TrackDetailScreen(track: 'Empty', courses: [])),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('No courses live yet'), findsOneWidget);
+    });
+
+    testWidgets('BI26100538: module rows show a bold heading over a smaller subheading, and chips in track colour, yellow and green', (tester) async {
+      final services = (await tester.runAsync(() => buildTestServices()))!;
+      const track = Color(0xFF2563EB);
+      final lessons = [
+        {'file': '00-a.md', 'title': 'Setting Out Clearly', 'subtitle': 'Where this module begins and why', 'status': 'opened', 'SEQ': 0},
+        {'file': '01-b.md', 'title': 'The Core Idea', 'subtitle': 'One shift that carries everything', 'status': 'learning', 'SEQ': 1},
+        {'file': '02-c.md', 'title': 'Run It Weekly', 'status': 'done', 'SEQ': 2},
+        {'file': '03-d.md', 'title': 'Not Started Yet', 'status': 'new', 'SEQ': 3},
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: AppScope(
+          services: services,
+          child: Scaffold(body: SingleChildScrollView(child: Column(children: [
+            for (var i = 0; i < lessons.length; i++)
+              LessonRow(courseId: 'c', lesson: lessons[i], allLessons: lessons, index: i, trackColor: track),
+          ]))),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('module-title')), findsNWidgets(4));
+      expect(find.byKey(const Key('module-subtitle')), findsNWidgets(2), reason: 'no filler line when a module has no subheading');
+      final chips = tester.widgetList<ModuleStatusChip>(find.byType(ModuleStatusChip)).toList();
+      expect(chips.map((c) => c.status), ['opened', 'learning', 'done'], reason: 'a not-yet-opened module has no chip');
+      expect(statusChipColor('learning', track), C.amber);
+      expect(statusChipColor('done', track), C.green);
+      expect(statusChipColor('opened', track), legibleTrackColor(track, C.bg));
+      expect(find.text('Opened'), findsOneWidget);
+      expect(find.text('Learning'), findsOneWidget);
+      expect(find.text('Done'), findsOneWidget);
+      // Let the reading-position lookups under the unfinished rows finish before the tree goes.
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('BI26100538: the freshness line says how old the library is and goes amber past 24 hours', (tester) async {
+      final now = DateTime.utc(2026, 10, 6, 12);
+      Future<Text> line(DateTime syncedAt) async {
+        await tester.pumpWidget(MaterialApp(home: Scaffold(body: LibraryFreshness(syncedAt: syncedAt.toIso8601String(), now: now))));
+        return tester.widget<Text>(find.byKey(const Key('library-freshness')));
+      }
+
+      final fresh = await line(now.subtract(const Duration(hours: 3)));
+      expect(fresh.data, startsWith('Library updated'));
+      expect(fresh.style!.color, C.text3);
+      final stale = await line(now.subtract(const Duration(hours: 30)));
+      expect(stale.style!.color, C.amber);
+      // No time reported: nothing shown.
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: LibraryFreshness(syncedAt: null))));
+      expect(find.byKey(const Key('library-freshness')), findsNothing);
+    });
   });
 }
