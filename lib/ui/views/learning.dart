@@ -8,7 +8,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app_scope.dart';
 import '../../data/db.dart';
-import '../../util/markdown.dart' show MarkdownAnchors;
+import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink;
 import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
 import '../../study/cdm/cdm_lesson_body.dart';
@@ -1135,7 +1135,11 @@ class LessonScreen extends StatefulWidget {
     this.version,
     this.initialParagraph,
     this.foundText,
+    this.initialAnchor = '',
   });
+
+  /// BI26100537: open at this section anchor (`grasp-1`, `week-7-2`), from a `module:` deep link.
+  final String initialAnchor;
 
   /// BI26100156: open at this paragraph (as the reader counts them), from a search result.
   final int? initialParagraph;
@@ -1410,6 +1414,8 @@ class _LessonScreenState extends State<LessonScreen> {
     _restoredResume = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || !_scroll.hasClients) return;
+      // BI26100537: a deep link to a section wins over everything else.
+      if (widget.initialAnchor.isNotEmpty && _anchors.revealAnchor(widget.initialAnchor)) return;
       final jump = widget.initialParagraph;
       if (jump != null) {
         // A search result wins over the saved reading position.
@@ -1449,6 +1455,57 @@ class _LessonScreenState extends State<LessonScreen> {
       final target = _scroll.position.maxScrollExtent * frac;
       if (target > 0) _scroll.jumpTo(target.clamp(0, _scroll.position.maxScrollExtent));
     });
+  }
+
+  /// Replace this screen with another module of the same course.
+  void _openLesson(Map<String, dynamic> lesson) => Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LessonScreen(
+            course: widget.course,
+            file: fmt.s(lesson['file']),
+            title: fmt.s(lesson['title']),
+            status: fmt.s(lesson['status']),
+            allLessons: widget.allLessons,
+            trackColor: widget.trackColor,
+          ),
+        ),
+      );
+
+  /// BI26100537: a `module:<course>/<NN>#anchor` link. Same module: scroll to the section. Another
+  /// module of this course: open exactly that module at that section, never the course index.
+  void _openModuleLink(ModuleLink link) {
+    final index = link.index;
+    bool matches(Map<String, dynamic> l) {
+      final f = fmt.s(l['file']);
+      return f.startsWith(index) && (f.length == index.length || !RegExp(r'\d').hasMatch(f[index.length]));
+    }
+
+    if (link.course != widget.course) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+          content: Text('That module is in another course. Open the course, then the module.')));
+      return;
+    }
+    if (matches({'file': widget.file})) {
+      if (link.anchor.isNotEmpty) _anchors.revealAnchor(link.anchor);
+      return;
+    }
+    final target = widget.allLessons.where(matches).toList();
+    if (target.isEmpty) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LessonScreen(
+          course: widget.course,
+          file: fmt.s(target.first['file']),
+          title: fmt.s(target.first['title']),
+          status: fmt.s(target.first['status']),
+          allLessons: widget.allLessons,
+          trackColor: widget.trackColor,
+          initialAnchor: link.anchor,
+        ),
+      ),
+    );
   }
 
   @override
@@ -1508,10 +1565,13 @@ class _LessonScreenState extends State<LessonScreen> {
       );
     }
 
-    final isDarkTrack = widget.trackColor.computeLuminance() < 0.5;
+    // BI26100537 (standard 4.0.0, §3.11): Mark as done is the app's success green, a theme token,
+    // whatever the track colour is.
+    final isDarkTrack = C.green.computeLuminance() < 0.5;
     return FilledButton(
+      key: const Key('mark-as-done'),
       style: FilledButton.styleFrom(
-        backgroundColor: widget.trackColor,
+        backgroundColor: C.green,
         foregroundColor: isDarkTrack ? Colors.white : Colors.black,
         padding: const EdgeInsets.symmetric(vertical: 14),
       ),
@@ -1712,6 +1772,7 @@ class _LessonScreenState extends State<LessonScreen> {
                             ? _lessonOfflineNote()
                             : ReadingBody(content,
                                 anchors: _anchors,
+                                onModuleLink: _openModuleLink,
                                 courseId: widget.course,
                                 baseUrl: services.api.baseUrl,
                                 token: services.api.token),
@@ -1721,6 +1782,7 @@ class _LessonScreenState extends State<LessonScreen> {
                     else
                       ReadingBody(content,
                           anchors: _anchors,
+                          onModuleLink: _openModuleLink,
                           courseId: widget.course,
                           baseUrl: services.api.baseUrl,
                           token: services.api.token),
@@ -1734,74 +1796,39 @@ class _LessonScreenState extends State<LessonScreen> {
                         child: _buildDoneButton(services),
                       ),
                     ),
-                    if (_computedNextLesson != null || _computedPrevLesson != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8, bottom: 20),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            if (_computedPrevLesson != null)
-                              _LessonNavButton(
-                                icon: Icons.chevron_left_rounded,
-                                iconTrailing: false,
-                                label: lessonNavLabel('Previous',
-                                    fmt.s(_computedPrevLesson!['title']).isEmpty
-                                        ? fmt.s(_computedPrevLesson!['file'])
-                                        : fmt.s(_computedPrevLesson!['title'])),
-                                onTap: () => Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => LessonScreen(
-                                      course: widget.course,
-                                      file: fmt.s(_computedPrevLesson!['file']),
-                                      title: fmt.s(_computedPrevLesson!['title']),
-                                      status: fmt.s(_computedPrevLesson!['status']),
-                                      allLessons: widget.allLessons,
-                                      trackColor: widget.trackColor,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            else
-                              const SizedBox.shrink(),
-                            if (_computedNextLesson != null)
-                              _LessonNavButton(
-                                icon: Icons.chevron_right_rounded,
-                                iconTrailing: true,
-                                label: lessonNavLabel('Next',
-                                    fmt.s(_computedNextLesson!['title']).isEmpty
-                                        ? fmt.s(_computedNextLesson!['file'])
-                                        : fmt.s(_computedNextLesson!['title'])),
-                                onTap: () => Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => LessonScreen(
-                                      course: widget.course,
-                                      file: fmt.s(_computedNextLesson!['file']),
-                                      title: fmt.s(_computedNextLesson!['title']),
-                                      status: fmt.s(_computedNextLesson!['status']),
-                                      allLessons: widget.allLessons,
-                                      trackColor: widget.trackColor,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            else if (widget.allLessons.isNotEmpty)
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.check_circle_rounded,
-                                      size: 16, color: C.green),
-                                  const SizedBox(width: 8),
-                                  Text('Course complete',
-                                      style: T.small.copyWith(color: C.text3)),
-                                ],
-                              )
-                            else
-                              const SizedBox.shrink(),
-                          ],
-                        ),
+                    // BI26100537 (standard 4.0.0, section 3.11): Previous Module and Next Module side by
+                    // side, equal width, fixed labels. At either end the button is disabled, not removed.
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 20),
+                      child: Row(
+                        key: const Key('module-nav'),
+                        children: [
+                          Expanded(
+                            child: _LessonNavButton(
+                              key: const Key('previous-module'),
+                              icon: Icons.chevron_left_rounded,
+                              iconTrailing: false,
+                              label: 'Previous Module',
+                              onTap: _computedPrevLesson == null
+                                  ? null
+                                  : () => _openLesson(_computedPrevLesson!),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _LessonNavButton(
+                              key: const Key('next-module'),
+                              icon: Icons.chevron_right_rounded,
+                              iconTrailing: true,
+                              label: 'Next Module',
+                              onTap: _computedNextLesson == null
+                                  ? null
+                                  : () => _openLesson(_computedNextLesson!),
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
                   ],
                 );
               },
@@ -1994,6 +2021,7 @@ class _ExportPdfButtonState extends State<_ExportPdfButton> {
 /// matches the direction (leading for Previous, trailing for Next).
 class _LessonNavButton extends StatelessWidget {
   const _LessonNavButton({
+    super.key,
     required this.icon,
     required this.iconTrailing,
     required this.label,
@@ -2002,13 +2030,20 @@ class _LessonNavButton extends StatelessWidget {
   final IconData icon;
   final bool iconTrailing;
   final String label;
-  final VoidCallback onTap;
+
+  /// Null disables the button (the first or last module of a course) without changing its label.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final iconWidget = Icon(icon, size: 18, color: C.green);
-    final labelWidget = Text(label,
-        style: T.small.copyWith(color: C.green, fontWeight: FontWeight.w600));
+    // Flexible, so two equal-width buttons survive a large text size without overflowing.
+    final labelWidget = Flexible(
+      child: Text(label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: T.small.copyWith(color: C.green, fontWeight: FontWeight.w600)),
+    );
     return OutlinedButton(
       style: OutlinedButton.styleFrom(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Sz.rSm)),
