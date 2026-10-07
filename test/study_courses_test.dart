@@ -580,7 +580,7 @@ void main() {
       expect(find.text('No courses live yet'), findsOneWidget);
     });
 
-    testWidgets('BI26100538: module rows show a bold heading over a smaller subheading, and chips in track colour, yellow and green', (tester) async {
+    testWidgets('BI26100538: module rows show only the bold title, and chips in track colour, yellow and green', (tester) async {
       final services = (await tester.runAsync(() => buildTestServices()))!;
       const track = Color(0xFF2563EB);
       final lessons = [
@@ -600,8 +600,9 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('module-title')), findsNWidgets(4));
-      expect(find.byKey(const Key('module-subtitle')), findsNWidgets(2), reason: 'no filler line when a module has no subheading');
-      final chips = tester.widgetList<ModuleStatusChip>(find.byType(ModuleStatusChip)).toList();
+      // Sconl, 6 Oct: the module list carries the title alone, even when the module has a subtitle.
+      expect(find.byKey(const Key('module-subtitle')), findsNothing);
+      expect(find.text('Where this module begins and why'), findsNothing);      final chips = tester.widgetList<ModuleStatusChip>(find.byType(ModuleStatusChip)).toList();
       expect(chips.map((c) => c.status), ['opened', 'learning', 'done'], reason: 'a not-yet-opened module has no chip');
       expect(statusChipColor('learning', track), C.amber);
       expect(statusChipColor('done', track), C.green);

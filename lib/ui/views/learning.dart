@@ -1095,45 +1095,9 @@ class LessonRow extends StatelessWidget {
     final rawTitle = tVal.isNotEmpty ? tVal : fmt.s(lesson['title'] ?? file);
     final title = safeModuleTitle(stripEmoji(rawTitle), file);
 
-    final subVal = fmt.s(lesson['SUBTITLE']);
-    final rawSubtitle = subVal.isNotEmpty ? subVal : fmt.s(lesson['subtitle']);
-    final subtitle = stripEmoji(rawSubtitle);
-
     final pos = lesson['position'] ?? lesson['SEQ'] ?? lesson['seq'] ?? lesson['order'];
     final numVal = pos != null ? fmt.i(pos) : index + 1;
     final numStr = numVal.toString().padLeft(2, '0');
-
-    // Meta line: "8 min read · updated 20 Sep"
-    String? readTimeStr;
-    final readTimeVal = lesson['readTime'] ?? lesson['readingTime'] ?? lesson['minRead'] ?? lesson['read_time'];
-    if (readTimeVal != null) {
-      final sVal = fmt.s(readTimeVal);
-      if (sVal.contains('min')) {
-        readTimeStr = sVal;
-      } else {
-        final m = fmt.i(readTimeVal);
-        if (m > 0) readTimeStr = '$m min read';
-      }
-    } else if (lesson['words'] != null) {
-      final w = fmt.i(lesson['words']);
-      if (w > 0) {
-        final mins = (w / 220).ceil();
-        readTimeStr = '$mins min read';
-      }
-    }
-
-    String? updatedStr;
-    final updatedVal = lesson['updatedAt'] ?? lesson['updated_at'] ?? lesson['UPDATED_AT'] ?? lesson['reviewedAt'] ?? st.updated;
-    if (updatedVal != null && fmt.s(updatedVal).isNotEmpty) {
-      final d = _formatDateDayMonth(updatedVal);
-      if (d.isNotEmpty) updatedStr = 'updated $d';
-    }
-
-    final metaParts = [
-      if (readTimeStr != null && readTimeStr.isNotEmpty) readTimeStr,
-      if (updatedStr != null && updatedStr.isNotEmpty) updatedStr,
-    ];
-    final metaLine = metaParts.join(' · ');
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -1190,8 +1154,7 @@ class LessonRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // BI26100538: a bold three-word heading over a smaller subheading from the module's
-                    // front matter; nothing at all when there is no subheading.
+                    // BI26100538 (Sconl, 6 Oct): the module list shows only the bold three-word title.
                     Text(
                       title,
                       key: const Key('module-title'),
@@ -1199,23 +1162,6 @@ class LessonRow extends StatelessWidget {
                         color: status == 'done' ? C.text3 : C.text,
                       ),
                     ),
-                    if (subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        key: const Key('module-subtitle'),
-                        maxLines: 2,
-                        overflow: TextOverflow.fade,
-                        style: T.small.copyWith(color: C.text3, fontSize: (T.small.fontSize ?? 13) - 1),
-                      ),
-                    ],
-                    if (metaLine.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        metaLine,
-                        style: T.tiny.copyWith(color: C.text3),
-                      ),
-                    ],
                     // BI26100325: how far through an unfinished module.
                     if (status != 'done' && status != 'new')
                       ReadingBar(course: courseId, file: file, color: trackColor),
