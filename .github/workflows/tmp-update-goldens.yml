@@ -24,7 +24,8 @@ jobs:
           flutter-version: 3.44.8
           cache: true
       - name: Regenerate the module goldens
-        run: flutter test --update-goldens --plain-name "golden: artefact-free module (dark)" test/module_render_test.dart
+        run: |
+          flutter test --update-goldens --plain-name "golden: artefact-free module (dark)" test/module_render_test.dart
       - uses: actions/upload-artifact@v4
         with:
           name: module-goldens
