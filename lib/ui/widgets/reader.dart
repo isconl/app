@@ -57,8 +57,11 @@ class ReadingSurface extends StatelessWidget {
 /// paragraph is quote it.
 class ReadingBody extends StatelessWidget {
   const ReadingBody(this.markdown,
-      {super.key, this.courseId = '', this.baseUrl = '', this.token = '', this.anchors});
+      {super.key, this.courseId = '', this.baseUrl = '', this.token = '', this.anchors, this.onModuleLink});
   final String markdown;
+
+  /// BI26100537: a link to another module (and section) was tapped.
+  final void Function(ModuleLink link)? onModuleLink;
 
   /// BI26100325: lets the lesson screen save and restore the reading position by block.
   final MarkdownAnchors? anchors;
@@ -80,7 +83,8 @@ class ReadingBody extends StatelessWidget {
           variant: MarkdownVariant.reading,
           courseId: courseId,
           baseUrl: baseUrl,
-          token: token),
+          token: token,
+          onModuleLink: onModuleLink),
     );
   }
 }

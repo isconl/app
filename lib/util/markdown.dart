@@ -30,8 +30,12 @@ class Markdown extends StatelessWidget {
       this.variant = MarkdownVariant.compact,
       this.courseId = '',
       this.baseUrl = '',
-      this.token = ''});
+      this.token = '',
+      this.onModuleLink});
   final String source;
+
+  /// BI26100537: a `[[link:text|module:<course>/<NN>#anchor]]` was tapped. Null leaves the link inert.
+  final void Function(ModuleLink link)? onModuleLink;
 
   /// BI26100325: when given, every rendered block gets a key so the reader can
   /// save and restore "where I stopped" by block rather than by pixels.
@@ -61,6 +65,7 @@ class Markdown extends StatelessWidget {
     final children = <Widget>[];
     final movements = <String>[];
     final words = <int>[];
+    final anchorIndex = <String, int>{};
     var movement = '';
     for (var i = 0; i < blocks.length; i++) {
       final w = _renderBlock(blocks[i], style, first: i == 0);
@@ -69,11 +74,25 @@ class Markdown extends StatelessWidget {
       if (b.kind == _Kind.heading && b.level <= 2) movement = b.text.trim();
       movements.add(movement);
       words.add(RegExp(r'\S+').allMatches(b.text.isNotEmpty ? b.text : b.quizBody).length);
+      if (b.anchor.isNotEmpty) anchorIndex[b.anchor] = children.length;
+      final at = children.length;
       children.add(anchors == null
           ? w
-          : KeyedSubtree(key: anchors!.keyFor(children.length), child: w));
+          : KeyedSubtree(
+              key: anchors!.keyFor(at),
+              child: ValueListenableBuilder<int?>(
+                valueListenable: anchors!.highlighted,
+                builder: (_, hot, child) => hot == at
+                    ? DecoratedBox(
+                        decoration: BoxDecoration(
+                            color: C.green.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(Sz.rSm)),
+                        child: child)
+                    : child!,
+                child: w,
+              )));
     }
-    anchors?._describe(movements, words);
+    anchors?._describe(movements, words, anchorIndex);
     if (children.isEmpty) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
   }
@@ -99,19 +118,34 @@ class Markdown extends StatelessWidget {
         // open with a gap.
         final top = _reading ? (first ? 0.0 : (block.level <= 2 ? 30.0 : 22.0)) : 12.0;
         final bottom = _reading ? (block.level <= 2 ? 10.0 : 7.0) : 4.0;
-        return Padding(
-          padding: EdgeInsets.only(top: top, bottom: bottom),
-          child: Text.rich(
-            _inline(
-              block.text,
-              style.copyWith(
-                fontSize: size,
-                height: _reading ? 1.28 : null,
-                fontWeight: block.level <= 2 ? FontWeight.w700 : FontWeight.w600,
-                letterSpacing: _reading && block.level <= 2 ? -0.4 : null,
-              ),
+        final headingText = Text.rich(
+          _inline(
+            block.text,
+            style.copyWith(
+              fontSize: size,
+              height: _reading ? 1.28 : null,
+              fontWeight: block.level <= 2 ? FontWeight.w700 : FontWeight.w600,
+              letterSpacing: _reading && block.level <= 2 ? -0.4 : null,
             ),
           ),
+        );
+        // BI26100537: a numbered movement shows a quiet eyebrow, `k.0 Two Words`, above its heading.
+        // The canonical id (orient, grasp, ...) is never shown; it only builds the anchor.
+        final eyebrow = [block.number, block.uiLabel].where((s) => s.isNotEmpty).join(' ');
+        return Padding(
+          padding: EdgeInsets.only(top: top, bottom: bottom),
+          child: eyebrow.isEmpty
+              ? headingText
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(eyebrow,
+                        key: const Key('movement-eyebrow'),
+                        style: T.mono.copyWith(fontSize: 11, letterSpacing: 0.6, color: C.text3)),
+                    const SizedBox(height: 3),
+                    headingText,
+                  ],
+                ),
         );
       case _Kind.code:
         return Container(
@@ -227,7 +261,12 @@ class Markdown extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            c.label.toUpperCase(),
+            // BI26100537: the authored two-word label, behind its `k.j` number; the canonical id
+            // never shows. A callout with no authored label keeps its standard name.
+            [block.number, (block.uiLabel.isNotEmpty ? block.uiLabel : c.label).toUpperCase()]
+                .where((s) => s.isNotEmpty)
+                .join('  '),
+            key: const Key('callout-label'),
             style: T.mono.copyWith(
               fontSize: 9.5,
               letterSpacing: 1.1,
@@ -646,7 +685,7 @@ class Markdown extends StatelessWidget {
     // afterwards -- that keeps every existing two-field marker matching
     // exactly as before rather than needing a second pattern.
     final pattern = RegExp(
-        r'(\[\[link:([^|\]]+)\|(https?://[^\]]+)\]\])|(\[\[([^|\]]+)\|([^\]]+)\]\])|(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))|(\[\[([^|\]:]+)\]\])',
+        r'(\[\[link:([^|\]]+)\|((?:https?://|module:)[^\]]+)\]\])|(\[\[([^|\]]+)\|([^\]]+)\]\])|(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))|(\[\[([^|\]:]+)\]\])',
         caseSensitive: false);
     var pos = 0;
     for (final match in pattern.allMatches(text)) {
@@ -721,6 +760,12 @@ class Markdown extends StatelessWidget {
             decorationColor: C.cyan),
         recognizer: TapGestureRecognizer()
           ..onTap = () {
+            // BI26100537: `module:<course>/<NN>#anchor` opens that exact module and section.
+            final module = ModuleLink.parse(url);
+            if (module != null) {
+              onModuleLink?.call(module);
+              return;
+            }
             final uri = Uri.tryParse(url);
             if (uri != null) {
               launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -997,19 +1042,67 @@ class _QuizRevealState extends State<_QuizReveal> {
 /// a module (heading, paragraph, callout, table...), so a saved position
 /// survives a font-size change or a renderer update: re-open the same block, and
 /// fall back to the movement or the top when the block no longer exists.
+/// BI26100537: a link to a module, and optionally to one section of it, as the 4.x standard writes it
+/// (`module:<course>/<NN>` or `module:<course>/<NN>#<anchor>`). A link with no module index is the
+/// course-index defect and does not parse.
+class ModuleLink {
+  const ModuleLink(this.course, this.index, this.anchor);
+  final String course;
+
+  /// The two-digit module index, as written.
+  final String index;
+
+  /// The section anchor (`grasp-1`, `week-7-2`), or empty for the top of the module.
+  final String anchor;
+
+  static final _pattern = RegExp(r'^module:([A-Za-z0-9._-]+)/(\d{2,3})(?:#([a-z0-9-]+))?$');
+
+  static ModuleLink? parse(String url) {
+    final m = _pattern.firstMatch(url.trim());
+    return m == null ? null : ModuleLink(m.group(1)!, m.group(2)!, m.group(3) ?? '');
+  }
+
+  @override
+  String toString() => 'module:$course/$index${anchor.isEmpty ? '' : '#$anchor'}';
+}
+
+/// The numbered sections of a module as the reader renders them: `(number, anchor)` per movement and
+/// labelled element, in reading order. Exposed so the checker and tests resolve anchors the same way.
+List<({String number, String anchor})> moduleSections(String source) =>
+    [for (final b in _parseBlocks(source)) if (b.anchor.isNotEmpty) (number: b.number, anchor: b.anchor)];
+
 class MarkdownAnchors {
   final Map<int, GlobalKey> _keys = {};
   List<String> _movements = const [];
   List<int> _words = const [];
+  Map<String, int> _anchorIndex = const {};
+
+  /// The block briefly highlighted after a deep link scrolled to it.
+  final ValueNotifier<int?> highlighted = ValueNotifier<int?>(null);
+
+  /// Scrolls to the section with [anchor] and highlights it for a moment. False when there is no
+  /// such section (or it is not laid out yet).
+  bool revealAnchor(String anchor) {
+    final i = _anchorIndex[anchor];
+    if (i == null || !reveal(i)) return false;
+    highlighted.value = i;
+    Timer(const Duration(milliseconds: 1800), () {
+      if (highlighted.value == i) highlighted.value = null;
+    });
+    return true;
+  }
+
+  bool hasAnchor(String anchor) => _anchorIndex.containsKey(anchor);
 
   /// How many blocks the last build rendered.
   int get count => _movements.length;
 
   GlobalKey keyFor(int i) => _keys.putIfAbsent(i, GlobalKey.new);
 
-  void _describe(List<String> movements, List<int> words) {
+  void _describe(List<String> movements, List<int> words, [Map<String, int> anchorIndex = const {}]) {
     _movements = movements;
     _words = words;
+    _anchorIndex = anchorIndex;
   }
 
   /// The movement (the nearest `##` or `#` heading at or before block [i]).
@@ -1085,12 +1178,16 @@ final _callouts = <_Callout>[
   _Callout('research', 'Research', C.callResearch, C.callResearchBg,
       RegExp(r'^\*\*Research:?\*\*\s*', caseSensitive: false)),
   // Course standard 3.1.0 §8.1: Story (SEE) and Probe (PROBE) are callouts.
-  _Callout('story', 'Story', C.callJargon, C.callJargonBg,
-      RegExp(r'^\*\*(?:Story|Example):?\*\*\s*', caseSensitive: false)),
+  // BI26100537 (standard 4.0.0): the blue callout is Illustration again, whenever no label is authored.
+  _Callout('story', 'Illustration', C.callJargon, C.callJargonBg,
+      RegExp(r'^\*\*(?:Story|Illustration|Example):?\*\*\s*', caseSensitive: false)),
   _Callout('probe', 'Probe', C.callQuiz, C.callQuizBg,
       RegExp(r'^\*\*Probe:?\*\*\s*', caseSensitive: false)),
   _Callout('fact', 'Fact', C.callFact, C.callFactBg,
       RegExp(r'^\*\*(?:Fun fact|Fact):?\*\*\s*', caseSensitive: false)),
+  // BI26100537: the line and rung elements of 4.x (prior, place, point, link, now, week, ...) share
+  // a quiet neutral callout. Its pattern never matches: only the `{id}` form claims a line for it.
+  _Callout('note', 'Note', C.text3, C.bgRaised, RegExp(r'(?!)')),
 ];
 
 _Callout? _matchCallout(String line) {
@@ -1098,6 +1195,60 @@ _Callout? _matchCallout(String line) {
     if (c.pattern.hasMatch(line)) return c;
   }
   return null;
+}
+
+/// Standard 4.x §8.1: the element ids, and which callout style each one is drawn in.
+const _elementKinds = <String, String>{
+  'outcome': 'learn',
+  'illustration': 'story',
+  'research': 'research',
+  'fact': 'fact',
+  'probe': 'probe',
+  'modelanswer': 'probe',
+  'failure': 'watch',
+  'book': 'book',
+  'jargon': 'jargon',
+  'prior': 'note',
+  'place': 'note',
+  'point': 'note',
+  'link': 'note',
+  'proof': 'note',
+  'now': 'note',
+  'week': 'note',
+  'role': 'note',
+  'model': 'note',
+  'pitfalls': 'note',
+  'expert': 'note',
+  'essentials': 'note',
+  'check': 'note',
+  'return': 'note',
+};
+
+/// `**{prior} Before This:** body`, optionally as a list item (`1. **{now} Two Words:** body`).
+final _elementLine = RegExp(r'^\*\*\{([a-z]+)\}\s+(\S+\s+\S+):\*\*\s*(.*)$');
+
+/// `## {orient} Setting Out: Where This Module Begins`.
+final _movementHeading = RegExp(r'^##\s+\{([a-z]+)\}\s+(\S+\s+\S+):\s+(.+)$');
+
+/// Standard 4.x §3.10: movements are numbered from 0 in reading order (`k.0`), the labelled elements
+/// inside movement k are `k.1`, `k.2`, ... and each gets a stable anchor (`grasp-1`, `week-7-2`).
+/// A pre-4.0.0 module is numbered by its `##` headings, with no element numbers or anchors.
+void _numberBlocks(List<_Block> blocks) {
+  final v4 = blocks.any((b) => b.kind == _Kind.heading && b.movementId.isNotEmpty);
+  var k = -1;
+  var j = 0;
+  for (final b in blocks) {
+    if (b.kind == _Kind.heading && b.level == 2 && (!v4 || b.movementId.isNotEmpty)) {
+      k++;
+      j = 0;
+      b.number = '$k.0';
+      b.anchor = v4 ? '${b.movementId}-$k' : 'section-$k';
+    } else if (b.kind == _Kind.callout && b.elementId.isNotEmpty && k >= 0) {
+      j++;
+      b.number = '$k.$j';
+      b.anchor = '${b.elementId}-$k-$j';
+    }
+  }
 }
 
 class _ChartItem {
@@ -1123,6 +1274,14 @@ class _Block {
   /// Set only on callout blocks.
   _Callout? callout;
   String cite = '';
+
+  /// BI26100537 (standard 4.x): the canonical id of a movement or element (never shown), the authored
+  /// two-word label (shown), and the computed number and anchor.
+  String movementId = '';
+  String elementId = '';
+  String uiLabel = '';
+  String number = '';
+  String anchor = '';
 
   /// Chart / Map / Image / Equation fields
   String chartTitle = '';
@@ -1377,6 +1536,40 @@ List<_Block> _parseBlocks(String source) {
       continue;
     }
 
+    // BI26100537: a 4.x movement heading, `## {id} Two Words: The Heading`.
+    final movementHeading = _movementHeading.firstMatch(trimmed);
+    if (movementHeading != null) {
+      flushPara();
+      blocks.add(_Block(_Kind.heading, text: movementHeading.group(3)!.trim(), level: 2)
+        ..movementId = movementHeading.group(1)!
+        ..uiLabel = movementHeading.group(2)!);
+      idx++;
+      continue;
+    }
+
+    // BI26100537: a 4.x element line, `**{id} Two Words:** body`, also as a list item (APPLY rungs).
+    final element = _elementLine.firstMatch(trimmed.replaceFirst(RegExp(r'^\s*(?:\d+[.)]|[-*+])\s+'), ''));
+    if (element != null && _elementKinds.containsKey(element.group(1))) {
+      flushPara();
+      final base = _callouts.firstWhere((c) => c.kind == _elementKinds[element.group(1)]);
+      var body = element.group(3)!.trim();
+      var cite = '';
+      if (base.kind == 'book' || base.kind == 'quote') {
+        final m = RegExp(r'\[([^\]]{4,})\]\s*$').firstMatch(body);
+        if (m != null) {
+          cite = m.group(1)!;
+          body = body.substring(0, m.start).trim();
+        }
+      }
+      blocks.add(_Block(_Kind.callout, text: body)
+        ..callout = base
+        ..cite = cite
+        ..elementId = element.group(1)!
+        ..uiLabel = element.group(2)!);
+      idx++;
+      continue;
+    }
+
     final heading = RegExp(r'^(#{1,6})\s+(.*)$').firstMatch(trimmed);
     if (heading != null) {
       flushPara();
@@ -1461,6 +1654,7 @@ List<_Block> _parseBlocks(String source) {
     idx++;
   }
   flushPara();
+  _numberBlocks(blocks);
   return blocks;
 }
 
