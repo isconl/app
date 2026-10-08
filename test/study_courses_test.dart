@@ -422,7 +422,7 @@ void main() {
       expect(find.byType(CourseDetailScreen), findsNothing);
     });
 
-    testWidgets('module list rows render subtle number, state marker, meta line, and highlights next module', (tester) async {
+    testWidgets('module list rows render subtle number, state marker, title only, and highlights next module', (tester) async {
       final services = (await tester.runAsync(() => buildTestServices()))!;
 
       final course = {
@@ -478,18 +478,18 @@ void main() {
       expect(find.text('02'), findsOneWidget);
       expect(find.text('03'), findsOneWidget);
 
-      // Titles and subtitles
+      // BI26100538 (Sconl, 6 Oct): a module row shows only its bold title.
       expect(find.text('B-Tree Indexing Structure'), findsOneWidget);
-      expect(find.text('Balanced node split algorithm'), findsOneWidget);
       expect(find.text('Write-Ahead Log Protocol'), findsOneWidget);
-      expect(find.text('Crash recovery and ARIES'), findsOneWidget);
       expect(find.text('Multi-Version Concurrency Control'), findsOneWidget);
-      expect(find.text('Snapshot isolation and vacuuming'), findsOneWidget);
 
-      // Meta lines (read time + updated date)
-      expect(find.text('8 min read · updated 20 Sep'), findsOneWidget);
-      expect(find.text('12 min read · updated 22 Sep'), findsOneWidget);
-      expect(find.text('10 min read · updated 23 Sep'), findsOneWidget);
+      // No subtitle line and no read-time / updated meta line in the rows.
+      expect(find.text('Balanced node split algorithm'), findsNothing);
+      expect(find.text('Crash recovery and ARIES'), findsNothing);
+      expect(find.text('Snapshot isolation and vacuuming'), findsNothing);
+      expect(find.text('8 min read · updated 20 Sep'), findsNothing);
+      expect(find.text('12 min read · updated 22 Sep'), findsNothing);
+      expect(find.text('10 min read · updated 23 Sep'), findsNothing);
 
       // BI26100137: the number carries the status, heavy weight, and there is no status dot or offline tick.
       final nums = tester.widgetList<Text>(find.byKey(const Key('module-number'))).toList();
