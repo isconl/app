@@ -21,7 +21,8 @@
 #  - repository_dispatch type "app-build" (also accepts the legacy
 #    "apk-build" type so any already-installed trigger keeps working)
 #
-# Every run: check the version moved -> analyze -> test -> build per platform
+# Every run: check the version moved -> analyze -> test (once, on Android) ->
+# build per platform (dev: Android only; staging, main, dispatch: all three)
 # (icons regenerated first, adopting branding/icon.png if present) -> publish
 # GitHub Release apk-vX.Y.Z with every platform artefact attached.
 # The app's "Check for update" reads these releases.
@@ -34,6 +35,7 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
+      - '_next/**'
   workflow_dispatch:
   repository_dispatch:
     types: [app-build, apk-build]
@@ -80,7 +82,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: apk-v${{ steps.read.outputs.version }}
         run: |
-          NOTES='Automated build from isconl/app ${{ github.ref_name }}. Android installs over the previous version and data is preserved, because every build is signed with the same key - in-app: Settings -> Check for update. Windows and Linux artefacts are attached to this same release.'
+          NOTES='Automated build from isconl/app ${{ github.ref_name }}. Android installs over the previous version and data is preserved, because every build is signed with the same key - in-app: Settings -> Check for update. Windows and Linux artefacts are attached on staging and main builds (dev builds are Android only).'
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" \
               --target "${{ github.sha }}" \
@@ -91,16 +93,14 @@ jobs:
 
   build:
     needs: version
+    # Actions minutes (8 Oct 2026, Sconl: "we are running low on build
+    # minutes"): a dev push builds Android only, because the phone's update
+    # path is the one thing a dev release must deliver. Windows (billed at 2x)
+    # and Linux desktop builds run on staging, main and manual dispatch.
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: android
-            runner: ubuntu-latest
-          - platform: windows
-            runner: windows-latest
-          - platform: linux
-            runner: ubuntu-latest
+        include: ${{ fromJSON((github.event_name == 'push' && github.ref_name == 'dev') && '[{"platform":"android","runner":"ubuntu-latest"}]' || '[{"platform":"android","runner":"ubuntu-latest"},{"platform":"windows","runner":"windows-latest"},{"platform":"linux","runner":"ubuntu-latest"}]') }}
     runs-on: ${{ matrix.runner }}
     steps:
       # The exact commit that triggered the run, so every artefact carries the
@@ -148,10 +148,15 @@ jobs:
         if: matrix.platform == 'android'
         run: node tool/icon_gen.js
 
+      # One Dart codebase: analyze and test once, on the Android job, rather
+      # than three times. A failure there still stops the release (verify
+      # needs the .apk).
       - name: Analyze
+        if: matrix.platform == 'android'
         run: flutter analyze --no-fatal-infos
 
       - name: Test
+        if: matrix.platform == 'android'
         run: flutter test
 
       - name: Build Android APK
