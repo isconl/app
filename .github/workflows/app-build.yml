@@ -40,9 +40,12 @@ on:
   repository_dispatch:
     types: [app-build, apk-build]
 
+# One group per ref, so a dev build never waits on or cancels a staging or main build. On dev a newer push cancels the
+# older run still building (BI26100604, Actions minutes): the pusher bumps the version before pushing and CI makes no commits,
+# so a cancelled run costs nothing but its draft release, which the next run's different version never reuses.
 concurrency:
-  group: app-build
-  cancel-in-progress: false
+  group: app-build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
 
 permissions:
   contents: write
@@ -116,6 +119,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
