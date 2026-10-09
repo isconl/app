@@ -47,6 +47,7 @@ import 'views/social.dart';
 import 'views/spaces.dart';
 import 'views/teams.dart';
 import 'widgets/brand.dart' show MonoBrandMark;
+import 'whats_new_sheet.dart';
 import 'widgets/command_palette.dart';
 import 'widgets/common.dart';
 import 'widgets/nav_bar.dart';
@@ -148,6 +149,8 @@ class _ShellState extends State<Shell> {
       services.sync.onNewAlerts =
           (fresh) => AlertService.instance.showAgentAlerts(fresh);
       services.sync.start();
+      // BI26100531: "What's new" once after an update; never blocks the shell and fails quietly.
+      maybeShowWhatsNew(context);
       services.sync.fullSync(wake: true).then((_) async {
         await services.modules.check();
         await services.modules.prefetchAll();
