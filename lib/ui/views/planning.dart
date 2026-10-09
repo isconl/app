@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/compass_reviews.dart';
 import '../widgets/cycle_mix.dart';
 
 /// Goals by horizon, with their linked tasks.
@@ -29,6 +30,7 @@ class PlanningView extends StatelessWidget {
                 children: [
                   CycleMixCard(),
                   SizedBox(height: 12),
+                  CompassReviews(),
                   EmptyState(
                     'No plans yet',
                     'Set a goal per horizon - cycle, sprint, year - and the '
@@ -56,6 +58,7 @@ class PlanningView extends StatelessWidget {
               children: [
                 const CycleMixCard(),
                 const SizedBox(height: 12),
+                const CompassReviews(),
                 for (final horizon in keys) ...[
                   SectionLabel(horizon),
                   for (final plan in byHorizon[horizon]!)
