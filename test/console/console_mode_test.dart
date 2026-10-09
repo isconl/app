@@ -13,23 +13,21 @@ void main() {
     expect(ConsoleMode.recorder.pillSuffix, 'Recorder');
   });
 
-  test('three quick taps fire once, and the count starts over', () {
-    final d = TripleTapDetector();
+  test('two quick taps fire once, and the count starts over', () {
+    final d = DoubleTapDetector();
     final t0 = DateTime(2026, 10, 3, 9);
-    expect(d.tap(t0), isFalse);
-    expect(d.tap(t0.add(const Duration(milliseconds: 200))), isFalse);
-    expect(d.tap(t0.add(const Duration(milliseconds: 400))), isTrue);
-    expect(d.tap(t0.add(const Duration(milliseconds: 500))), isFalse, reason: 'a fourth tap starts a new run');
+    expect(d.tap(t0), isFalse, reason: 'one tap does nothing');
+    expect(d.tap(t0.add(const Duration(milliseconds: 200))), isTrue);
+    expect(d.tap(t0.add(const Duration(milliseconds: 300))), isFalse, reason: 'a third tap starts a new run');
+    expect(d.tap(t0.add(const Duration(milliseconds: 450))), isTrue);
   });
 
   test('a pause longer than the gap breaks the run', () {
-    final d = TripleTapDetector();
+    final d = DoubleTapDetector();
     final t0 = DateTime(2026, 10, 3, 9);
     expect(d.tap(t0), isFalse);
-    expect(d.tap(t0.add(const Duration(milliseconds: 300))), isFalse);
-    expect(d.tap(t0.add(const Duration(milliseconds: 1200))), isFalse, reason: 'too slow to be the third');
-    expect(d.tap(t0.add(const Duration(milliseconds: 1400))), isFalse);
-    expect(d.tap(t0.add(const Duration(milliseconds: 1600))), isTrue);
+    expect(d.tap(t0.add(const Duration(milliseconds: 500))), isFalse, reason: 'too slow to be the second');
+    expect(d.tap(t0.add(const Duration(milliseconds: 700))), isTrue);
   });
 
   test('the last mode is remembered and an unknown value falls back to Progress', () async {

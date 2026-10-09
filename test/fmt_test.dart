@@ -40,6 +40,11 @@ void main() {
   });
 
   group('dates', () {
+    test('weekdayDate reads Monday · 5 Oct 2026, with no comma (BI26100541)', () {
+      expect(fmt.weekdayDate(DateTime(2026, 10, 5)), 'Monday · 5 Oct 2026');
+      expect(fmt.weekdayDate(DateTime(2026, 12, 31)), 'Thursday · 31 Dec 2026');
+    });
+
     test('daysUntil is calendar-based', () {
       final today = DateTime.now();
       expect(fmt.daysUntil(fmt.isoDate(today)), 0);
