@@ -61,15 +61,10 @@ class JournalView extends StatelessWidget {
             );
           },
         ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: FloatingActionButton(
-            backgroundColor: C.greenDim,
-            foregroundColor: Colors.white,
-            onPressed: () => _addSheet(context),
-            child: const Icon(Icons.edit_rounded),
-          ),
+        ViewFab(
+          tooltip: 'Add a journal entry',
+          icon: Icons.edit_rounded,
+          onPressed: () => _addSheet(context),
         ),
       ],
     );

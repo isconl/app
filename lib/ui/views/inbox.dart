@@ -190,15 +190,10 @@ class _InboxViewState extends State<InboxView> {
             ),
           ),
         ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: FloatingActionButton(
-            backgroundColor: C.greenDim,
-            foregroundColor: Colors.white,
-            onPressed: () => _captureSheet(context),
-            child: const Icon(Icons.add_rounded),
-          ),
+        ViewFab(
+          tooltip: 'Capture to inbox',
+          icon: Icons.add_rounded,
+          onPressed: () => _captureSheet(context),
         ),
       ],
     );
