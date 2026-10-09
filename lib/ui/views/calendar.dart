@@ -7,6 +7,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/day_blocks.dart';
 import '../../util/equicycle.dart';
+import 'equicycle_grid_view.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/month_grid.dart';
@@ -355,57 +356,6 @@ class _CalendarViewState extends State<CalendarView> {
     final displayTheme = _serverThemeKey == ctx.cycleKey && _serverTheme != null
         ? _serverTheme!
         : ctx.theme;
-    final weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-    final cells = <Widget>[
-      for (final wd in weekdayLabels)
-        Center(child: Text(wd, style: T.monoSmall.copyWith(color: C.text3))),
-    ];
-    for (var dayN = 1; dayN <= 28; dayN++) {
-      final date = ctx.cycleStart.add(Duration(days: dayN - 1));
-      final key = fmt.isoDate(date);
-      final items = byDay[key] ?? const [];
-      final isToday = !ctx.stillweek && dayN == ctx.dayInCycle;
-      final isSel = _selected != null && fmt.isoDate(_selected!) == key;
-      cells.add(GestureDetector(
-        onTap: () => setState(() => _selected = date),
-        child: Container(
-          margin: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            color: isSel ? C.greenBg : null,
-            border: Border.all(
-                color: isSel
-                    ? C.green
-                    : isToday
-                        ? C.borderMid
-                        : Colors.transparent),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('$dayN',
-                  style: T.small.copyWith(
-                    color: isSel
-                        ? C.greenBright
-                        : isToday
-                            ? C.text
-                            : C.text2,
-                    fontWeight:
-                        isToday || isSel ? FontWeight.w600 : FontWeight.w400,
-                  )),
-              Text('${date.day}/${date.month}',
-                  style: T.monoSmall.copyWith(color: C.text3, fontSize: 8)),
-              SizedBox(
-                height: 5,
-                child: items.isNotEmpty
-                    ? const StatusDot(C.green, size: 4)
-                    : const SizedBox.shrink(),
-              ),
-            ],
-          ),
-        ),
-      ));
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -417,12 +367,12 @@ class _CalendarViewState extends State<CalendarView> {
                   : 'Cycle ${ctx.cycleNum} · Day ${ctx.dayInCycle} · $displayTheme',
               style: T.title),
         ),
-        GridView.count(
-          crossAxisCount: 7,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 0.95,
-          children: cells,
+        // BI26100135: the grid itself (cycle and year views, season bands, Stillweek, sun events, moon and rains) is the
+        // calendar service's grid, drawn by EquicycleGridView.
+        EquicycleGridView(
+          byDay: byDay,
+          selected: _selected,
+          onSelect: (d) => setState(() => _selected = d),
         ),
       ],
     );
