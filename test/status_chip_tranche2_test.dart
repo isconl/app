@@ -25,13 +25,13 @@ Map<String, dynamic> ops(List<bool> running) => {
 void main() {
   group('BI26100125: the cycle chip (Command)', () {
     test('cycle word in lower case and the day of 28', () {
-      expect(cycleChipText(eq2Position(DateTime(2026, 10, 1), _years)), 'reap d19/28');
-      expect(cycleChipText(eq2Position(DateTime(2026, 6, 21), _years)), 'plant d1/28');
-      expect(cycleChipText(eq2Position(DateTime(2026, 6, 20), _years)), 'audit d28/28');
+      expect(cycleChipText(eq2Position(DateTime(2026, 10, 1), _years)), 'reap · 19/28');
+      expect(cycleChipText(eq2Position(DateTime(2026, 6, 21), _years)), 'plant · 1/28');
+      expect(cycleChipText(eq2Position(DateTime(2026, 6, 20), _years)), 'audit · 28/28');
     });
 
     test('Stillweek shows its day; no table shows no chip', () {
-      expect(cycleChipText(eq2Position(DateTime(2029, 6, 20), _years)), 'stillweek d4');
+      expect(cycleChipText(eq2Position(DateTime(2029, 6, 20), _years)), 'stillweek · 4');
       expect(cycleChipText(eq2Position(DateTime(2035, 1, 1), _years)), isNull);
     });
 
@@ -44,7 +44,7 @@ void main() {
         chip = src.current(c)!;
         return const SizedBox();
       })));
-      expect(chip.text, 'reap d19/28');
+      expect(chip.text, 'reap · 19/28');
       await t.pumpWidget(MaterialApp(home: Builder(builder: (c) {
         chip.onTap(c);
         return const SizedBox();

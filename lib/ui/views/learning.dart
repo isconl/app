@@ -17,7 +17,7 @@ import '../../util/fmt.dart' as fmt;
 import '../../util/reader_prefs.dart';
 import '../../util/spaced_review.dart';
 import 'study_search_view.dart';
-import '../shell.dart' show ShellAppBar, SyncIndicator, openMenu;
+import '../shell.dart' show ShellAppBar, openMenu;
 import '../widgets/common.dart';
 import '../widgets/listen_bar.dart';
 import '../widgets/reader.dart';
@@ -631,7 +631,6 @@ class TrackDetailScreen extends StatelessWidget {
       appBar: ShellAppBar(
         title: track,
         showBrand: true,
-        actions: const [SyncIndicator()],
         onMenu: () => openMenu(context),
       ),
       body: SingleChildScrollView(
@@ -846,7 +845,6 @@ class CourseDetailScreen extends StatelessWidget {
       appBar: ShellAppBar(
         title: title,
         showBrand: true,
-        actions: const [SyncIndicator()],
         onMenu: () => openMenu(context),
       ),
       body: SingleChildScrollView(
