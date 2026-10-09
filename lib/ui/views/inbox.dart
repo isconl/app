@@ -69,13 +69,37 @@ class _InboxViewState extends State<InboxView> {
     });
   }
 
+  /// BI26100309: the snooze is the shared SNOOZE_UNTIL on the server, so the web console hides the thread too. The local entry
+  /// is only the instant hide (and the offline case): it goes once the server has the snooze.
   void _snooze(BuildContext context, AppServices services, InboxThread t, SnoozeChoice c) {
+    final ids = [for (final m in t.messages) fmt.s(m['ID'])];
     setState(() => _hidden.add(t.key));
     SnoozeStore.instance.snooze(t.key, c.until, services.db);
+    services.mutations.inboxSnooze(ids, c.until).then((r) {
+      if (r.ok && !r.queued) SnoozeStore.instance.unsnooze(t.key, services.db);
+    });
     showUndoBar(context, 'Snoozed until ${c.label.toLowerCase()}', () {
       setState(() => _hidden.remove(t.key));
       SnoozeStore.instance.unsnooze(t.key, services.db);
+      services.mutations.inboxSnooze(ids, null);
     });
+  }
+
+  /// Once per start: snoozes made on this phone before the shared field existed move up to the server.
+  bool _migrated = false;
+  Future<void> _migrateLocalSnoozes(AppServices services, List<Map<String, dynamic>> feed) async {
+    if (_migrated) return;
+    _migrated = true;
+    await SnoozeStore.instance.ensureLoaded(services.db); // the stored entries are read before there is anything to push
+    final idsByKey = <String, List<String>>{
+      for (final t in [...groupThreads(feed).people, ...groupThreads(feed).unknown]) t.key: [for (final m in t.messages) fmt.s(m['ID'])],
+    };
+    await SnoozeStore.instance.migrate(
+      now: DateTime.now(),
+      idsByKey: idsByKey,
+      push: (ids, until) async => (await services.mutations.inboxSnooze(ids, until)).ok,
+      db: services.db,
+    );
   }
 
   Widget _swipe(BuildContext context, AppServices services, InboxThread t, Widget tile) => SwipeThread(
@@ -120,6 +144,9 @@ class _InboxViewState extends State<InboxView> {
             }
             final people = fmt.lm(fmt.m(services.store.circle.value)['people']);
             final personById = {for (final p in people) fmt.s(p['ID']): p};
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _migrateLocalSnoozes(services, feed);
+            });
             final groups = groupThreads(feed);
             final snoozeNow = DateTime.now();
             bool shown(InboxThread t) =>

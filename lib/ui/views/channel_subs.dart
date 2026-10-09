@@ -29,7 +29,7 @@ ChannelKind? _kindOf(String view) => switch (view) {
       'inbox' => ChannelKind.inbox,
       'canvas' || 'deck' => ChannelKind.deck,
       'teams' => ChannelKind.teams,
-      'jira' || 'social' || 'github' => ChannelKind.tools,
+      'tools' || 'jira' || 'social' || 'github' => ChannelKind.tools,
       _ => null,
     };
 

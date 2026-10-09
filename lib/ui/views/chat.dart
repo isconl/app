@@ -7,6 +7,7 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../../util/markdown.dart';
 import '../widgets/common.dart';
+import 'cover_pane.dart';
 
 /// Full-height Ask sheet - talk to the agent.
 /// Streaming over SSE; cloud providers answer in one lump (thinking shimmer),
@@ -70,6 +71,8 @@ class _ChatSheetState extends State<ChatSheet> {
   final List<_Msg> _messages = [];
   bool _busy = false;
   bool _loaded = false;
+  // BI26092642: the sheet has two tabs, Agent (today's chat, unchanged) and Cover; the last one used is remembered.
+  bool _coverTab = false;
 
   static const _quickChips = [
     'What needs me today?',
@@ -79,14 +82,25 @@ class _ChatSheetState extends State<ChatSheet> {
     'Draft my day plan',
   ];
 
+  bool _historyStarted = false;
+
+  // The history read needs the app's services (an inherited widget), which cannot be touched in initState.
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_historyStarted) return;
+    _historyStarted = true;
     _loadHistory();
   }
 
   Future<void> _loadHistory() async {
     final services = AppScope.of(context);
+    try {
+      final saved = await services.db.getSnapshot('chat.pane.v1');
+      if (mounted && saved?.$1 == 'cover') setState(() => _coverTab = true);
+    } catch (_) {
+      // No remembered tab: Agent.
+    }
     final rows = await services.db.chatHistory();
     if (!mounted) return;
     setState(() {
@@ -501,6 +515,8 @@ class _ChatSheetState extends State<ChatSheet> {
           ),
         ),
         const Divider(),
+        _paneTabs(),
+        if (_coverTab) const Expanded(child: CoverPane()) else ...[
         Expanded(
           child: !_loaded
               ? const Center(child: MiniSpinner(size: 20))
@@ -591,8 +607,27 @@ class _ChatSheetState extends State<ChatSheet> {
             );
           },
         ),
+        ],
       ],
     );
+  }
+
+  Widget _paneTabs() => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 6, 14, 4),
+        child: Row(children: [
+          ChoiceChip(key: const Key('chat-tab-agent'), label: const Text('Agent'), selected: !_coverTab, onSelected: (_) => _setCoverTab(false)),
+          const SizedBox(width: 8),
+          ChoiceChip(key: const Key('chat-tab-cover'), label: const Text('Cover'), selected: _coverTab, onSelected: (_) => _setCoverTab(true)),
+        ]),
+      );
+
+  Future<void> _setCoverTab(bool cover) async {
+    setState(() => _coverTab = cover);
+    try {
+      await AppScope.of(context).db.putSnapshot('chat.pane.v1', cover ? 'cover' : 'agent');
+    } catch (_) {
+      // Not remembered this time; the tab still switched.
+    }
   }
 
   Widget _bubble(_Msg msg) {

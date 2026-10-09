@@ -5,6 +5,7 @@ import '../widgets/common.dart';
 import '../../app_scope.dart';
 import '../../util/fmt.dart' as fmt;
 import 'portfolio.dart';
+import 'practice_leads.dart';
 import 'projects_dash_model.dart';
 import 'projects_dashboard.dart';
 
@@ -51,7 +52,8 @@ class _PracticeViewState extends State<PracticeView> {
   Widget _overviewBody() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _placeholder('Overview'),
+          // BI26092652: Leads (enquiries and booked diagnostics, the funnel and the actions) is the live part of Overview.
+          const PracticeLeads(),
           const SizedBox(height: 12),
           Panel(
             child: Column(
@@ -110,6 +112,7 @@ class _PracticeViewState extends State<PracticeView> {
               ),
             _PracticeTab.documents => const PortfolioView(),
             _PracticeTab.overview => SingleChildScrollView(child: _overviewBody()),
+            _PracticeTab.enquiries => const SingleChildScrollView(child: PracticeLeads()),
             _ => SingleChildScrollView(child: _placeholder(_label(_tab))),
           },
         ),

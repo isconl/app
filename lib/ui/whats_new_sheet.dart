@@ -6,7 +6,7 @@ import '../app_scope.dart';
 import '../services/whats_new.dart';
 import '../theme.dart';
 
-/// Shows "What's new in <version>" once after an update (BI26100531). Never blocks startup: every failure
+/// Shows the "What's new" sheet once after an update (BI26100531). Never blocks startup: every failure
 /// path returns quietly, and a fresh install or an empty release body shows nothing.
 Future<void> maybeShowWhatsNew(BuildContext context, {WhatsNew? service}) async {
   try {

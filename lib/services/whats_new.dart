@@ -23,7 +23,7 @@ class SecureVersionMemory implements VersionMemory {
   Future<void> write(String version) => _storage.write(key: _key, value: version);
 }
 
-/// Decides whether to show the "What's new in <version>" sheet, once, after an update.
+/// Decides whether to show the "What's new" sheet, once, after an update.
 ///
 /// A fresh install has nothing to compare, so it records the installed version and shows nothing. A launch
 /// on a newer version than the one last shown asks hub for that version's release notes

@@ -388,6 +388,16 @@ class Mutations {
     );
   }
 
+  /// BI26100309: snooze a thread's messages together on the server (the shared SNOOZE_UNTIL), or clear it with a null [until].
+  /// Offline it is queued, so a snooze made on a train reaches the web console when the phone is back.
+  Future<MutationResult> inboxSnooze(List<String> ids, DateTime? until) => _write(
+        path: '/api/inbox/snooze',
+        body: {'ids': ids, 'until': until?.toUtc().toIso8601String()},
+        label: until == null ? 'Inbox unsnooze' : 'Inbox snooze',
+        view: 'inbox',
+        refresh: _store.state,
+      );
+
   Future<MutationResult> inboxUpdate(String id,
           {String? status, String? tag, String? comment}) =>
       _write(

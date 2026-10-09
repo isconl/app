@@ -26,9 +26,9 @@ List<SnoozeChoice> snoozeChoices(DateTime now) {
   ];
 }
 
-/// Snoozed threads, kept on this device until the shared SNOOZE_UNTIL field
-/// exists in the vault (filed as its own row). A thread key maps to the time
-/// it reappears; once that time passes it is simply visible again.
+/// Snoozed threads, kept on this device only while a snooze is on its way to the shared SNOOZE_UNTIL field (BI26100309): the
+/// optimistic hide before the server round trip lands, and the offline case. A thread key maps to the time it reappears; once
+/// that time passes it is simply visible again. Entries made before the shared field existed are pushed up once by [migrate].
 class SnoozeStore extends ChangeNotifier {
   SnoozeStore._();
   static final SnoozeStore instance = SnoozeStore._();
@@ -66,6 +66,33 @@ class SnoozeStore extends ChangeNotifier {
     _until[key] = until;
     notifyListeners();
     await _save(db);
+  }
+
+  /// Snoozes this device made before the shared field existed: the keys whose time is still ahead.
+  Map<String, DateTime> pending(DateTime now) => {for (final e in _until.entries) if (e.value.isAfter(now)) e.key: e.value};
+
+  /// Pushes each still-future local snooze to the server once, through [push] (given the thread's message ids), and drops the
+  /// local entry when the push was accepted or queued. A key with no messages left in [idsByKey] is dropped, since there is
+  /// nothing to snooze. Returns how many were pushed.
+  Future<int> migrate({
+    required DateTime now,
+    required Map<String, List<String>> idsByKey,
+    required Future<bool> Function(List<String> ids, DateTime until) push,
+    AppDb? db,
+  }) async {
+    var pushed = 0;
+    for (final e in pending(now).entries) {
+      final ids = idsByKey[e.key] ?? const <String>[];
+      if (ids.isEmpty) {
+        await unsnooze(e.key, db);
+        continue;
+      }
+      if (await push(ids, e.value)) {
+        pushed++;
+        await unsnooze(e.key, db);
+      }
+    }
+    return pushed;
   }
 
   Future<void> unsnooze(String key, AppDb? db) async {
