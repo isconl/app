@@ -53,6 +53,8 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('console-pill')));
       await tester.pump(const Duration(milliseconds: 600));
       expect(pill().data, 'Console');
+      // The detector reads the real clock and pump() only moves fake time, so let the 300 ms gap really pass.
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 350)));
 
       // Remembered: a new card on the same app opens on the last mode.
       await doubleTap();
