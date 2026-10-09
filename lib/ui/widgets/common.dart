@@ -649,6 +649,39 @@ class CircleFab extends StatelessWidget {
 }
 
 
+/// A screen's own add button on a shell tab (PI26100503): small, grey, stacked above the shell's
+/// green Assistant button (the one primary on every tab). Views place it with no positioning of
+/// their own; put it as a Stack child.
+class ViewFab extends StatelessWidget {
+  const ViewFab({super.key, required this.icon, required this.tooltip, required this.onPressed});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  /// Clears the shell's 56dp Assistant button (16dp margin) with a 10dp gap, centred over it.
+  static const double right = 24;
+  static const double bottom = 82;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      right: right,
+      bottom: bottom,
+      child: FloatingActionButton.small(
+        key: const Key('view-fab'),
+        heroTag: 'view-fab-$tooltip',
+        tooltip: tooltip,
+        backgroundColor: C.surface,
+        foregroundColor: C.text2,
+        shape: const CircleBorder(),
+        onPressed: onPressed,
+        child: Icon(icon, size: 20),
+      ),
+    );
+  }
+}
+
 /// One floating action (BI26100405).
 class FabAction {
   const FabAction({required this.icon, required this.tooltip, required this.onPressed, this.heroTag});

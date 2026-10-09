@@ -1,64 +1,54 @@
 import 'package:flutter/material.dart';
 
-/// Design tokens ported 1:1 from dashboard/style.css (:root).
-/// The web dashboard is the source of truth for this palette.
+import 'theme_tokens.dart';
+
+/// The app's colour, type and size names. The values come from theme_tokens.dart, which is generated
+/// from limelight's tokens.json (BL26100903); change a value there, not here. The names stay the same
+/// so no call site changes. Lesson callouts follow the web values (decision 9 Oct 2026).
 class C {
-  // Surfaces
-  static const bg = Color(0xFF0D1117);
-  static const bgRaised = Color(0xFF0F1318);
-  static const panel = Color(0xFF161B22);
-  static const panelHover = Color(0xFF1B271E); // green-tinted hover surface
-  static const surface = Color(0xFF21262D);
-  static const border = Color(0xFF30363D);
-  static const borderMid = Color(0xFF3D4450);
-
-  // Text
-  static const text = Color(0xFFE6EDF3);
-  static const text2 = Color(0xFFB1BAC4);
-  static const text3 = Color(0xFF7D8590);
-  static const textInverse = Color(0xFF0D1117);
-
-  // Accent - green is the brand
-  static const green = Color(0xFF3FB950);
-  static const greenBright = Color(0xFF56D364);
-  static const greenDim = Color(0xFF238636);
-  static const greenHover = Color(0xFF2EA043);
-  static const greenBg = Color(0x1A3FB950); // rgba(63,185,80,.10)
-  static const greenBg2 = Color(0x0F3FB950); // rgba(63,185,80,.06)
-  static const greenGlow = Color(0x593FB950); // rgba(63,185,80,.35)
-
-  // Semantic
-  static const amber = Color(0xFFD29922);
-  static const amberBg = Color(0x1FD29922);
-  static const red = Color(0xFFF85149);
-  static const redBg = Color(0x1FF85149);
-  static const cyan = Color(0xFF58A6FF);
-  static const cyanBg = Color(0x1A58A6FF);
-  static const blue = Color(0xFF58A6FF);
-  static const violet = Color(0xFFBC8CFF);
-  static const violetBg = Color(0x1ABC8CFF);
-
-  // The five lesson callouts, one colour each. Ported 1:1 from
-  // dashboard/style.css (--call-*), because a module has to look the same on
-  // the phone as it does in the console - his instruction, 7 Aug 2026.
-  static const callLearn = green;
-  static const callLearnBg = Color(0x1A3FB950);
-  static const callJargon = cyan;
-  static const callJargonBg = Color(0x1A58A6FF);
-  static const callWatch = amber;
-  static const callWatchBg = Color(0x1AD29922);
-  static const callBook = violet;
-  static const callBookBg = Color(0x1ABC8CFF);
-  static const callQuote = Color(0xFFF0883E);
-  static const callQuoteBg = Color(0x1AF0883E);
-  static const callResearch = Color(0xFF6EA6D9);
-  static const callResearchBg = Color(0x1A6EA6D9);
-  static const callFact = Color(0xFFD9C15C);
-  static const callFactBg = Color(0x1AD9C15C);
-  // BL26091008: "Check yourself" / "Open questions" quiz callout -- ported
-  // from web's --lb-quiz token.
-  static const callQuiz = Color(0xFF4FB0A5);
-  static const callQuizBg = Color(0x1A4FB0A5);
+  static const bg = TokenColors.bg;
+  static const bgRaised = TokenColors.bgRaised;
+  static const panel = TokenColors.panel;
+  static const panelHover = TokenColors.panelHover;
+  static const surface = TokenColors.surface;
+  static const border = TokenColors.border;
+  static const borderMid = TokenColors.borderMid;
+  static const text = TokenColors.text;
+  static const text2 = TokenColors.text2;
+  static const text3 = TokenColors.text3;
+  static const textInverse = TokenColors.textInverse;
+  static const green = TokenColors.green;
+  static const greenBright = TokenColors.greenBright;
+  static const greenDim = TokenColors.greenDim;
+  static const greenHover = TokenColors.greenHover;
+  static const greenBg = TokenColors.greenBg;
+  static const greenBg2 = TokenColors.greenBg2;
+  static const greenGlow = TokenColors.greenGlow;
+  static const amber = TokenColors.amber;
+  static const amberBg = TokenColors.amberBg;
+  static const red = TokenColors.red;
+  static const redBg = TokenColors.redBg;
+  static const cyan = TokenColors.cyan;
+  static const cyanBg = TokenColors.cyanBg;
+  static const blue = TokenColors.blue;
+  static const violet = TokenColors.violet;
+  static const violetBg = TokenColors.violetBg;
+  static const callLearn = TokenColors.callLearn;
+  static const callLearnBg = TokenColors.callLearnBg;
+  static const callJargon = TokenColors.callJargon;
+  static const callJargonBg = TokenColors.callJargonBg;
+  static const callWatch = TokenColors.callWatch;
+  static const callWatchBg = TokenColors.callWatchBg;
+  static const callBook = TokenColors.callBook;
+  static const callBookBg = TokenColors.callBookBg;
+  static const callQuote = TokenColors.callQuote;
+  static const callQuoteBg = TokenColors.callQuoteBg;
+  static const callResearch = TokenColors.callResearch;
+  static const callResearchBg = TokenColors.callResearchBg;
+  static const callFact = TokenColors.callFact;
+  static const callFactBg = TokenColors.callFactBg;
+  static const callQuiz = TokenColors.callQuiz;
+  static const callQuizBg = TokenColors.callQuizBg;
 
   static Color forPriority(String p) => switch (p.toLowerCase()) {
         'high' => red,
@@ -73,67 +63,35 @@ class C {
       };
 }
 
-/// Type scale. UI font is Inter; identifiers/hashes/timestamps use JetBrains Mono.
+/// Type scale. UI font is Inter; identifiers, hashes and timestamps use JetBrains Mono.
 class T {
-  static const _ui = 'Inter';
-  static const _mono = 'JetBrains Mono';
+  static const body = TokenType.body;
+  static const body2 = TokenType.body2;
+  static const small = TokenType.small;
+  static const tiny = TokenType.tiny;
+  static const label = TokenType.label;
+  static const title = TokenType.title;
+  static const headline = TokenType.headline;
+  static const mono = TokenType.mono;
+  static const monoSmall = TokenType.monoSmall;
+  static const idBadge = TokenType.idBadge;
 
-  static const body = TextStyle(
-      fontFamily: _ui, fontSize: 14, height: 1.5, color: C.text);
-  static const body2 = TextStyle(
-      fontFamily: _ui, fontSize: 13, height: 1.45, color: C.text2);
-  static const small = TextStyle(
-      fontFamily: _ui, fontSize: 12, height: 1.4, color: C.text2);
-  static const tiny = TextStyle(
-      fontFamily: _ui, fontSize: 11, height: 1.3, color: C.text3);
-  static const label = TextStyle(
-      fontFamily: _ui,
-      fontSize: 10.5,
-      height: 1.2,
-      color: C.text3,
-      fontWeight: FontWeight.w600,
-      letterSpacing: 1.2);
-  static const title = TextStyle(
-      fontFamily: _ui,
-      fontSize: 16,
-      height: 1.3,
-      color: C.text,
-      fontWeight: FontWeight.w600,
-      letterSpacing: -0.2);
-  static const headline = TextStyle(
-      fontFamily: _ui,
-      fontSize: 19,
-      height: 1.25,
-      color: C.text,
-      fontWeight: FontWeight.w700,
-      letterSpacing: -0.4);
-  static const mono = TextStyle(
-      fontFamily: _mono, fontSize: 11.5, height: 1.45, color: C.text2);
-  static const monoSmall = TextStyle(
-      fontFamily: _mono, fontSize: 10, height: 1.35, color: C.text3);
   /// The small monospace status line: the app-bar status chip and the checkpoint card share it.
   static final statusMono = monoSmall.copyWith(fontSize: 11, color: C.text3);
-  static const idBadge = TextStyle(
-      fontFamily: _mono, fontSize: 10.5, height: 1.2, color: C.green, fontWeight: FontWeight.w500);
 
   static TextStyle w500(TextStyle s) => s.copyWith(fontWeight: FontWeight.w500);
   static TextStyle w600(TextStyle s) => s.copyWith(fontWeight: FontWeight.w600);
   static TextStyle c(TextStyle s, Color color) => s.copyWith(color: color);
 }
 
-/// Shape and spacing.
+/// Shape and spacing. rMd is 10 in the app (BG26091015) and 8 on the web; see tokens.json.
 class Sz {
-  static const rSm = 5.0;
-  // BG26091015: bumped 8->10 ("ever so slightly increased"), the most
-  // widely-used radius token across buttons/cards app-wide. Not visually
-  // confirmed against a running device this session (no emulator/device
-  // connected) -- flagged, not silently assumed right; revisit if it
-  // reads as more than "ever so slight" once checked live.
-  static const rMd = 10.0;
-  static const rLg = 12.0;
-  static const rXl = 16.0;
-  static const pad = 14.0; // card padding
-  static const gap = 10.0; // grid gap
+  static const rSm = TokenSize.rSm;
+  static const rMd = TokenSize.rMd;
+  static const rLg = TokenSize.rLg;
+  static const rXl = TokenSize.rXl;
+  static const pad = TokenSize.pad; // card padding
+  static const gap = TokenSize.gap; // grid gap
 
   /// Below this width, the web build gets the phone-shaped [Shell] instead
   /// of [DesktopShell] - see ui/adaptive_shell.dart.

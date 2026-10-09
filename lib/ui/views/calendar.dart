@@ -289,15 +289,10 @@ class _CalendarViewState extends State<CalendarView> {
             );
           },
         ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: FloatingActionButton(
-            backgroundColor: C.greenDim,
-            foregroundColor: Colors.white,
-            onPressed: () => _addEventSheet(context),
-            child: const Icon(Icons.add_rounded),
-          ),
+        ViewFab(
+          tooltip: 'Add an event',
+          icon: Icons.add_rounded,
+          onPressed: () => _addEventSheet(context),
         ),
       ],
     );
