@@ -32,6 +32,37 @@ void main() {
       await s.unsnooze('p1', null);
       expect(s.isSnoozed('p1', t0), false);
     });
+
+    // BI26100309: a snooze lives on the server now; what an older version of the app held on the phone is pushed up once.
+    test('migration pushes each still-future local snooze with the message ids of the thread, then drops the local entry', () async {
+      final s = SnoozeStore.forTesting();
+      final now = DateTime(2026, 10, 9, 10);
+      await s.snooze('p1', DateTime(2026, 10, 10, 9), null);
+      await s.snooze('p2', DateTime(2026, 10, 11, 9), null);
+      await s.snooze('gone', DateTime(2026, 10, 12, 9), null); // the thread has no messages left
+      await s.snooze('past', DateTime(2026, 10, 9, 9), null); // already due: nothing to push
+      final pushed = <String>[];
+      final n = await s.migrate(
+        now: now,
+        idsByKey: {'p1': ['I1', 'I2'], 'p2': ['I3'], 'past': ['I9']},
+        push: (ids, until) async {
+          pushed.add('${ids.join(',')}@${until.day}');
+          return true;
+        },
+      );
+      expect(n, 2);
+      expect(pushed, ['I1,I2@10', 'I3@11']);
+      expect(s.pending(now), isEmpty, reason: 'nothing is held on the phone any more');
+    });
+
+    test('a push that is refused keeps the local snooze, so it is tried again next start', () async {
+      final s = SnoozeStore.forTesting();
+      final now = DateTime(2026, 10, 9, 10);
+      await s.snooze('p1', DateTime(2026, 10, 10, 9), null);
+      final n = await s.migrate(now: now, idsByKey: {'p1': ['I1']}, push: (_, _) async => false);
+      expect(n, 0);
+      expect(s.isSnoozed('p1', now), true);
+    });
   });
 
   Widget host({required List<String> log, SnoozeChoice? pick}) {
