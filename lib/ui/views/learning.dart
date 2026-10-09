@@ -8,7 +8,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app_scope.dart';
 import '../../data/db.dart';
-import '../../util/markdown.dart' show MarkdownAnchors;
+import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink;
 import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
 import '../../study/cdm/cdm_lesson_body.dart';
@@ -61,7 +61,8 @@ class _LearningViewState extends State<LearningView> {
         snapshot: services.store.learning,
         builder: (context, data) {
           final courses = fmt.lm(fmt.m(data)['courses']);
-          if (courses.isEmpty) {
+          // BI26100538: a library with no courses but with tracks still shows its tracks.
+          if (courses.isEmpty && fmt.lm(fmt.m(data)['groups']).isEmpty) {
             return const EmptyState(
               'No courses yet',
               'Courses live in the vault under memory/learning.',
@@ -93,9 +94,10 @@ class _LearningViewState extends State<LearningView> {
               ungrouped.add(c);
             }
           }
+          // BI26100538: nothing disappears. Every track spark returns is shown, an empty one with its
+          // empty state, in spark's order.
           final tracks = [
-            for (final g in apiGroups)
-              if (byGroup[g.id]?.isNotEmpty ?? false) g,
+            ...apiGroups,
             if (ungrouped.isNotEmpty) LearningGroup.ungrouped,
           ];
           final coursesForTrack = {
@@ -147,6 +149,10 @@ class _LearningViewState extends State<LearningView> {
                     ),
                 ],
               ),
+
+              // BI26100538: when the library was last synced from the vault. Amber past 24 hours, so a
+              // stalled sync is seen the same day.
+              LibraryFreshness(syncedAt: fmt.m(data)['librarySyncedAt'] ?? fmt.m(data)['syncedAt']),
 
               // ── low-emphasis library-wide action, moved off the top ──────
               if (!lib.prefetching &&
@@ -242,6 +248,7 @@ class LearningGroup {
     required this.moduleCount,
     required this.progressPct,
     required this.status,
+    this.coursesOwed = 0,
   });
 
   factory LearningGroup.fromApi(Map<String, dynamic> g) {
@@ -270,6 +277,9 @@ class LearningGroup {
           ? (g['progressPct'] ?? g['PROGRESS_PCT'] as num).toInt()
           : 0,
       status: fmt.s(g['status'] ?? g['STATUS']),
+      coursesOwed: ((g['coursesOwed'] ?? g['courses_owed']) is num)
+          ? ((g['coursesOwed'] ?? g['courses_owed']) as num).toInt()
+          : 0,
     );
   }
 
@@ -299,7 +309,39 @@ class LearningGroup {
   final int progressPct;
   final String status;
 
+  /// BI26100538: courses the census says this track still owes, when spark reports it.
+  final int coursesOwed;
+
   bool get isWide => tile == 'wide';
+}
+
+/// BI26100538: "Library updated 3 h ago", from the time the vault last synced to the VM. Amber once it
+/// is more than 24 hours old. Nothing is shown when spark does not report a time.
+class LibraryFreshness extends StatelessWidget {
+  const LibraryFreshness({super.key, required this.syncedAt, this.now});
+  final dynamic syncedAt;
+  final DateTime? now;
+
+  /// The age after which the line turns amber.
+  static const stale = Duration(hours: 24);
+
+  @override
+  Widget build(BuildContext context) {
+    final at = fmt.parseDate(syncedAt);
+    if (at == null) return const SizedBox.shrink();
+    final age = (now ?? DateTime.now()).difference(at);
+    final isStale = age > stale;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Center(
+        child: Text(
+          'Library updated ${fmt.ago(syncedAt)}',
+          key: const Key('library-freshness'),
+          style: T.tiny.copyWith(color: isStale ? C.amber : C.text3),
+        ),
+      ),
+    );
+  }
 }
 
 /// Offline coverage only -- courseCount/moduleCount/doneCount now come
@@ -412,6 +454,23 @@ class TrackCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 9),
+                // BI26100538: a track with no courses is still shown, with an honest empty state.
+                if (courses.isEmpty && group.courseCount == 0) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'No courses live yet',
+                    key: const Key('track-empty'),
+                    style: T.small.copyWith(color: C.text2, fontWeight: FontWeight.w600),
+                  ),
+                  if (group.coursesOwed > 0) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '${group.coursesOwed} ${group.coursesOwed == 1 ? 'course' : 'courses'} on the way',
+                      key: const Key('track-owed'),
+                      style: T.tiny.copyWith(color: C.text3),
+                    ),
+                  ],
+                ],
                 Row(
                   children: [
                     Expanded(
@@ -487,6 +546,37 @@ String _formatDateDayMonth(dynamic v) {
   return '${dt.day} ${months[dt.month - 1]}';
 }
 
+/// BI26100538: a books course is the first course of its track: its archetype is `books`, or its id
+/// ends in `-books`.
+bool isBooksCourse(Map<String, dynamic> c) {
+  final id = fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID']);
+  return fmt.s(c['archetype'] ?? c['ARCHETYPE']).toLowerCase() == 'books' || id.toLowerCase().endsWith('-books');
+}
+
+bool isArchivedCourse(Map<String, dynamic> c) => fmt.s(c['STATUS'] ?? c['status']).toLowerCase() == 'archived';
+
+/// The course's place in its track: `coverage_order` when spark serves it, else `SEQ`.
+int _coverageOrder(Map<String, dynamic> c) {
+  final v = c['coverage_order'] ?? c['coverageOrder'] ?? c['COVERAGE_ORDER'];
+  return v != null ? fmt.i(v) : _courseOrder(c);
+}
+
+/// Track order: the books course first, then coverage order, then title. Spark owns the order; this is
+/// the same rule applied to what spark returned, so a response that lacks `coverage_order` still reads
+/// right.
+List<Map<String, dynamic>> orderedCourses(Iterable<Map<String, dynamic>> courses) {
+  final out = List<Map<String, dynamic>>.from(courses);
+  String title(Map<String, dynamic> c) => fmt.s(c['TITLE'] ?? c['title']).toLowerCase();
+  out.sort((a, b) {
+    final ba = isBooksCourse(a), bb = isBooksCourse(b);
+    if (ba != bb) return ba ? -1 : 1;
+    final byCoverage = _coverageOrder(a).compareTo(_coverageOrder(b));
+    if (byCoverage != 0) return byCoverage;
+    return title(a).compareTo(title(b));
+  });
+  return out;
+}
+
 int _courseOrder(Map<String, dynamic> c) {
   if (c['position'] != null) return fmt.i(c['position']);
   if (c['SEQ'] != null) return fmt.i(c['SEQ']);
@@ -519,13 +609,10 @@ class TrackDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveColor = trackColor ?? C.green;
-    final sortedCourses = List<Map<String, dynamic>>.from(courses);
-    sortedCourses.sort((a, b) {
-      final posA = _courseOrder(a);
-      final posB = _courseOrder(b);
-      if (posA != posB) return posA.compareTo(posB);
-      return 0;
-    });
+    // BI26100538: live courses in track order (books first, then coverage order, then title); archived
+    // ones are kept, listed under a collapsed heading at the bottom, never removed.
+    final sortedCourses = orderedCourses(courses.where((c) => !isArchivedCourse(c)));
+    final archivedCourses = orderedCourses(courses.where(isArchivedCourse));
 
     final firstIncompleteIndex = sortedCourses.indexWhere((c) {
       final lessons = fmt.lm(c['lessons']);
@@ -552,6 +639,12 @@ class TrackDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (sortedCourses.isEmpty && archivedCourses.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 24),
+                child: EmptyState('No courses live yet', 'This track has no courses published so far.',
+                    icon: Icons.school_rounded),
+              ),
             for (var i = 0; i < sortedCourses.length; i++)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -560,6 +653,27 @@ class TrackDetailScreen extends StatelessWidget {
                   index: i,
                   isFirstIncomplete: i == firstIncompleteIndex,
                   trackColor: effectiveColor,
+                ),
+              ),
+            if (archivedCourses.isNotEmpty)
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  key: const Key('archived-section'),
+                  tilePadding: EdgeInsets.zero,
+                  title: Text('Archived (${archivedCourses.length})',
+                      style: T.small.copyWith(color: C.text3, fontWeight: FontWeight.w600)),
+                  children: [
+                    for (var i = 0; i < archivedCourses.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: CourseSummaryCard(
+                          course: archivedCourses[i],
+                          index: i,
+                          trackColor: effectiveColor,
+                        ),
+                      ),
+                  ],
                 ),
               ),
           ],
@@ -652,10 +766,15 @@ class CourseSummaryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: T.title),
+                    // BI26100538: a bold title over a smaller, lighter subtitle that wraps to two lines.
+                    Text(title, key: const Key('course-title'), style: T.w600(T.title)),
                     if (subtitle.isNotEmpty) ...[
                       const SizedBox(height: 3),
-                      Text(subtitle, style: T.small.copyWith(color: C.text3)),
+                      Text(subtitle,
+                          key: const Key('course-subtitle'),
+                          maxLines: 2,
+                          overflow: TextOverflow.fade,
+                          style: T.small.copyWith(color: C.text3, fontSize: (T.small.fontSize ?? 13) - 1)),
                     ],
                   ],
                 ),
@@ -896,6 +1015,40 @@ Color moduleStatusColor(String status, Color trackColor) => switch (status.toLow
       _ => C.text3,
     };
 
+/// BI26100538: the chip colour for a status, legible on the dark surface: the track colour for Opened
+/// (lightened toward white when it is too dark to read), yellow for Learning, green for Done.
+Color statusChipColor(String status, Color trackColor) => switch (status.toLowerCase()) {
+      'done' => C.green,
+      'learning' => C.amber,
+      'opened' => legibleTrackColor(trackColor, C.bg),
+      _ => C.text3,
+    };
+
+/// A small status chip for a module row: Opened, Learning or Done.
+@visibleForTesting
+class ModuleStatusChip extends StatelessWidget {
+  const ModuleStatusChip({super.key, required this.status, required this.trackColor});
+  final String status;
+  final Color trackColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = statusChipColor(status, trackColor);
+    final s = status.toLowerCase();
+    final label = s == 'done' ? 'Done' : (s == 'learning' ? 'Learning' : 'Opened');
+    return Container(
+      key: const Key('status-chip'),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c),
+      ),
+      child: Text(label, style: T.tiny.copyWith(color: c, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
 String moduleStatusWords(String status) => switch (status.toLowerCase()) {
       'done' => 'done',
       'learning' => 'in progress',
@@ -942,45 +1095,9 @@ class LessonRow extends StatelessWidget {
     final rawTitle = tVal.isNotEmpty ? tVal : fmt.s(lesson['title'] ?? file);
     final title = safeModuleTitle(stripEmoji(rawTitle), file);
 
-    final subVal = fmt.s(lesson['SUBTITLE']);
-    final rawSubtitle = subVal.isNotEmpty ? subVal : fmt.s(lesson['subtitle']);
-    final subtitle = stripEmoji(rawSubtitle);
-
     final pos = lesson['position'] ?? lesson['SEQ'] ?? lesson['seq'] ?? lesson['order'];
     final numVal = pos != null ? fmt.i(pos) : index + 1;
     final numStr = numVal.toString().padLeft(2, '0');
-
-    // Meta line: "8 min read · updated 20 Sep"
-    String? readTimeStr;
-    final readTimeVal = lesson['readTime'] ?? lesson['readingTime'] ?? lesson['minRead'] ?? lesson['read_time'];
-    if (readTimeVal != null) {
-      final sVal = fmt.s(readTimeVal);
-      if (sVal.contains('min')) {
-        readTimeStr = sVal;
-      } else {
-        final m = fmt.i(readTimeVal);
-        if (m > 0) readTimeStr = '$m min read';
-      }
-    } else if (lesson['words'] != null) {
-      final w = fmt.i(lesson['words']);
-      if (w > 0) {
-        final mins = (w / 220).ceil();
-        readTimeStr = '$mins min read';
-      }
-    }
-
-    String? updatedStr;
-    final updatedVal = lesson['updatedAt'] ?? lesson['updated_at'] ?? lesson['UPDATED_AT'] ?? lesson['reviewedAt'] ?? st.updated;
-    if (updatedVal != null && fmt.s(updatedVal).isNotEmpty) {
-      final d = _formatDateDayMonth(updatedVal);
-      if (d.isNotEmpty) updatedStr = 'updated $d';
-    }
-
-    final metaParts = [
-      if (readTimeStr != null && readTimeStr.isNotEmpty) readTimeStr,
-      if (updatedStr != null && updatedStr.isNotEmpty) updatedStr,
-    ];
-    final metaLine = metaParts.join(' · ');
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -1037,26 +1154,14 @@ class LessonRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // BI26100538 (Sconl, 6 Oct): the module list shows only the bold three-word title.
                     Text(
                       title,
+                      key: const Key('module-title'),
                       style: T.w600(T.body2).copyWith(
                         color: status == 'done' ? C.text3 : C.text,
                       ),
                     ),
-                    if (subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: T.small.copyWith(color: C.text3),
-                      ),
-                    ],
-                    if (metaLine.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        metaLine,
-                        style: T.tiny.copyWith(color: C.text3),
-                      ),
-                    ],
                     // BI26100325: how far through an unfinished module.
                     if (status != 'done' && status != 'new')
                       ReadingBar(course: courseId, file: file, color: trackColor),
@@ -1067,6 +1172,12 @@ class LessonRow extends StatelessWidget {
                 const Tooltip(
                   message: 'Updated on the agent - opens the new version',
                   child: Icon(Icons.sync_problem_rounded, size: 12, color: C.amber),
+                ),
+              // BI26100538: the status chip. Opened is the track colour, Learning is yellow, Done is green.
+              if (status == 'opened' || status == 'learning' || status == 'done')
+                Padding(
+                  padding: const EdgeInsets.only(left: 6, top: 1),
+                  child: ModuleStatusChip(status: status, trackColor: trackColor),
                 ),
               const SizedBox(width: 6),
               const Padding(
@@ -1135,7 +1246,11 @@ class LessonScreen extends StatefulWidget {
     this.version,
     this.initialParagraph,
     this.foundText,
+    this.initialAnchor = '',
   });
+
+  /// BI26100537: open at this section anchor (`grasp-1`, `week-7-2`), from a `module:` deep link.
+  final String initialAnchor;
 
   /// BI26100156: open at this paragraph (as the reader counts them), from a search result.
   final int? initialParagraph;
@@ -1410,6 +1525,8 @@ class _LessonScreenState extends State<LessonScreen> {
     _restoredResume = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted || !_scroll.hasClients) return;
+      // BI26100537: a deep link to a section wins over everything else.
+      if (widget.initialAnchor.isNotEmpty && _anchors.revealAnchor(widget.initialAnchor)) return;
       final jump = widget.initialParagraph;
       if (jump != null) {
         // A search result wins over the saved reading position.
@@ -1449,6 +1566,57 @@ class _LessonScreenState extends State<LessonScreen> {
       final target = _scroll.position.maxScrollExtent * frac;
       if (target > 0) _scroll.jumpTo(target.clamp(0, _scroll.position.maxScrollExtent));
     });
+  }
+
+  /// Replace this screen with another module of the same course.
+  void _openLesson(Map<String, dynamic> lesson) => Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LessonScreen(
+            course: widget.course,
+            file: fmt.s(lesson['file']),
+            title: fmt.s(lesson['title']),
+            status: fmt.s(lesson['status']),
+            allLessons: widget.allLessons,
+            trackColor: widget.trackColor,
+          ),
+        ),
+      );
+
+  /// BI26100537: a `module:<course>/<NN>#anchor` link. Same module: scroll to the section. Another
+  /// module of this course: open exactly that module at that section, never the course index.
+  void _openModuleLink(ModuleLink link) {
+    final index = link.index;
+    bool matches(Map<String, dynamic> l) {
+      final f = fmt.s(l['file']);
+      return f.startsWith(index) && (f.length == index.length || !RegExp(r'\d').hasMatch(f[index.length]));
+    }
+
+    if (link.course != widget.course) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+          content: Text('That module is in another course. Open the course, then the module.')));
+      return;
+    }
+    if (matches({'file': widget.file})) {
+      if (link.anchor.isNotEmpty) _anchors.revealAnchor(link.anchor);
+      return;
+    }
+    final target = widget.allLessons.where(matches).toList();
+    if (target.isEmpty) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LessonScreen(
+          course: widget.course,
+          file: fmt.s(target.first['file']),
+          title: fmt.s(target.first['title']),
+          status: fmt.s(target.first['status']),
+          allLessons: widget.allLessons,
+          trackColor: widget.trackColor,
+          initialAnchor: link.anchor,
+        ),
+      ),
+    );
   }
 
   @override
@@ -1508,10 +1676,13 @@ class _LessonScreenState extends State<LessonScreen> {
       );
     }
 
-    final isDarkTrack = widget.trackColor.computeLuminance() < 0.5;
+    // BI26100537 (standard 4.0.0, §3.11): Mark as done is the app's success green, a theme token,
+    // whatever the track colour is.
+    final isDarkTrack = C.green.computeLuminance() < 0.5;
     return FilledButton(
+      key: const Key('mark-as-done'),
       style: FilledButton.styleFrom(
-        backgroundColor: widget.trackColor,
+        backgroundColor: C.green,
         foregroundColor: isDarkTrack ? Colors.white : Colors.black,
         padding: const EdgeInsets.symmetric(vertical: 14),
       ),
@@ -1689,6 +1860,8 @@ class _LessonScreenState extends State<LessonScreen> {
                               label,
                               selected: _status.toLowerCase() == st,
                               color: widget.trackColor,
+                              // BI26100538: Opened in the track colour, Learning yellow, Done green.
+                              stateColor: statusChipColor(st, widget.trackColor),
                               onTap: null,
                             ),
                             const SizedBox(width: 6),
@@ -1712,6 +1885,7 @@ class _LessonScreenState extends State<LessonScreen> {
                             ? _lessonOfflineNote()
                             : ReadingBody(content,
                                 anchors: _anchors,
+                                onModuleLink: _openModuleLink,
                                 courseId: widget.course,
                                 baseUrl: services.api.baseUrl,
                                 token: services.api.token),
@@ -1721,6 +1895,7 @@ class _LessonScreenState extends State<LessonScreen> {
                     else
                       ReadingBody(content,
                           anchors: _anchors,
+                          onModuleLink: _openModuleLink,
                           courseId: widget.course,
                           baseUrl: services.api.baseUrl,
                           token: services.api.token),
@@ -1734,74 +1909,39 @@ class _LessonScreenState extends State<LessonScreen> {
                         child: _buildDoneButton(services),
                       ),
                     ),
-                    if (_computedNextLesson != null || _computedPrevLesson != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8, bottom: 20),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            if (_computedPrevLesson != null)
-                              _LessonNavButton(
-                                icon: Icons.chevron_left_rounded,
-                                iconTrailing: false,
-                                label: lessonNavLabel('Previous',
-                                    fmt.s(_computedPrevLesson!['title']).isEmpty
-                                        ? fmt.s(_computedPrevLesson!['file'])
-                                        : fmt.s(_computedPrevLesson!['title'])),
-                                onTap: () => Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => LessonScreen(
-                                      course: widget.course,
-                                      file: fmt.s(_computedPrevLesson!['file']),
-                                      title: fmt.s(_computedPrevLesson!['title']),
-                                      status: fmt.s(_computedPrevLesson!['status']),
-                                      allLessons: widget.allLessons,
-                                      trackColor: widget.trackColor,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            else
-                              const SizedBox.shrink(),
-                            if (_computedNextLesson != null)
-                              _LessonNavButton(
-                                icon: Icons.chevron_right_rounded,
-                                iconTrailing: true,
-                                label: lessonNavLabel('Next',
-                                    fmt.s(_computedNextLesson!['title']).isEmpty
-                                        ? fmt.s(_computedNextLesson!['file'])
-                                        : fmt.s(_computedNextLesson!['title'])),
-                                onTap: () => Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => LessonScreen(
-                                      course: widget.course,
-                                      file: fmt.s(_computedNextLesson!['file']),
-                                      title: fmt.s(_computedNextLesson!['title']),
-                                      status: fmt.s(_computedNextLesson!['status']),
-                                      allLessons: widget.allLessons,
-                                      trackColor: widget.trackColor,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            else if (widget.allLessons.isNotEmpty)
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.check_circle_rounded,
-                                      size: 16, color: C.green),
-                                  const SizedBox(width: 8),
-                                  Text('Course complete',
-                                      style: T.small.copyWith(color: C.text3)),
-                                ],
-                              )
-                            else
-                              const SizedBox.shrink(),
-                          ],
-                        ),
+                    // BI26100537 (standard 4.0.0, section 3.11): Previous Module and Next Module side by
+                    // side, equal width, fixed labels. At either end the button is disabled, not removed.
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 20),
+                      child: Row(
+                        key: const Key('module-nav'),
+                        children: [
+                          Expanded(
+                            child: _LessonNavButton(
+                              key: const Key('previous-module'),
+                              icon: Icons.chevron_left_rounded,
+                              iconTrailing: false,
+                              label: 'Previous Module',
+                              onTap: _computedPrevLesson == null
+                                  ? null
+                                  : () => _openLesson(_computedPrevLesson!),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _LessonNavButton(
+                              key: const Key('next-module'),
+                              icon: Icons.chevron_right_rounded,
+                              iconTrailing: true,
+                              label: 'Next Module',
+                              onTap: _computedNextLesson == null
+                                  ? null
+                                  : () => _openLesson(_computedNextLesson!),
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
                   ],
                 );
               },
@@ -1994,6 +2134,7 @@ class _ExportPdfButtonState extends State<_ExportPdfButton> {
 /// matches the direction (leading for Previous, trailing for Next).
 class _LessonNavButton extends StatelessWidget {
   const _LessonNavButton({
+    super.key,
     required this.icon,
     required this.iconTrailing,
     required this.label,
@@ -2002,13 +2143,20 @@ class _LessonNavButton extends StatelessWidget {
   final IconData icon;
   final bool iconTrailing;
   final String label;
-  final VoidCallback onTap;
+
+  /// Null disables the button (the first or last module of a course) without changing its label.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final iconWidget = Icon(icon, size: 18, color: C.green);
-    final labelWidget = Text(label,
-        style: T.small.copyWith(color: C.green, fontWeight: FontWeight.w600));
+    // Flexible, so two equal-width buttons survive a large text size without overflowing.
+    final labelWidget = Flexible(
+      child: Text(label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: T.small.copyWith(color: C.green, fontWeight: FontWeight.w600)),
+    );
     return OutlinedButton(
       style: OutlinedButton.styleFrom(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Sz.rSm)),
