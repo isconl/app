@@ -61,6 +61,9 @@ IconData navIcon(String view) => switch (view) {
       'notifications' => Icons.notifications_rounded,
       'inbox' => Icons.inbox_rounded,
       'teams' => Icons.groups_rounded,
+      'cover' => Icons.chat_bubble_rounded,
+      'deck' => Icons.layers_rounded,
+      'tools' => Icons.handyman_rounded,
       'jira' => Icons.view_kanban_rounded,
       'social' => Icons.share_rounded,
       'github' => Icons.code_rounded,
@@ -101,6 +104,9 @@ String? navRouteFor(NavItemDef i) {
       return 'spaces';
     case 'identity' || 'codex':
       return i.view;
+    // BI26092636: Tools folds Kanban, Buffer and GitHub; the app opens the Kanban view for it until it has a tab strip.
+    case 'tools':
+      return viewForNavRoute('jira') != null ? 'jira' : null;
     default:
       return viewForNavRoute(i.view) != null ? i.view : null;
   }
