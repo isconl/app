@@ -196,7 +196,7 @@ class _HubViewState extends State<HubView> {
 
   Widget _buildDate(DateTime now) {
     // BI26100541: `Monday · 5 Oct 2026`, bold weekday and regular date.
-    final full = fmt.weekdayDate(now);
+    final full = fmt.commandDate(now);
     final dotIdx = full.indexOf(' · ');
     final weekday = full.substring(0, dotIdx);
     final rest = full.substring(dotIdx);

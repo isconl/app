@@ -208,7 +208,7 @@ void main() {
       expect(dateFinder, findsOneWidget);
       // BI26100541: `Monday · 5 Oct 2026`, and no card behind the date and the status strip.
       final dateText = tester.widget<Text>(dateFinder);
-      expect(dateText.textSpan!.toPlainText(), fmt.weekdayDate(DateTime.now()));
+      expect(dateText.textSpan!.toPlainText(), fmt.commandDate(DateTime.now()));
       expect(dateText.textSpan!.toPlainText().contains(','), isFalse);
       final hero = find.byKey(const Key('hero-strip'));
       expect(hero, findsOneWidget);
