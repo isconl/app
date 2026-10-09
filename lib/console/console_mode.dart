@@ -1,4 +1,4 @@
-/// BI26092648: which face the Console card shows, and how a triple-tap changes it.
+/// BI26092648: which face the Console card shows, and how a double tap changes it.
 library;
 
 enum ConsoleMode {
@@ -23,9 +23,9 @@ enum ConsoleMode {
   }
 }
 
-/// Detects three taps close together. Pure: the caller supplies the time of each tap.
-class TripleTapDetector {
-  TripleTapDetector({this.gap = const Duration(milliseconds: 450)});
+/// Detects two taps close together (a double tap). Pure: the caller supplies the time of each tap.
+class DoubleTapDetector {
+  DoubleTapDetector({this.gap = const Duration(milliseconds: 300)});
 
   /// The longest pause between two taps that still counts as one run.
   final Duration gap;
@@ -33,13 +33,13 @@ class TripleTapDetector {
   int _count = 0;
   DateTime? _last;
 
-  /// Registers a tap. Returns true on the third tap of a run and starts over.
+  /// Registers a tap. Returns true on the second tap of a run and starts over.
   bool tap(DateTime now) {
     final last = _last;
     if (last == null || now.difference(last) > gap) _count = 0;
     _count++;
     _last = now;
-    if (_count >= 3) {
+    if (_count >= 2) {
       _count = 0;
       _last = null;
       return true;

@@ -186,7 +186,7 @@ void main() {
       final landingText = tester.widget<Text>(landingTextFinder);
       expect(landingText.style?.color, C.green); // Selected: the app green
       expect(landingText.style?.letterSpacing, 1.2);
-      expect(landingText.style?.fontWeight, FontWeight.w900);
+      expect(landingText.style?.fontWeight, FontWeight.w800);
 
       // Verify container has NO BoxDecoration (no fill, no border)
       final containerFinder = find.ancestor(
@@ -237,7 +237,7 @@ void main() {
       expect(landingTextFinder, findsOneWidget);
       final unselectedLandingText = tester.widget<Text>(landingTextFinder);
       expect(unselectedLandingText.style?.color, C.greenDim);
-      expect(unselectedLandingText.style?.fontWeight, FontWeight.w900);
+      expect(unselectedLandingText.style?.fontWeight, FontWeight.w800);
 
       // Index 1 (Tasks) is active -> C.greenBg tint and C.greenBright text
       final tasksBox = tester.widget<AnimatedContainer>(
@@ -252,7 +252,7 @@ void main() {
       expect(selectedIndex, 0);
       final selectedLandingText = tester.widget<Text>(find.text('HUB · 5'));
       expect(selectedLandingText.style?.color, C.green);
-      expect(selectedLandingText.style?.fontWeight, FontWeight.w900);
+      expect(selectedLandingText.style?.fontWeight, FontWeight.w800);
     });
 
     testWidgets('SubTabBar renders label alone without · 0 when count is 0, null, or unavailable', (tester) async {

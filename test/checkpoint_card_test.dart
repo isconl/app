@@ -5,6 +5,7 @@ import 'package:isconl/app_scope.dart';
 import 'package:isconl/theme.dart';
 import 'package:isconl/ui/views/hub.dart';
 import 'package:isconl/ui/widgets/checkpoint_card.dart';
+import 'package:isconl/ui/widgets/common.dart' show Panel;
 
 import 'support/test_services.dart';
 
@@ -49,6 +50,13 @@ void main() {
       expect(status.style?.fontSize, 11);
       expect(tester.widget<Container>(find.byKey(const Key('checkpoint-edge'))).color, C.green);
       expect(tester.getSize(find.byKey(const Key('checkpoint-edge'))).width, 3);
+    });
+
+    testWidgets('the callout has a subtle green tint over the panel, not the plain panel colour', (tester) async {
+      await pumpCard(tester, Map<String, dynamic>.from(fixture));
+      final panel = tester.widget<Panel>(find.byType(Panel));
+      expect(panel.color, Color.alphaBlend(C.green.withAlpha(24), C.panel));
+      expect(panel.color, isNot(C.panel));
     });
 
     testWidgets('a 404 with no cache hides the section entirely', (tester) async {

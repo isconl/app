@@ -19,6 +19,8 @@ import 'package:isconl/services/updater.dart';
 import 'package:isconl/theme.dart';
 import 'package:isconl/ui/shell.dart';
 import 'package:isconl/ui/views/hub.dart';
+import 'package:isconl/ui/widgets/common.dart' show Panel;
+import 'package:isconl/util/fmt.dart' as fmt;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _TestApiClient extends ApiClient {
@@ -172,7 +174,7 @@ void main() {
       };
 
   group('BI26092621: Mobile Hub hero date formatting', () {
-    testWidgets('the weekday span is bold and the rest is normal weight', (tester) async {
+    testWidgets('the weekday is bold, then a middle dot and the date in normal weight, with no comma', (tester) async {
       final services = (await tester.runAsync(() => buildTestServices()))!;
       services.store.state.value = sampleState();
 
@@ -197,13 +199,20 @@ void main() {
             final second = span.children![1] as TextSpan;
             return first.style?.fontWeight == FontWeight.w700 &&
                 second.style?.fontWeight == FontWeight.w400 &&
-                (second.text?.startsWith(', ') ?? false);
+                (second.text?.startsWith(' · ') ?? false);
           }
         }
         return false;
       });
 
       expect(dateFinder, findsOneWidget);
+      // BI26100541: `Monday · 5 Oct 2026`, and no card behind the date and the status strip.
+      final dateText = tester.widget<Text>(dateFinder);
+      expect(dateText.textSpan!.toPlainText(), fmt.weekdayDate(DateTime.now()));
+      expect(dateText.textSpan!.toPlainText().contains(','), isFalse);
+      final hero = find.byKey(const Key('hero-strip'));
+      expect(hero, findsOneWidget);
+      expect(find.descendant(of: hero, matching: find.byType(Panel)), findsNothing);
 
       await tester.pumpWidget(const SizedBox());
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 200)));

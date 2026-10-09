@@ -82,6 +82,10 @@ String weekdayDate(DateTime dt) =>
 String fullDate(DateTime dt) =>
     '${weekdaysFull[dt.weekday - 1]}, ${monthsFull[dt.month - 1]} ${dt.day}, ${dt.year}';
 
+/// BI26100541: `Monday · 5 Oct 2026`, the weekday, a middle dot, then the date with no comma.
+String weekdayDate(DateTime dt) =>
+    '${weekdaysFull[dt.weekday - 1]} · ${dt.day} ${_months[dt.month - 1]} ${dt.year}';
+
 String isoDate(DateTime dt) =>
     '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
 

@@ -441,9 +441,9 @@ class SubTabBar extends StatelessWidget {
           child: Text(
             text,
             style: T.label.copyWith(
-              // The landing label is Inter Black in the app's green, bright when selected and dim
+              // The landing label is Inter ExtraBold (w800, BI26100541) in the app's green, bright when selected and dim
               // when not (BI26100102). T.label itself is untouched: other labels share it.
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w800,
               color: selected ? C.green : C.greenDim,
             ),
           ),
@@ -596,23 +596,28 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    Flexible(child: Text(title, style: T.title, overflow: TextOverflow.ellipsis)),
-                    if (chipSource != null) StatusChipLabel(source: chipSource!),
-                  ],
-                ),
+                // BI26100541: the title has its own row, so it is never ellipsised by the chip; the
+                // status chip and the cycle line share the small second line under it.
+                Text(title, style: T.title, overflow: TextOverflow.ellipsis),
                 ListenableBuilder(
                   listenable: services.store.state,
                   builder: (context, _) {
                     final eq =
                         fmt.m(fmt.m(services.store.state.value)['time']);
                     final line = fmt.s(eq['eqShort']);
-                    return line.isEmpty
-                        ? const SizedBox.shrink()
-                        : Text(line,
-                            style: T.monoSmall.copyWith(fontSize: 9.5),
-                            overflow: TextOverflow.ellipsis);
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (chipSource != null)
+                          StatusChipLabel(source: chipSource!, inline: false, trailingDot: line.isNotEmpty),
+                        if (line.isNotEmpty)
+                          Flexible(
+                            child: Text(line,
+                                style: T.monoSmall.copyWith(fontSize: 9.5),
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                    );
                   },
                 ),
               ],
@@ -1104,7 +1109,9 @@ class SecondaryScreen extends StatelessWidget {
     // pushed secondary screen), so connectivity is already visible without
     // the amber banner duplicating it.
     return Scaffold(
-      appBar: ShellAppBar(title: title, showBrand: false),
+      // BI26100541: the same app bar as the main pages on every menu route: logo (tap to go back), title,
+      // the second line, and the one cloud icon.
+      appBar: ShellAppBar(title: title, showBrand: true),
       body: child,
     );
   }

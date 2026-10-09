@@ -167,8 +167,13 @@ class ChipSelector implements StatusChipSource {
 
 /// The chip, rendered after the title: ` · ` then the text in small monospace, secondary to the title.
 class StatusChipLabel extends StatelessWidget {
-  const StatusChipLabel({super.key, required this.source});
+  /// [inline] is the original form, `  ·  text`, meant to sit after a title. BI26100541: the app bar now
+  /// shows the chip on a second line under the title, so it passes `inline: false` (no leading dot, a
+  /// smaller tap target) and, when a cycle line follows, `trailingDot: true` to separate the two.
+  const StatusChipLabel({super.key, required this.source, this.inline = true, this.trailingDot = false});
   final StatusChipSource source;
+  final bool inline;
+  final bool trailingDot;
 
   @override
   Widget build(BuildContext context) {
@@ -181,12 +186,12 @@ class StatusChipLabel extends StatelessWidget {
         return InkWell(
           onTap: () => chip.onTap(context),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 32),
+            constraints: BoxConstraints(minHeight: inline ? 32 : 18),
             child: Align(
               alignment: Alignment.centerLeft,
               widthFactor: 1,
               child: Text(
-                '  ·  $text',
+                inline ? '  ·  $text' : (trailingDot ? '$text  ·  ' : text),
                 key: const Key('status-chip'),
                 style: T.statusMono,
                 maxLines: 1,
