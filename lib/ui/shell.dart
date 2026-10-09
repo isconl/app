@@ -335,10 +335,8 @@ class _ShellState extends State<Shell> {
         appBar: ShellAppBar(
           title: _tabLabels[_tab],
           chipSource: _chipSource(services),
-          // BN26091004: compact network-status indicator immediately left
-          // of the hamburger on every tab except Settings, which shows the
-          // full OfflineBanner instead.
-          actions: [if (_tab != 4) const SyncIndicator()],
+          // BI26100539: ShellAppBar mounts the one SyncIndicator itself, so
+          // nothing is passed here (passing another one drew two dots).
           onMenu: () => openMenu(context),
         ),
         body: _tabBody(context, _tab, services),
@@ -653,40 +651,91 @@ class SyncIndicator extends StatelessWidget {
       builder: (context, _) {
         final sync = services.sync;
         final busy = sync.phase != SyncPhase.idle;
-        Widget core;
+        final pending = services.outbox.pending;
+        // BI26100539: one stroked cloud and nothing else in the app bar.
+        // Green: online, idle, nothing waiting. Yellow: something waits or a
+        // sync is running (it pulses while running). Muted cloud-off: offline.
+        final Widget core;
+        final String label;
         if (!sync.online) {
-          core = const Icon(Icons.cloud_off_rounded, size: 17, color: C.text3);
-        } else if (busy) {
-          core = const MiniSpinner();
+          core = const Icon(Icons.cloud_off_rounded, size: 18, color: C.text3);
+          label = 'Offline';
+        } else if (busy || pending > 0) {
+          core = _CloudMark(color: C.amber, pulse: busy);
+          label = pending > 0 ? '$pending waiting to sync' : 'Syncing';
         } else {
-          core = const StatusDot(C.green, glow: true);
+          core = const _CloudMark(color: C.green);
+          label = 'All synced';
         }
-        return InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () {
-            HapticFeedback.selectionClick();
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(sync.statusLine),
-              duration: const Duration(seconds: 2),
-            ));
-            if (sync.online) sync.fullSync();
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                core,
-                if (services.outbox.pending > 0) ...[
-                  const SizedBox(width: 5),
-                  Badge2('${services.outbox.pending}',
-                      color: C.amberBg, textColor: C.amber),
-                ],
-              ],
+        return Semantics(
+          button: true,
+          label: label,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () {
+              HapticFeedback.selectionClick();
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(pending > 0 ? '$pending waiting to sync' : sync.statusLine),
+                duration: const Duration(seconds: 2),
+              ));
+              if (sync.online) sync.fullSync();
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: core,
             ),
           ),
         );
       },
+    );
+  }
+}
+
+/// BI26100539: the stroked cloud the sync indicator draws. The outline matches the other app bar icons;
+/// the colour carries the state, and while a sync runs it fades gently instead of showing a spinner.
+class _CloudMark extends StatefulWidget {
+  const _CloudMark({required this.color, this.pulse = false});
+  final Color color;
+  final bool pulse;
+
+  @override
+  State<_CloudMark> createState() => _CloudMarkState();
+}
+
+class _CloudMarkState extends State<_CloudMark> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1100));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.pulse) _c.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(_CloudMark old) {
+    super.didUpdateWidget(old);
+    if (widget.pulse && !_c.isAnimating) {
+      _c.repeat(reverse: true);
+    } else if (!widget.pulse && _c.isAnimating) {
+      _c.stop();
+      _c.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) =>
+          Opacity(opacity: widget.pulse ? 1 - 0.45 * _c.value : 1, child: child),
+      child: Icon(Icons.cloud_outlined, size: 18, color: widget.color),
     );
   }
 }
