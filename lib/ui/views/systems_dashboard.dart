@@ -5,10 +5,12 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/dashboard/dashboard.dart';
+import '../shell.dart' show SecondaryScreen;
+import 'slate.dart';
 import 'systems_dash_model.dart';
 
 /// BI26100131: the Systems landing as a dashboard. Engines marked down show
-/// red and open Ops; the backlog split opens Backlog. Figures with no source
+/// red and open Ops; the slate split opens the Slate view's Register tab. Figures with no source
 /// yet (backup age, storage, closed today) say so instead of guessing.
 class SystemsDashboard extends StatelessWidget {
   const SystemsDashboard({
@@ -19,6 +21,7 @@ class SystemsDashboard extends StatelessWidget {
     required this.updateState,
     required this.updateBusy,
     this.onOpenSub,
+    this.onOpenSlate,
     this.latestVersion,
     this.updateAvailable = false,
   });
@@ -30,6 +33,9 @@ class SystemsDashboard extends StatelessWidget {
   final String? updateState;
   final bool updateBusy;
   final void Function(int sub)? onOpenSub;
+
+  /// Opens the Slate view's Register tab; the default pushes it as a secondary screen.
+  final VoidCallback? onOpenSlate;
   /// The newest build the agent offers, once the quiet check has run.
   final String? latestVersion;
   final bool updateAvailable;
@@ -81,7 +87,14 @@ class SystemsDashboard extends StatelessWidget {
       DashItem(
         DashTile(
           label: 'Slate rows, live',
-          onTap: onOpenSub == null ? null : () => onOpenSub!(3),
+          onTap: onOpenSlate ?? () {
+            SlateView.remembered = SlateTab.register;
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                  builder: (_) => const SecondaryScreen(title: 'Slate', child: SlateView())),
+            );
+          },
           child: BarStrip(segments: [
             for (final t in SystemsDash.types) BarSegment(t, (dash.byType[t] ?? 0).toDouble(), _typeColors[t]!),
           ]),

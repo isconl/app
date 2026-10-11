@@ -289,7 +289,8 @@ void main() {
       // Should render "Needs you:  " with counts
       expect(find.textContaining('Needs you:'), findsOneWidget);
       expect(find.textContaining('0 alerts'), findsOneWidget);
-      expect(find.textContaining('1 overdue'), findsOneWidget);
+      // BI26100540: overdue is gone from the Command view; tasks live in slate.
+      expect(find.textContaining('overdue'), findsNothing);
       expect(find.textContaining('1 in review'), findsOneWidget);
 
       // Signals should not be present

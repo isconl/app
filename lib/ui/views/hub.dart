@@ -61,12 +61,6 @@ class _HubViewState extends State<HubView> {
           final st = fmt.s(t['STATUS']).toLowerCase();
           return st == 'today';
         }).toList();
-        final overdue = tasks.where((t) {
-          final st = fmt.s(t['STATUS']).toLowerCase();
-          if (st == 'done') return false;
-          final days = fmt.daysUntil(t['DUE_DATE']);
-          return days != null && days < 0;
-        }).toList();
         final review = tasks
             .where((t) => fmt.s(t['STATUS']).toLowerCase() == 'review')
             .toList();
@@ -121,7 +115,6 @@ class _HubViewState extends State<HubView> {
                     context,
                     services,
                     newAlerts,
-                    overdue.length,
                     review.length,
                   ),
                 ],
@@ -177,13 +170,6 @@ class _HubViewState extends State<HubView> {
             // ---- vitals, right after the block card (BI26092630) ----
             const VitalsCard(),
             const OffsiteBackupLine(),
-            if (overdue.isNotEmpty) ...[
-              SectionLabel('Overdue · ${overdue.length}'),
-              ...overdue.take(5).map((t) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: TaskRowTile(task: t),
-                  )),
-            ],
             // ---- services ----
             const SectionLabel('Services'),
             _ServicesCard(services: fmt.m(state['services'])),
@@ -231,7 +217,6 @@ class _HubViewState extends State<HubView> {
     BuildContext context,
     AppServices services,
     int alerts,
-    int overdue,
     int review,
   ) {
     return ListenableBuilder(
@@ -261,7 +246,7 @@ class _HubViewState extends State<HubView> {
             );
           }
         }
-        return _needsYou(alerts, overdue, review);
+        return _needsYou(alerts, review);
       },
     );
   }
@@ -318,7 +303,7 @@ class _HubViewState extends State<HubView> {
     );
   }
 
-  Widget _needsYou(int alerts, int overdue, int review) {
+  Widget _needsYou(int alerts, int review) {
     final parts = <InlineSpan>[
       TextSpan(text: 'Needs you:  ', style: T.small.copyWith(color: C.text3)),
     ];
@@ -336,7 +321,6 @@ class _HubViewState extends State<HubView> {
     }
 
     add('alerts', alerts, C.amber);
-    add('overdue', overdue, C.red);
     add('in review', review, C.cyan);
     return Text.rich(TextSpan(children: parts));
   }
