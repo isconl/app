@@ -45,6 +45,8 @@ class _CheckpointCardState extends State<CheckpointCard> {
           padding: const EdgeInsets.only(bottom: 10),
           child: Panel(
             padding: EdgeInsets.zero,
+            // BI26100541: a faint green wash for contrast (about 9% green over the panel).
+            color: Color.alphaBlend(C.green.withValues(alpha: 0.09), C.panel),
             onTap: route.isEmpty ? null : () => openNavRoute(context, route),
             child: IntrinsicHeight(
               child: Row(

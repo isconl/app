@@ -197,13 +197,20 @@ void main() {
             final second = span.children![1] as TextSpan;
             return first.style?.fontWeight == FontWeight.w700 &&
                 second.style?.fontWeight == FontWeight.w400 &&
-                (second.text?.startsWith(', ') ?? false);
+                (second.text?.startsWith(' · ') ?? false);
           }
         }
         return false;
       });
 
       expect(dateFinder, findsOneWidget);
+
+      // BI26100541: `Monday · 5 Oct 2026`, with no comma.
+      final now = DateTime.now();
+      const wd = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      const mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      expect(find.text('${wd[now.weekday - 1]} · ${now.day} ${mo[now.month - 1]} ${now.year}', findRichText: true),
+          findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 200)));

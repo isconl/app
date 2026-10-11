@@ -18,7 +18,7 @@ void main() {
   setUpAll(initSqfliteForTests);
 
   group('the card', () {
-    testWidgets('a triple-tap cycles Progress, Player, Recorder and back, and the mode is remembered', (tester) async {
+    testWidgets('a double-tap cycles Progress, Player, Recorder and back, and the mode is remembered', (tester) async {
       final services = (await tester.runAsync(() => buildTestServices()))!;
       await tester.pumpWidget(AppScope(
         services: services,
@@ -32,32 +32,30 @@ void main() {
         expect(find.byKey(ValueKey('console-dot-${m.name}')), findsOneWidget);
       }
 
-      Future<void> tripleTap() async {
-        for (var i = 0; i < 3; i++) {
+      Future<void> doubleTap() async {
+        for (var i = 0; i < 2; i++) {
           await tester.tap(find.byKey(const ValueKey('console-pill')));
           await tester.pump(const Duration(milliseconds: 80));
         }
         await tester.pump(const Duration(milliseconds: 250));
       }
 
-      await tripleTap();
+      await doubleTap();
       expect(pill().data, 'Console · Player');
       expect(find.text('Nothing queued'), findsOneWidget);
-      await tripleTap();
+      await doubleTap();
       expect(pill().data, 'Console · Recorder');
       expect(find.text('READY'), findsOneWidget);
-      await tripleTap();
+      await doubleTap();
       expect(pill().data, 'Console');
 
-      // Two taps are not enough.
-      await tester.tap(find.byKey(const ValueKey('console-pill')));
-      await tester.pump(const Duration(milliseconds: 80));
+      // One tap is not enough.
       await tester.tap(find.byKey(const ValueKey('console-pill')));
       await tester.pump(const Duration(milliseconds: 600));
       expect(pill().data, 'Console');
 
       // Remembered: a new card on the same app opens on the last mode.
-      await tripleTap();
+      await doubleTap();
       expect(pill().data, 'Console · Player');
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(AppScope(

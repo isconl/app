@@ -89,7 +89,9 @@ class _HubViewState extends State<HubView> {
             const ReviewCard(),
             const ContinueReadingCard(),
             // ---- hero — date/due/review card, always first ----
-            Panel(
+            // BI26100541: no card behind the date, badges and strip; they sit on the page.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(2, 2, 2, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -110,7 +112,7 @@ class _HubViewState extends State<HubView> {
                               color: C.surface, textColor: C.text3),
                       ],
                     ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 6),
                   _buildSignalsStripOrFallback(
                     context,
                     services,
@@ -179,24 +181,18 @@ class _HubViewState extends State<HubView> {
     );
   }
 
+  /// `Monday · 5 Oct 2026`: bold weekday, a middle dot, then the date in regular weight.
   Widget _buildDate(DateTime now) {
-    final full = fmt.fullDate(now);
-    final commaIdx = full.indexOf(',');
-    if (commaIdx < 0) {
-      return Text(full, style: T.headline);
-    }
-    final weekday = full.substring(0, commaIdx);
-    final rest = full.substring(commaIdx);
     return Text.rich(
       TextSpan(
         style: T.headline,
         children: [
           TextSpan(
-            text: weekday,
+            text: fmt.weekdaysFull[now.weekday - 1],
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           TextSpan(
-            text: rest,
+            text: ' · ${now.day} ${fmt.monthsFull[now.month - 1].substring(0, 3)} ${now.year}',
             style: const TextStyle(fontWeight: FontWeight.w400),
           ),
         ],

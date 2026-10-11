@@ -51,6 +51,15 @@ void main() {
       expect(tester.getSize(find.byKey(const Key('checkpoint-edge'))).width, 3);
     });
 
+    testWidgets('BI26100541: the card has a faint green wash, not the plain panel colour', (tester) async {
+      await pumpCard(tester, fixture);
+      final deco = tester.widgetList<Container>(find.byType(Container))
+          .map((c) => c.decoration)
+          .whereType<BoxDecoration>()
+          .where((d) => d.color == Color.alphaBlend(C.green.withValues(alpha: 0.09), C.panel));
+      expect(deco, isNotEmpty);
+    });
+
     testWidgets('a 404 with no cache hides the section entirely', (tester) async {
       await pumpCard(tester, ApiException(404, 'not found'), preset: false);
       expect(find.byKey(const Key('checkpoint-heading')), findsNothing);

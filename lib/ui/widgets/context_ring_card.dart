@@ -25,10 +25,10 @@ class _ContextRingCardState extends State<ContextRingCard>
     with SingleTickerProviderStateMixin {
   late final AnimationController _anim;
 
-  // BI26092648: the card's face, and the triple-tap that cycles it.
+  // BI26092648: the card's face, and the double-tap that cycles it.
   ConsoleServices? _console;
   ConsoleMode _mode = ConsoleMode.progress;
-  final _taps = TripleTapDetector();
+  final _taps = DoubleTapDetector();
 
   @override
   void initState() {
@@ -182,7 +182,7 @@ class _ContextRingCardState extends State<ContextRingCard>
                       ],
                     ),
                     const SizedBox(height: 12),
-                    // A triple-tap cycles the faces; the cross-fade keeps the card's size steady.
+                    // A double-tap cycles the faces; the cross-fade keeps the card's size steady.
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 200),
                       child: KeyedSubtree(

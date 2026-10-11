@@ -167,8 +167,11 @@ class ChipSelector implements StatusChipSource {
 
 /// The chip, rendered after the title: ` · ` then the text in small monospace, secondary to the title.
 class StatusChipLabel extends StatelessWidget {
-  const StatusChipLabel({super.key, required this.source});
+  const StatusChipLabel({super.key, required this.source, this.separator = true});
   final StatusChipSource source;
+
+  /// Whether the chip opens with a middle dot, for when text sits before it on the same line.
+  final bool separator;
 
   @override
   Widget build(BuildContext context) {
@@ -186,7 +189,7 @@ class StatusChipLabel extends StatelessWidget {
               alignment: Alignment.centerLeft,
               widthFactor: 1,
               child: Text(
-                '  ·  $text',
+                separator ? '  ·  $text' : text,
                 key: const Key('status-chip'),
                 style: T.statusMono,
                 maxLines: 1,

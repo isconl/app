@@ -441,9 +441,9 @@ class SubTabBar extends StatelessWidget {
           child: Text(
             text,
             style: T.label.copyWith(
-              // The landing label is Inter Black in the app's green, bright when selected and dim
+              // The landing label is Inter ExtraBold (w800) in the app's green, bright when selected and dim
               // when not (BI26100102). T.label itself is untouched: other labels share it.
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w800,
               color: selected ? C.green : C.greenDim,
             ),
           ),
@@ -596,23 +596,28 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    Flexible(child: Text(title, style: T.title, overflow: TextOverflow.ellipsis)),
-                    if (chipSource != null) StatusChipLabel(source: chipSource!),
-                  ],
-                ),
+                Text(title, style: T.title, overflow: TextOverflow.ellipsis),
+                // BI26100541: the status chips sit on their own line under the title, so the
+                // title is never cut short. The cycle line leads, the chip follows.
                 ListenableBuilder(
                   listenable: services.store.state,
                   builder: (context, _) {
                     final eq =
                         fmt.m(fmt.m(services.store.state.value)['time']);
                     final line = fmt.s(eq['eqShort']);
-                    return line.isEmpty
-                        ? const SizedBox.shrink()
-                        : Text(line,
-                            style: T.monoSmall.copyWith(fontSize: 9.5),
-                            overflow: TextOverflow.ellipsis);
+                    if (line.isEmpty && chipSource == null) return const SizedBox.shrink();
+                    return Row(
+                      children: [
+                        if (line.isNotEmpty)
+                          Flexible(
+                            child: Text(line,
+                                style: T.monoSmall.copyWith(fontSize: 9.5),
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        if (chipSource != null)
+                          StatusChipLabel(source: chipSource!, separator: line.isNotEmpty),
+                      ],
+                    );
                   },
                 ),
               ],
@@ -638,8 +643,6 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// Green dot when synced, amber spinner when syncing, red when offline.
-/// Tap = sync now.
 /// The sync mark's state, kept apart from the widget so it can be tested without a service tree.
 enum SyncMark { synced, waiting, offline }
 
@@ -1079,8 +1082,20 @@ class SecondaryScreen extends StatelessWidget {
     // compact SyncIndicator in this slot whenever onMenu is unset (every
     // pushed secondary screen), so connectivity is already visible without
     // the amber banner duplicating it.
+    // BI26100541: every view opened from the menu wears the same bar as the main pages: logo
+    // (tap to go back), title, the chips line and the cloud.
+    final services = AppScope.of(context);
     return Scaffold(
-      appBar: ShellAppBar(title: title, showBrand: false),
+      appBar: ShellAppBar(
+        title: title,
+        chipSource: FreshnessChipSource(
+          services,
+          (c, t, page) => Navigator.push(
+            c,
+            MaterialPageRoute(builder: (_) => SecondaryScreen(title: t, child: page)),
+          ),
+        ),
+      ),
       body: child,
     );
   }
