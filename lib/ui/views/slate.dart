@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/common.dart';
+import 'backlog.dart';
 import 'tasks.dart';
 
 /// BI26092327: the menu item formerly called Tasks is Slate, with a tab strip. Tasks is the default
-/// tab and renders [TasksView] unchanged, so nothing the old view did is lost. Decisions and
-/// Register are honest placeholders until the Slate integration lands, the same shape as the web
+/// tab and renders [TasksView] unchanged, so nothing the old view did is lost. Decisions is an honest placeholder,
+/// and Register is the drive-wide rollup that was Systems > Backlog (BI26100540: one Slate entry) until the Slate integration lands, the same shape as the web
 /// console's renderSlate(): no fake data. The chosen tab is remembered for the life of the app
 /// (the web console remembers it per browser).
 enum SlateTab { tasks, decisions, register }
@@ -59,6 +60,7 @@ class _SlateViewState extends State<SlateView> {
         const SizedBox(height: 12),
         switch (_tab) {
           SlateTab.tasks => const TasksView(),
+          SlateTab.register => const BacklogView(),
           _ => Padding(
               padding: const EdgeInsets.only(top: 8),
               child: EmptyState(_label(_tab), slateSoon),

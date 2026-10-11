@@ -11,7 +11,6 @@ import '../theme.dart';
 import '../util/fmt.dart' as fmt;
 import 'views/articles.dart';
 import 'views/audit.dart';
-import 'views/backlog.dart';
 import 'views/calendar.dart';
 import 'views/channel_subs.dart';
 import 'views/channels_home.dart';
@@ -111,12 +110,11 @@ List<_SubTab> _projectsSubsFor(void Function(int) openSub) => [
 // renders as a section inside OpsView, so this row was down to 3
 // sub-tabs. BG26091303: Backlog added as the 4th, and the tab itself
 // relabelled Settings -> Systems (SettingsView() stays index 0/default).
-// BI26100131: Settings carries the Systems dashboard, whose tiles open Ops and Backlog.
+// BI26100131: Settings carries the Systems dashboard, whose tiles open Ops and the Slate Register.
 List<_SubTab> _settingsSubsFor(void Function(int) openSub) => [
   _SubTab('Settings', SettingsView(onOpenSub: openSub)),
   const _SubTab('Files',    FilesView()),
   const _SubTab('Ops',      OpsView()),
-  const _SubTab('Backlog',  BacklogView()),
 ];
 
 class _ShellState extends State<Shell> {
@@ -311,7 +309,6 @@ class _ShellState extends State<Shell> {
     final fallback = FreshnessChipSource(services, open);
     if (_tab == 0) EquicycleYears.instance.ensureLoaded(services.api, services.db);
     final StatusChipSource? specific = switch ((_tab, _sub)) {
-      (4, 3) => BacklogChipSource(services, open),
       (4, 2) => OpsChipSource(services, open),
       (0, _) => CycleChipSource(open),
       _ => null,
@@ -1131,7 +1128,7 @@ class SecondaryScreen extends StatelessWidget {
     'decisions' => (const DecisionsView(), 'Decisions & Risks'),
     'outbox' => (const OutboxView(), 'Outbox'),
     'settings' => (const SettingsView(), 'Settings'),
-    'backlog' => (const BacklogView(), 'Backlog'),
+    'backlog' => (const SlateView(), 'Slate'),
     _ => null,
   };
 }

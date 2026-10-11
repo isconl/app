@@ -76,6 +76,7 @@ void main() {
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
       final opened = <int>[];
+      var slateOpened = 0;
       final dash = SystemsDash.from(opsStatus: ops, backlog: backlog, fetchTimes: [now.subtract(const Duration(minutes: 3))], now: now);
       await t.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -88,6 +89,7 @@ void main() {
               updateState: 'Latest release v0.3.23 has no APK attached.',
               updateBusy: false,
               onOpenSub: opened.add,
+              onOpenSlate: () => slateOpened++,
             ),
           ),
         ),
@@ -100,7 +102,8 @@ void main() {
       expect(find.text('Latest release v0.3.23 has no APK attached.'), findsOneWidget);
       await t.tap(find.text('FLEET HEALTH'));
       await t.tap(find.text('SLATE ROWS, LIVE'));
-      expect(opened, [2, 3]);
+      expect(opened, [2]);
+      expect(slateOpened, 1);
       // The App tile only shows state; installing lives in Settings.
       expect(find.text('Check for updates'), findsNothing);
     });
