@@ -54,7 +54,9 @@ void main() {
     testWidgets('sections are numbered from 0 as k.0 with their two-word label, and no canonical id shows', (t) async {
       await _pump(t, _v4);
       final eyebrows = t.widgetList<Text>(find.byKey(const Key('movement-eyebrow'))).map((x) => x.data).toList();
-      expect(eyebrows, ['0.0 Setting Out', '1.0 The Core', '2.0 Run It']);
+      // BI26101106: the two-word label is gone from headings; only the computed number stays.
+      expect(eyebrows, ['0.0', '1.0', '2.0']);
+      expect(find.text('Setting Out'), findsNothing);
       expect(find.textContaining('Where This Module Begins', findRichText: true), findsOneWidget);
       final text = _allText(t);
       for (final id in ['orient', 'grasp', 'apply', '{', '}']) {
@@ -62,17 +64,25 @@ void main() {
       }
     });
 
-    testWidgets('elements are numbered k.j and show their authored label, in uppercase, with the callout body', (t) async {
+    testWidgets('one callout per section: the first element, numbered k.j, with its kind name, not its authored label', (t) async {
       await _pump(t, _v4);
       final labels = t.widgetList<Text>(find.byKey(const Key('callout-label'))).map((x) => x.data).toList();
-      expect(labels, [
-        '0.1  BEFORE THIS',
-        '0.2  YOUR GOALS',
-        '1.1  LOST BOOKING',
-        '2.1  TWO MINUTES',
-        '2.2  THIS WEEK',
-      ]);
+      expect(labels, ['0.1  NOTE', '1.1  ILLUSTRATION', '2.1  NOTE']);
       expect(find.textContaining('A mandate arrives late', findRichText: true), findsOneWidget);
+      // The demoted elements are still read, as prose, with no label.
+      expect(find.textContaining('You can name the five parts.', findRichText: true), findsOneWidget);
+      expect(find.textContaining('Ship it.', findRichText: true), findsOneWidget);
+      final text = _allText(t);
+      for (final label in ['your goals', 'before this', 'two minutes']) {
+        expect(text.contains(label), isFalse, reason: 'an authored element label showed: $label');
+      }
+    });
+
+    testWidgets('the element marked {id!} is the callout, not the first one', (t) async {
+      await _pump(t, _v4.replaceFirst('{outcome}', '{outcome!}'));
+      final labels = t.widgetList<Text>(find.byKey(const Key('callout-label'))).map((x) => x.data).toList();
+      expect(labels.first, '0.2  OBJECTIVE');
+      expect(labels, hasLength(3));
     });
 
     testWidgets('the blue callout is labelled Illustration when no label is authored', (t) async {

@@ -47,15 +47,21 @@ Some **bold** text and *italic*.
   // out.
 
   testWidgets('renders all five callouts with canonical labels', (tester) async {
+    // BI26101106: one callout per section, so each kind sits in a section of its own.
     await pump(tester, [
+      '## One',
       '**What you will learn:** how a handoff fails.',
       '',
+      '## Two',
       '**Jargon:** handoff - work crossing from one portal to another.',
       '',
+      '## Three',
       '**What to watch for:** a success screen promising an uncalendared call.',
       '',
+      '## Four',
       '**In a book:** the system must show its own state.',
       '',
+      '## Five',
       '**Book quote:** The user needs to know what state the system is in.',
     ].join('\n'));
 
@@ -68,10 +74,13 @@ Some **bold** text and *italic*.
 
   testWidgets('older openers fold into the canonical label', (tester) async {
     await pump(tester, [
+      '## One',
       '**You will be able to:** read a module written in July.',
       '',
+      '## Two',
       '**In plain language:** an alias that predates the canon.',
       '',
+      '## Three',
       '**Watch for:** another one.',
     ].join('\n'));
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -31,6 +32,7 @@ class Markdown extends StatelessWidget {
       this.courseId = '',
       this.baseUrl = '',
       this.token = '',
+      this.imageSizes = const {},
       this.onModuleLink});
   final String source;
 
@@ -51,6 +53,10 @@ class Markdown extends StatelessWidget {
   /// (the same fallback hub's checkAuth accepts for any /api/* route).
   final String token;
 
+  /// BI26101106: the pixel size of each `_assets/` file by file name, from the asset manifest, so an
+  /// image's room is reserved before it loads. A file with no entry gets a 16:10 placeholder.
+  final Map<String, Size> imageSizes;
+
   bool get _reading => variant == MarkdownVariant.reading;
 
 
@@ -62,13 +68,15 @@ class Markdown extends StatelessWidget {
                 fontSize: 15.5, height: 1.72 + ReaderPrefs.instance.lineBoost, color: C.text, letterSpacing: 0.1)
             : T.body2.copyWith(color: C.text, height: 1.55));
     final blocks = _parseBlocks(source);
+    final figures = _figuresOf(blocks);
     final children = <Widget>[];
     final movements = <String>[];
     final words = <int>[];
     final anchorIndex = <String, int>{};
     var movement = '';
     for (var i = 0; i < blocks.length; i++) {
-      final w = _renderBlock(blocks[i], style, first: i == 0);
+      final w = _renderBlock(blocks[i], style,
+          first: i == 0, lead: i > 0 && blocks[i - 1].kind == _Kind.heading, figures: figures);
       if (w == null) continue;
       final b = blocks[i];
       if (b.kind == _Kind.heading && b.level <= 2) movement = b.text.trim();
@@ -97,7 +105,7 @@ class Markdown extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
   }
 
-  Widget? _renderBlock(_Block block, TextStyle style, {bool first = false}) {
+  Widget? _renderBlock(_Block block, TextStyle style, {bool first = false, bool lead = false, List<_Figure> figures = const []}) {
     switch (block.kind) {
       case _Kind.heading:
         final size = _reading
@@ -129,9 +137,9 @@ class Markdown extends StatelessWidget {
             ),
           ),
         );
-        // BI26100537: a numbered movement shows a quiet eyebrow, `k.0 Two Words`, above its heading.
-        // The canonical id (orient, grasp, ...) is never shown; it only builds the anchor.
-        final eyebrow = [block.number, block.uiLabel].where((s) => s.isNotEmpty).join(' ');
+        // BI26101106: a heading shows the authored text only. The two-word label is gone; the
+        // computed number stays as a small muted mark.
+        final eyebrow = block.number;
         return Padding(
           padding: EdgeInsets.only(top: top, bottom: bottom),
           child: eyebrow.isEmpty
@@ -214,7 +222,7 @@ class Markdown extends StatelessWidget {
           ),
         );
       case _Kind.callout:
-        return _callout(block, style);
+        return block.demoted ? _prose(block, style) : _callout(block, style);
       case _Kind.quiz:
         return _quizCallout(block, style);
       case _Kind.table:
@@ -226,15 +234,54 @@ class Markdown extends StatelessWidget {
       case _Kind.equation:
         return _equation(block);
       case _Kind.image:
-        return _image(block);
+        return _image(block, figures);
       case _Kind.paragraph:
         if (block.text.trim().isEmpty) return null;
-        return Padding(
-          padding: EdgeInsets.symmetric(vertical: _reading ? 7 : 3),
-          child: Text.rich(_inline(block.text, style)),
-        );
+        return _paragraph(block.text, style, lead: lead);
     }
   }
+
+  /// BI26101106: reading prose is 16.5 px at 1.65, about 65 characters wide, with 0.9 em between
+  /// paragraphs. The first paragraph after a heading is a little larger.
+  Widget _paragraph(String text, TextStyle style, {bool lead = false, String cite = ''}) {
+    if (!_reading) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text.rich(_inline(text, style)),
+          if (cite.isNotEmpty) _citeLine(cite),
+        ]),
+      );
+    }
+    final size = lead ? 17.5 : 16.5;
+    final body = style.copyWith(
+      fontSize: size,
+      height: 1.65 + ReaderPrefs.instance.lineBoost,
+      letterSpacing: 0,
+    );
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: size * 0.45),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text.rich(_inline(text, body)),
+          if (cite.isNotEmpty) _citeLine(cite),
+        ]),
+      ),
+    );
+  }
+
+  /// A Book or Research citation: a muted italic line under its paragraph.
+  Widget _citeLine(String cite) => Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(cite,
+            key: const Key('prose-cite'),
+            style: T.small.copyWith(color: C.text3, fontStyle: FontStyle.italic, height: 1.45)),
+      );
+
+  /// A callout the section rule demoted: its label is dropped and its inline marks are kept.
+  Widget _prose(_Block block, TextStyle style) =>
+      _paragraph(block.text, style, cite: block.cite);
 
   /// One callout: coloured background, left strip line, label above the body.
   ///
@@ -261,9 +308,9 @@ class Markdown extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            // BI26100537: the authored two-word label, behind its `k.j` number; the canonical id
-            // never shows. A callout with no authored label keeps its standard name.
-            [block.number, (block.uiLabel.isNotEmpty ? block.uiLabel : c.label).toUpperCase()]
+            // BI26101106: the authored two-word label is hidden; the callout carries its number and
+            // the standard name of its kind.
+            [block.number, c.label.toUpperCase()]
                 .where((s) => s.isNotEmpty)
                 .join('  '),
             key: const Key('callout-label'),
@@ -561,88 +608,87 @@ class Markdown extends StatelessWidget {
         child: Text(message, style: T.small.copyWith(color: C.red)),
       );
 
-  Widget _image(_Block block) {
+  /// Every valid figure of the module, in reading order, for the swipe viewer.
+  List<_Figure> _figuresOf(List<_Block> blocks) => [
+        for (final b in blocks)
+          if (b.kind == _Kind.image && _imageProblem(b) == null) _figure(b),
+      ];
+
+  String? _imageProblem(_Block block) {
     if (block.imageAlt.trim().isEmpty) {
-      return _imageLintBlocked(
-          '[Image blocked: missing required alt text; add `![Descriptive alt text](${block.imageUrl})`]');
+      return '[Image blocked: missing required alt text; add `![Descriptive alt text](${block.imageUrl})`]';
     }
     final isExternal = RegExp(r'^https?://', caseSensitive: false).hasMatch(block.imageUrl);
-    final isAsset = block.imageUrl.startsWith('_assets/');
-    if (isExternal && !isAsset) {
-      return _imageLintBlocked(
-          '[Image blocked: must be stored in _assets/, not linked externally]');
+    if (isExternal && !block.imageUrl.startsWith('_assets/')) {
+      return '[Image blocked: must be stored in _assets/, not linked externally]';
     }
-    final resolvedUrl = _resolveImageUrl(block.imageUrl);
-    final rawCaption = block.imageCaption.trim();
-    // Detect _captured DD Mon YYYY_ pattern (mirrors web renderer's convention)
-    final capturedMatch = RegExp(r'_captured\s+([^_]+)_', caseSensitive: false)
-        .firstMatch(rawCaption);
-    final capturedText = capturedMatch?.group(1)?.trim() ?? '';
-    final captionText  = rawCaption
-        .replaceAll(RegExp(r'_captured\s+[^_]+_', caseSensitive: false), '')
-        .trim();
+    return null;
+  }
 
-    Widget imgWidget(BuildContext context) => GestureDetector(
-          onTap: () => showDialog<void>(
-            context: context,
-            barrierColor: Colors.black87,
-            builder: (_) => Dialog(
-              backgroundColor: Colors.transparent,
-              insetPadding: const EdgeInsets.all(12),
-              child: Stack(children: [
-                InteractiveViewer(
-                  panEnabled: true,
-                  minScale: 0.8,
-                  maxScale: 6.0,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      resolvedUrl,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, _, _) => const Icon(
-                          Icons.image_not_supported_rounded,
-                          color: Colors.white54, size: 48),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 0, right: 0,
-                  child: IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Colors.white),
-                    onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
-                  ),
-                ),
-              ]),
-            ),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(Sz.rMd),
-              border: Border.all(color: C.border),
-              boxShadow: const [BoxShadow(color: Color(0x1a000000), blurRadius: 4, offset: Offset(0, 1))],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(Sz.rMd),
-              child: Image.network(
-                resolvedUrl,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: C.surface,
-                    borderRadius: BorderRadius.circular(Sz.rMd),
-                    border: Border.all(color: C.border),
-                  ),
-                  child: Row(children: [
-                    const Icon(Icons.image_not_supported_rounded, size: 20, color: C.text3),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(
-                      captionText.isNotEmpty ? captionText : block.imageUrl,
-                      style: T.small.copyWith(color: C.text3),
-                    )),
-                  ]),
-                ),
-              ),
+  /// A caption's `_captured DD Mon YYYY_` stamp and its trailing credit (`Credit:`, `Photo:`, `Image:`
+  /// or `Source:`, bare or in brackets) are pulled out of the caption text.
+  _Figure _figure(_Block block) {
+    var caption = block.imageCaption.trim();
+    final captured = RegExp(r'_captured\s+([^_]+)_', caseSensitive: false).firstMatch(caption);
+    caption = caption.replaceAll(RegExp(r'_captured\s+[^_]+_', caseSensitive: false), '').trim();
+    var credit = '';
+    final cm = RegExp(r'[\s·|—-]*[(\[]?\b(?:credit|photo|image|source)\s*:\s*([^)\]]+?)[)\]]?\s*$',
+            caseSensitive: false)
+        .firstMatch(caption);
+    if (cm != null) {
+      credit = cm.group(1)!.trim();
+      caption = caption.substring(0, cm.start).trim();
+    }
+    final file = block.imageUrl.startsWith('_assets/') ? block.imageUrl.substring(8) : block.imageUrl;
+    final size = imageSizes[file];
+    return _Figure(
+      url: _resolveImageUrl(block.imageUrl),
+      cacheKey: courseId.isNotEmpty && block.imageUrl.startsWith('_assets/')
+          ? 'asset:$courseId/$file'
+          : block.imageUrl,
+      path: block.imageUrl,
+      caption: caption,
+      credit: credit,
+      captured: captured?.group(1)?.trim() ?? '',
+      ratio: size != null && size.width > 0 && size.height > 0 ? size.width / size.height : 16 / 10,
+    );
+  }
+
+  Widget _imageBroken(_Figure f, String fallback) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: C.surface,
+          borderRadius: BorderRadius.circular(Sz.rMd),
+          border: Border.all(color: C.border),
+        ),
+        child: Row(children: [
+          const Icon(Icons.image_not_supported_rounded, size: 20, color: C.text3),
+          const SizedBox(width: 8),
+          Expanded(child: Text(f.caption.isNotEmpty ? f.caption : fallback,
+              style: T.small.copyWith(color: C.text3))),
+        ]),
+      );
+
+  /// BI26101106: the room is reserved first (the manifest ratio, or 16:10) behind a soft
+  /// placeholder, so text never jumps; the picture is cached on the device by asset path, never by
+  /// the URL with its token, so the module reads offline. Caption, then a small muted credit line.
+  Widget _image(_Block block, List<_Figure> figures) {
+    final problem = _imageProblem(block);
+    if (problem != null) return _imageLintBlocked(problem);
+    final f = _figure(block);
+    final at = figures.indexWhere((x) => x.path == f.path && x.caption == f.caption);
+
+    Widget picture() => ClipRRect(
+          borderRadius: BorderRadius.circular(Sz.rMd),
+          child: AspectRatio(
+            aspectRatio: f.ratio,
+            child: CachedNetworkImage(
+              key: const Key('module-image'),
+              imageUrl: f.url,
+              cacheKey: f.cacheKey,
+              fit: BoxFit.contain,
+              placeholder: (_, _) => const ColoredBox(key: Key('image-placeholder'), color: C.surface),
+              errorWidget: (_, _, _) => _imageBroken(f, block.imageUrl),
             ),
           ),
         );
@@ -652,14 +698,25 @@ class Markdown extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Builder(builder: imgWidget),
-          if (captionText.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(captionText, style: T.tiny.copyWith(color: C.text3)),
+          Builder(
+            builder: (context) => GestureDetector(
+              onTap: () => _showFigures(context, figures.isEmpty ? [f] : figures, at < 0 ? 0 : at),
+              child: picture(),
+            ),
+          ),
+          if (f.caption.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(f.caption, style: T.tiny.copyWith(color: C.text2)),
           ],
-          if (capturedText.isNotEmpty) ...[
+          if (f.credit.isNotEmpty) ...[
             const SizedBox(height: 2),
-            Text('captured $capturedText',
+            Text(f.credit,
+                key: const Key('image-credit'),
+                style: T.tiny.copyWith(color: C.text3, fontSize: 10.5)),
+          ],
+          if (f.captured.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text('captured ${f.captured}',
                 style: T.tiny.copyWith(color: C.text3, fontStyle: FontStyle.italic)),
           ],
         ],
@@ -667,6 +724,15 @@ class Markdown extends StatelessWidget {
     );
   }
 
+  /// The full-screen viewer: swipe between all of the module's figures, pinch to zoom each, a close
+  /// button, the caption overlaid at the foot.
+  static void _showFigures(BuildContext context, List<_Figure> figures, int initial) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (_) => _FigureViewer(figures: figures, initial: initial),
+    );
+  }
 
   /// Inline markdown: **bold**, *italic*, `code`, [text](url), (BL26083104)
   /// the `[[term|definition]]` jargon marker, and (BI26091928)
@@ -1225,7 +1291,9 @@ const _elementKinds = <String, String>{
 };
 
 /// `**{prior} Before This:** body`, optionally as a list item (`1. **{now} Two Words:** body`).
-final _elementLine = RegExp(r'^\*\*\{([a-z]+)\}\s+(\S+\s+\S+):\*\*\s*(.*)$');
+///
+/// BI26101106: `{id!}` marks the element that is its section's one callout.
+final _elementLine = RegExp(r'^\*\*\{([a-z]+)(!?)\}\s+(\S+\s+\S+):\*\*\s*(.*)$');
 
 /// `## {orient} Setting Out: Where This Module Begins`.
 final _movementHeading = RegExp(r'^##\s+\{([a-z]+)\}\s+(\S+\s+\S+):\s+(.+)$');
@@ -1249,6 +1317,171 @@ void _numberBlocks(List<_Block> blocks) {
       b.anchor = '${b.elementId}-$k-$j';
     }
   }
+}
+
+/// BI26101106: one callout per section. Within each movement (between H2s) the element marked
+/// `{id!}` is the callout (every marked one, if the author marked several); with none marked, the
+/// first callout-kind element is. Every other callout becomes a prose paragraph, so the 935
+/// existing modules improve with no rewrite. A model answer is part of its probe, so it keeps its
+/// callout and does not count.
+void _oneCalloutPerSection(List<_Block> blocks) {
+  var start = 0;
+  void settle(int end) {
+    final inSection = <_Block>[
+      for (var i = start; i < end; i++)
+        if (blocks[i].kind == _Kind.callout && blocks[i].elementId != 'modelanswer') blocks[i],
+    ];
+    if (inSection.isEmpty) return;
+    final marked = inSection.where((b) => b.marked).toList();
+    final keep = marked.isNotEmpty ? marked.toSet() : {inSection.first};
+    for (final b in inSection) {
+      if (!keep.contains(b)) b.demoted = true;
+    }
+  }
+
+  for (var i = 0; i < blocks.length; i++) {
+    if (blocks[i].kind == _Kind.heading && blocks[i].level == 2) {
+      settle(i);
+      start = i + 1;
+    }
+  }
+  settle(blocks.length);
+}
+
+/// One figure of a module, with the parts the page and the viewer show.
+class _Figure {
+  const _Figure({
+    required this.url,
+    required this.cacheKey,
+    required this.path,
+    required this.caption,
+    required this.credit,
+    required this.captured,
+    required this.ratio,
+  });
+  final String url;
+  final String cacheKey;
+  final String path;
+  final String caption;
+  final String credit;
+  final String captured;
+  final double ratio;
+}
+
+class _FigureViewer extends StatefulWidget {
+  const _FigureViewer({required this.figures, required this.initial});
+  final List<_Figure> figures;
+  final int initial;
+
+  @override
+  State<_FigureViewer> createState() => _FigureViewerState();
+}
+
+class _FigureViewerState extends State<_FigureViewer> {
+  late final PageController _pages = PageController(initialPage: widget.initial);
+  late int _at = widget.initial;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final f = widget.figures[_at];
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(12),
+      child: Stack(children: [
+        PageView.builder(
+          key: const Key('figure-pages'),
+          controller: _pages,
+          itemCount: widget.figures.length,
+          onPageChanged: (i) => setState(() => _at = i),
+          itemBuilder: (_, i) => _ZoomPage(figure: widget.figures[i]),
+        ),
+        Positioned(
+          top: 0,
+          right: 0,
+          child: IconButton(
+            key: const Key('figure-close'),
+            icon: const Icon(Icons.close_rounded, color: Colors.white),
+            onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+          ),
+        ),
+        if (f.caption.isNotEmpty || widget.figures.length > 1)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 20, 14, 12),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Color(0xCC000000)]),
+              ),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (f.caption.isNotEmpty)
+                  Text(f.caption, key: const Key('figure-caption'), style: T.small.copyWith(color: Colors.white)),
+                if (widget.figures.length > 1)
+                  Text('${_at + 1} / ${widget.figures.length}',
+                      style: T.tiny.copyWith(color: Colors.white70)),
+              ]),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
+/// One figure in the viewer: pinch to zoom, and pan only while zoomed in, so a one-finger swipe at
+/// normal size reaches the page view and turns the page.
+class _ZoomPage extends StatefulWidget {
+  const _ZoomPage({required this.figure});
+  final _Figure figure;
+
+  @override
+  State<_ZoomPage> createState() => _ZoomPageState();
+}
+
+class _ZoomPageState extends State<_ZoomPage> {
+  final _controller = TransformationController();
+  bool _zoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      final z = _controller.value.getMaxScaleOnAxis() > 1.02;
+      if (z != _zoomed) setState(() => _zoomed = z);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => InteractiveViewer(
+        transformationController: _controller,
+        panEnabled: _zoomed,
+        minScale: 1.0,
+        maxScale: 6.0,
+        child: Center(
+          child: CachedNetworkImage(
+            imageUrl: widget.figure.url,
+            cacheKey: widget.figure.cacheKey,
+            fit: BoxFit.contain,
+            errorWidget: (_, _, _) =>
+                const Icon(Icons.image_not_supported_rounded, color: Colors.white54, size: 48),
+          ),
+        ),
+      );
 }
 
 class _ChartItem {
@@ -1280,6 +1513,11 @@ class _Block {
   String movementId = '';
   String elementId = '';
   String uiLabel = '';
+
+  /// BI26101106: the author marked this element `{id!}` as its section's callout, and a callout the
+  /// section rule turned into a prose paragraph.
+  bool marked = false;
+  bool demoted = false;
   String number = '';
   String anchor = '';
 
@@ -1552,9 +1790,9 @@ List<_Block> _parseBlocks(String source) {
     if (element != null && _elementKinds.containsKey(element.group(1))) {
       flushPara();
       final base = _callouts.firstWhere((c) => c.kind == _elementKinds[element.group(1)]);
-      var body = element.group(3)!.trim();
+      var body = element.group(4)!.trim();
       var cite = '';
-      if (base.kind == 'book' || base.kind == 'quote') {
+      if (base.kind == 'book' || base.kind == 'quote' || base.kind == 'research') {
         final m = RegExp(r'\[([^\]]{4,})\]\s*$').firstMatch(body);
         if (m != null) {
           cite = m.group(1)!;
@@ -1565,7 +1803,8 @@ List<_Block> _parseBlocks(String source) {
         ..callout = base
         ..cite = cite
         ..elementId = element.group(1)!
-        ..uiLabel = element.group(2)!);
+        ..marked = element.group(2) == '!'
+        ..uiLabel = element.group(3)!);
       idx++;
       continue;
     }
@@ -1655,6 +1894,7 @@ List<_Block> _parseBlocks(String source) {
   }
   flushPara();
   _numberBlocks(blocks);
+  _oneCalloutPerSection(blocks);
   return blocks;
 }
 

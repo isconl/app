@@ -1762,7 +1762,7 @@ class _LessonScreenState extends State<LessonScreen> {
                   ? FabAction(
                       heroTag: 'fab_lesson_scroll_top',
                       tooltip: 'Scroll to top',
-                      icon: Icons.vertical_align_top_rounded,
+                      icon: Icons.keyboard_arrow_up_rounded,
                       onPressed: () {
                         if (_scroll.hasClients) {
                           _scroll.animateTo(
