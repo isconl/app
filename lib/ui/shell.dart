@@ -338,10 +338,8 @@ class _ShellState extends State<Shell> {
         appBar: ShellAppBar(
           title: _tabLabels[_tab],
           chipSource: _chipSource(services),
-          // BN26091004: compact network-status indicator immediately left
-          // of the hamburger on every tab except Settings, which shows the
-          // full OfflineBanner instead.
-          actions: [if (_tab != 4) const SyncIndicator()],
+          // BI26100539: ShellAppBar adds the one SyncIndicator itself; a second one here
+          // is what drew two dots.
           onMenu: () => openMenu(context),
         ),
         body: _tabBody(context, _tab, services),
@@ -645,6 +643,50 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
 
 /// Green dot when synced, amber spinner when syncing, red when offline.
 /// Tap = sync now.
+/// The sync mark's state, kept apart from the widget so it can be tested without a service tree.
+enum SyncMark { synced, waiting, offline }
+
+/// BI26100539: green when online with nothing waiting, yellow while a sync runs or changes wait,
+/// offline when there is no connection.
+SyncMark syncMarkFor({required bool online, required bool busy, required int pending}) {
+  if (!online) return SyncMark.offline;
+  return busy || pending > 0 ? SyncMark.waiting : SyncMark.synced;
+}
+
+/// The words behind the mark: its screen-reader label and its tap message.
+String syncMarkLabel(SyncMark mark, int pending) => switch (mark) {
+      SyncMark.offline => 'Offline',
+      SyncMark.waiting => pending > 0 ? '$pending waiting to sync' : 'Syncing',
+      SyncMark.synced => 'All synced',
+    };
+
+/// One stroked cloud in the app bar (BI26100539): green when all is synced, yellow when something
+/// waits, a crossed cloud offline. The count lives in the tap message, not a badge.
+class SyncCloud extends StatelessWidget {
+  const SyncCloud({super.key, required this.mark, required this.label, this.onTap});
+  final SyncMark mark;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = switch (mark) {
+      SyncMark.offline => const Icon(Icons.cloud_off_outlined, size: 18, color: C.text3),
+      SyncMark.waiting => const Icon(Icons.cloud_outlined, size: 18, color: C.amber),
+      SyncMark.synced => const Icon(Icons.cloud_outlined, size: 18, color: C.green),
+    };
+    return Semantics(
+      label: label,
+      button: true,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(padding: const EdgeInsets.all(10), child: ExcludeSemantics(child: icon)),
+      ),
+    );
+  }
+}
+
 class SyncIndicator extends StatelessWidget {
   const SyncIndicator({super.key});
 
@@ -655,39 +697,22 @@ class SyncIndicator extends StatelessWidget {
       listenable: Listenable.merge([services.sync, services.outbox]),
       builder: (context, _) {
         final sync = services.sync;
-        final busy = sync.phase != SyncPhase.idle;
-        Widget core;
-        if (!sync.online) {
-          core = const Icon(Icons.cloud_off_rounded, size: 17, color: C.text3);
-        } else if (busy) {
-          core = const MiniSpinner();
-        } else {
-          core = const StatusDot(C.green, glow: true);
-        }
-        return InkWell(
-          borderRadius: BorderRadius.circular(20),
+        final pending = services.outbox.pending;
+        final mark = syncMarkFor(
+            online: sync.online, busy: sync.phase != SyncPhase.idle, pending: pending);
+        return SyncCloud(
+          mark: mark,
+          label: syncMarkLabel(mark, pending),
           onTap: () {
             HapticFeedback.selectionClick();
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(sync.statusLine),
+              content: Text(pending > 0 && sync.online
+                  ? '$pending waiting to sync'
+                  : sync.statusLine),
               duration: const Duration(seconds: 2),
             ));
             if (sync.online) sync.fullSync();
           },
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                core,
-                if (services.outbox.pending > 0) ...[
-                  const SizedBox(width: 5),
-                  Badge2('${services.outbox.pending}',
-                      color: C.amberBg, textColor: C.amber),
-                ],
-              ],
-            ),
-          ),
         );
       },
     );

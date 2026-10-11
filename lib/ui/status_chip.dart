@@ -57,13 +57,13 @@ int? backlogRowCount(dynamic snapshotValue) {
   return projects.fold<int>(0, (n, p) => n + fmt.lm(p['rows']).length);
 }
 
-/// Command: `reap d12/28`, the cycle word in lower case and the day of the 28-day cycle, or `stillweek d3`.
+/// Command: `reap · 12/28`, the cycle word in lower case, a middle dot, and the day of the 28-day cycle, or `stillweek · 3`.
 /// The word is the default rotation; null when no year table covers today (first run, offline).
 String? cycleChipText(EqPosition? p) {
   if (p == null) return null;
   const rotation = ['plant', 'push', 'climb', 'reap', 'dig', 'weave', 'mend', 'scout', 'scale', 'make', 'run', 'stock', 'audit'];
-  if (p.stillweek) return 'stillweek d${p.stillweekDay}';
-  return '${rotation[(p.cycle - 1).clamp(0, 12)]} d${p.day}/28';
+  if (p.stillweek) return 'stillweek · ${p.stillweekDay}';
+  return '${rotation[(p.cycle - 1).clamp(0, 12)]} · ${p.day}/28';
 }
 
 /// Systems > Ops: `vm ok` when every engine is up, else `vm 2 down`; null before the first status.
