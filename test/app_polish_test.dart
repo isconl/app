@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:isconl/api/client.dart';
 import 'package:isconl/app_scope.dart';
-import 'package:isconl/theme.dart';
 import 'package:isconl/ui/shell.dart';
 import 'package:isconl/ui/status_chip.dart';
 import 'package:isconl/ui/widgets/brand.dart';

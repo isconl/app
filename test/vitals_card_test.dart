@@ -15,7 +15,7 @@ Map<String, dynamic> check(String id, String status, {Map<String, dynamic>? fix}
       'status': status,
       'value': 'value $id',
       'threshold': '< 5',
-      if (fix != null) 'fix': fix,
+      'fix': ?fix,
     };
 
 Map<String, dynamic> vitals(int score, List<Map<String, dynamic>> worst, {Map<String, dynamic>? areas}) => {
