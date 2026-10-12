@@ -5,6 +5,7 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/compass_reviews.dart';
+import '../widgets/cycle_gauge.dart';
 import '../widgets/cycle_mix.dart';
 
 /// Goals by horizon, with their linked tasks.
@@ -29,6 +30,8 @@ class PlanningView extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   CycleMixCard(),
+                  SizedBox(height: 12),
+                  CycleGaugeCard(),
                   SizedBox(height: 12),
                   CompassReviews(),
                   EmptyState(
@@ -57,6 +60,8 @@ class PlanningView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const CycleMixCard(),
+                const SizedBox(height: 12),
+                const CycleGaugeCard(),
                 const SizedBox(height: 12),
                 const CompassReviews(),
                 for (final horizon in keys) ...[
