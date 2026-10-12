@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/incident_cards.dart';
 
 /// Opsec: the live control surface for the fleet + the OCI VM (BI26090502),
 /// mobile port of the web's renderOps()/loadOpsStatus(). Status/VM-stats/
@@ -215,6 +216,7 @@ class _OpsViewState extends State<OpsView> {
             )
           else ...[
             if (_error != null) ErrorRetry(_error!, onRetry: _load),
+            const IncidentCards(),
             _vmCard(),
             const SizedBox(height: 10),
             if (!_discoveryOk)
