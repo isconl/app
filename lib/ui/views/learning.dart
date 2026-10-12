@@ -20,6 +20,7 @@ import 'study_search_view.dart';
 import '../shell.dart' show ShellAppBar, SyncIndicator, openMenu;
 import '../widgets/common.dart';
 import '../widgets/listen_bar.dart';
+import '../widgets/module_lifecycle.dart';
 import '../widgets/reader.dart';
 import 'learning_export_stub.dart'
     if (dart.library.io) 'learning_export_native.dart' as export_impl;
@@ -1000,6 +1001,8 @@ class _CourseTileState extends State<CourseTile> {
               isNext: i == nextIndex,
               trackColor: effectiveColor,
             ),
+          // BI26100110: retired and superseded modules, out of the reading list, restorable from here.
+          ModuleHistory(courseId: courseId, hidden: fmt.lm(widget.course['hiddenLessons'])),
         ],
       ),
     );
@@ -1103,6 +1106,8 @@ class LessonRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 4),
       child: InkWell(
         borderRadius: BorderRadius.circular(Sz.rSm),
+        // BI26100110: long-press opens the retire confirm sheet (it needs a module id, so a row without one ignores it).
+        onLongPress: fmt.s(lesson['moduleId']).isEmpty ? null : () => showModuleLifecycleSheet(context, op: 'retire', courseId: courseId, lesson: lesson),
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
@@ -1165,6 +1170,8 @@ class LessonRow extends StatelessWidget {
                     // BI26100325: how far through an unfinished module.
                     if (status != 'done' && status != 'new')
                       ReadingBar(course: courseId, file: file, color: trackColor),
+                    // BI26100110: a lifecycle badge for anything but a live module (superseded, draft, missing).
+                    LifecycleBadges(lesson),
                   ],
                 ),
               ),

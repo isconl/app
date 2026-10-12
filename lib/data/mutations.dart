@@ -845,4 +845,32 @@ class Mutations {
     if (!online) throw OfflineException();
     return _api().postJson(path, body);
   }
+
+  // ---------- module lifecycle (BI26100110) ----------
+
+  /// The dry-run manifest for retiring or restoring one module: what changes and how many learners have progress on
+  /// it. Needs the live server (offline throws [OfflineException]); nothing changes on the server.
+  Future<Map<String, dynamic>> moduleManifestPreview({required String op, required String moduleId}) async {
+    if (!online) throw OfflineException();
+    final r = await _api().postJson('/api/learning/module/manifest', {'op': op, 'modules': [moduleId], 'why': 'preview', 'dryRun': true});
+    return fmt.m(r);
+  }
+
+  /// Retire or restore one module. Online it goes straight to the server, which decides (hub forwards the caller's
+  /// own token, so a session that is not Sconl's is refused); offline it is queued in the outbox and applies when the
+  /// phone reconnects. A refusal comes back as the server's own reason.
+  Future<MutationResult> moduleLifecycle({required String op, required String moduleId, required String why}) async {
+    final r = await _write(
+      path: '/api/learning/module/manifest',
+      body: {'op': op, 'modules': [moduleId], 'why': why, 'dryRun': false},
+      label: op == 'retire' ? 'Retire module' : 'Restore module',
+      view: 'learning',
+      refresh: _store.learning,
+    );
+    if (r.queued || !r.ok) return r;
+    final d = fmt.m(r.payload);
+    if (d['ok'] == true && d['applied'] == true) return r;
+    final why2 = (d['errors'] is List ? (d['errors'] as List).map((e) => fmt.s(e)).join(' ') : '').trim();
+    return MutationResult.failed(why2.isNotEmpty ? why2 : (fmt.s(d['error']).isNotEmpty ? fmt.s(d['error']) : 'It did not apply.'));
+  }
 }
