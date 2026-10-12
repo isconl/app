@@ -4,17 +4,40 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/compass_home.dart';
 import '../widgets/compass_reviews.dart';
 import '../widgets/cycle_gauge.dart';
-import '../widgets/cycle_mix.dart';
 
 /// Goals by horizon, with their linked tasks.
-class PlanningView extends StatelessWidget {
+class PlanningView extends StatefulWidget {
   const PlanningView({super.key});
 
-  static const _horizons = [
-    'cycle', 'sprint', 'quarter', 'year', '5y', 'decade'
-  ];
+  @override
+  State<PlanningView> createState() => _PlanningViewState();
+}
+
+/// Horizons in the order the Compass home shows them, shortest first.
+const planningHorizons = ['sprint', 'cycle', 'quarter', 'year', '5y', 'decade'];
+
+/// Goals grouped by horizon in [planningHorizons] order; unknown horizons go last, in the order met.
+List<({String horizon, List<Map<String, dynamic>> plans})> plansByHorizon(List<Map<String, dynamic>> plans) {
+  final by = <String, List<Map<String, dynamic>>>{};
+  for (final plan in plans) {
+    by.putIfAbsent(fmt.s(plan['HORIZON']).toLowerCase(), () => []).add(plan);
+  }
+  final keys = by.keys.toList()
+    ..sort((a, b) {
+      final ia = planningHorizons.indexOf(a);
+      final ib = planningHorizons.indexOf(b);
+      return (ia < 0 ? 99 : ia).compareTo(ib < 0 ? 99 : ib);
+    });
+  return [for (final k in keys) (horizon: k, plans: by[k]!)];
+}
+
+class _PlanningViewState extends State<PlanningView> {
+  String _part = compassParts.first;
+
+  static const _horizons = planningHorizons;
 
   @override
   Widget build(BuildContext context) {
@@ -25,51 +48,46 @@ class PlanningView extends StatelessWidget {
           snapshot: services.store.plans,
           builder: (context, data) {
             final plans = fmt.lm(fmt.m(data)['plans']);
-            if (plans.isEmpty) {
-              return const Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  CycleMixCard(),
-                  SizedBox(height: 12),
-                  CycleGaugeCard(),
-                  SizedBox(height: 12),
-                  CompassReviews(),
-                  EmptyState(
-                    'No plans yet',
-                    'Set a goal per horizon - cycle, sprint, year - and the '
-                        'agent helps distill it into tasks.',
-                    icon: Icons.flag_rounded,
-                  ),
-                ],
-              );
-            }
-            final byHorizon = <String, List<Map<String, dynamic>>>{};
-            for (final plan in plans) {
-              byHorizon
-                  .putIfAbsent(
-                      fmt.s(plan['HORIZON']).toLowerCase(), () => [])
-                  .add(plan);
-            }
-            final keys = byHorizon.keys.toList()
-              ..sort((a, b) {
-                final ia = _horizons.indexOf(a);
-                final ib = _horizons.indexOf(b);
-                return (ia < 0 ? 99 : ia).compareTo(ib < 0 ? 99 : ib);
-              });
+            final groups = plansByHorizon(plans);
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const CycleMixCard(),
-                const SizedBox(height: 12),
-                const CycleGaugeCard(),
-                const SizedBox(height: 12),
-                const CompassReviews(),
-                for (final horizon in keys) ...[
-                  SectionLabel(horizon),
-                  for (final plan in byHorizon[horizon]!)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _PlanTile(plan: plan),
+                Segmented(
+                  options: compassParts,
+                  value: _part,
+                  onChanged: (v) => setState(() => _part = v),
+                ),
+                if (_part == 'Focus') ...[
+                  const CompassFocus(),
+                  const SizedBox(height: 12),
+                  const CycleGaugeCard(),
+                ],
+                if (_part == 'Review') const CompassReviews(),
+                if (_part == 'Horizons') ...[
+                  if (plans.isEmpty)
+                    const EmptyState(
+                      'No plans yet',
+                      'Set a goal per horizon - cycle, sprint, year - and the '
+                          'agent helps distill it into tasks.',
+                      icon: Icons.flag_rounded,
+                    ),
+                  for (final g in groups)
+                    Theme(
+                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        key: Key('horizon-${g.horizon}'),
+                        tilePadding: EdgeInsets.zero,
+                        // Sprint and cycle open, the longer horizons collapsed.
+                        initiallyExpanded: g.horizon == 'sprint' || g.horizon == 'cycle',
+                        title: Text('${g.horizon}  Ã‚Â·  ${g.plans.length}', style: T.label),
+                        children: [
+                          for (final plan in g.plans)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _PlanTile(plan: plan),
+                            ),
+                        ],
+                      ),
                     ),
                 ],
               ],
