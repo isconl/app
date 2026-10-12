@@ -1,6 +1,8 @@
+import 'dart:convert';
+
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import '../api/client.dart';
 import 'updater.dart';
 
 /// Where the last version whose notes were shown is remembered (BI26100531).
@@ -23,20 +25,72 @@ class SecureVersionMemory implements VersionMemory {
   Future<void> write(String version) => _storage.write(key: _key, value: version);
 }
 
-/// Decides whether to show the "What's new" sheet, once, after an update.
+/// One release's notes as the bundled asset holds them.
+class ReleaseNotes {
+  const ReleaseNotes({required this.version, this.added = const [], this.improved = const [], this.fixed = const []});
+
+  final String version;
+  final List<String> added;
+  final List<String> improved;
+  final List<String> fixed;
+
+  bool get isEmpty => added.isEmpty && improved.isEmpty && fixed.isEmpty;
+
+  static List<String> _lines(dynamic v) => v is List ? [for (final e in v) if (e is String && e.trim().isNotEmpty) e.trim()] : const <String>[];
+
+  static ReleaseNotes fromJson(Map<String, dynamic> j) => ReleaseNotes(
+        version: '${j['version'] ?? ''}'.trim(),
+        added: _lines(j['new']),
+        improved: _lines(j['improved']),
+        fixed: _lines(j['fixed']),
+      );
+}
+
+/// `assets/whats_new.json`, written at build time from the commit trailers (tool/whats_new.dart): this release
+/// first, then the last ten releases' notes. Newest first.
+List<ReleaseNotes> parseWhatsNewAsset(String json) {
+  final root = jsonDecode(json);
+  if (root is! Map) return const [];
+  final m = root.cast<String, dynamic>();
+  final hist = m['history'];
+  return [
+    ReleaseNotes.fromJson(m),
+    if (hist is List)
+      for (final h in hist)
+        if (h is Map) ReleaseNotes.fromJson(h.cast<String, dynamic>()),
+  ];
+}
+
+/// One titled list in the sheet.
+class NoteGroup {
+  const NoteGroup(this.label, this.items);
+  final String label;
+  final List<String> items;
+}
+
+/// What the sheet shows: a heading and the New, Improved and Fixed lists, merged across every release the
+/// phone has not seen yet.
+class WhatsNewNotes {
+  const WhatsNewNotes({required this.heading, required this.groups});
+  final String heading;
+  final List<NoteGroup> groups;
+}
+
+/// Decides whether to show the "What's new" sheet, once, after an update. Offline, from the notes bundled in the
+/// APK: nothing is fetched.
 ///
-/// A fresh install has nothing to compare, so it records the installed version and shows nothing. A launch
-/// on a newer version than the one last shown asks hub for that version's release notes
-/// (`GET /api/apk/notes?version=`); an empty body or a failed call shows nothing and never blocks startup.
-/// A failed call is not recorded, so the next launch tries again.
+/// A fresh install has nothing to compare, so it records the installed version and shows nothing. A launch on a
+/// newer version than the one last shown merges the notes of every release after it, up to the installed one, so
+/// a phone that skipped versions sees everything it missed. With no notes in range nothing is shown. A read that
+/// fails shows nothing and is not recorded, so the next launch tries again.
 class WhatsNew {
-  WhatsNew(this._memory, this._fetchNotes);
+  WhatsNew(this._memory, this._load);
 
   final VersionMemory _memory;
-  final Future<String> Function(String version) _fetchNotes;
+  final Future<String> Function() _load;
 
   /// The notes to show for [installed], or null. Call [markShown] once the sheet has been shown.
-  Future<String?> pending(String installed) async {
+  Future<WhatsNewNotes?> pending(String installed) async {
     if (installed.isEmpty) return null;
     final last = await _memory.read();
     if (last == null || last.isEmpty) {
@@ -47,57 +101,41 @@ class WhatsNew {
       if (last != installed) await _memory.write(installed);
       return null;
     }
-    final String notes;
+    final List<ReleaseNotes> all;
     try {
-      notes = (await _fetchNotes(installed)).trim();
+      all = parseWhatsNewAsset(await _load());
     } catch (_) {
       return null;
     }
-    if (notes.isEmpty) {
+    final inRange = all
+        .where((r) => !r.isEmpty && UpdateService.compareVersions(r.version, last) > 0 && UpdateService.compareVersions(r.version, installed) <= 0)
+        .toList()
+      ..sort((a, b) => UpdateService.compareVersions(a.version, b.version));
+    if (inRange.isEmpty) {
       await _memory.write(installed);
       return null;
     }
-    return notes;
+    List<String> merge(List<String> Function(ReleaseNotes) pick) {
+      final out = <String>[];
+      for (final r in inRange) {
+        for (final line in pick(r)) {
+          if (!out.contains(line)) out.add(line);
+        }
+      }
+      return out;
+    }
+
+    final groups = [
+      NoteGroup('New', merge((r) => r.added)),
+      NoteGroup('Improved', merge((r) => r.improved)),
+      NoteGroup('Fixed', merge((r) => r.fixed)),
+    ].where((g) => g.items.isNotEmpty).toList();
+    final single = inRange.length == 1 && inRange.first.version == installed;
+    return WhatsNewNotes(heading: single ? "What's new in $installed" : 'Since $last', groups: groups);
   }
 
   Future<void> markShown(String installed) => _memory.write(installed);
 
-  /// The production wiring: notes come from hub through the session's own API client.
-  static WhatsNew forApi(ApiClient Function() api) => WhatsNew(const SecureVersionMemory(), (version) async {
-        final res = await api().getJson('/api/apk/notes?version=${Uri.encodeQueryComponent(version)}', cold: true);
-        return res is Map ? (res['notes'] ?? '').toString() : '';
-      });
-}
-
-/// One line of release notes, parsed from Markdown without HTML or images.
-class NoteLine {
-  const NoteLine(this.kind, this.text);
-
-  /// `heading`, `bullet` or `text`.
-  final String kind;
-  final String text;
-}
-
-/// Plain Markdown to lines: `#` headings, `-` or `*` bullets, everything else as text. Images are
-/// dropped, raw HTML tags are stripped, and blank lines separate nothing.
-List<NoteLine> parseNotes(String markdown) {
-  final out = <NoteLine>[];
-  for (final raw in markdown.replaceAll('\r\n', '\n').split('\n')) {
-    var line = raw.trimRight();
-    if (line.trim().isEmpty) continue;
-    line = line.replaceAll(RegExp(r'!\[[^\]]*\]\([^)]*\)'), '').replaceAll(RegExp(r'<[^>]+>'), '');
-    if (line.trim().isEmpty) continue;
-    final h = RegExp(r'^\s{0,3}#{1,6}\s+(.*)$').firstMatch(line);
-    if (h != null) {
-      out.add(NoteLine('heading', h.group(1)!.trim()));
-      continue;
-    }
-    final b = RegExp(r'^\s*[-*]\s+(.*)$').firstMatch(line);
-    if (b != null) {
-      out.add(NoteLine('bullet', b.group(1)!.trim()));
-      continue;
-    }
-    out.add(NoteLine('text', line.trim()));
-  }
-  return out;
+  /// The production wiring: the notes bundled in this build.
+  static WhatsNew bundled() => WhatsNew(const SecureVersionMemory(), () => rootBundle.loadString('assets/whats_new.json'));
 }

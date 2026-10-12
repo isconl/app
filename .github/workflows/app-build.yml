@@ -112,6 +112,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          # The release notes are read from commit trailers between release tags (BI26101213), so the history and the tags
+          # have to be here.
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up JDK 17
         if: matrix.platform == 'android'
@@ -127,6 +131,22 @@ jobs:
           channel: stable
           flutter-version: 3.44.8
           cache: true
+
+      # BI26101213: the notes for this release, from the New:, Improved: and Fixed: trailers of the commits since the previous
+      # apk-v tag. Writes assets/whats_new.json, which the APK bundles (the app shows it once after an update, offline), and
+      # build/whats_new.md for the release body. A line that fails the voice linter, is over 120 characters or names a row id
+      # stops the build here, so a bad note never ships. No trailers means an empty entry, and the release says
+      # "Maintenance release."
+      - name: Gather the release notes
+        run: dart tool/whats_new.dart --version ${{ needs.version.outputs.version }}
+
+      - name: Put the notes in the release body
+        if: matrix.platform == 'android'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: apk-v${{ needs.version.outputs.version }}
+        run: gh release edit "$TAG" --notes-file build/whats_new.md
 
       # flutter build linux needs GTK headers; the runner does not ship them.
       - name: Linux build dependencies
