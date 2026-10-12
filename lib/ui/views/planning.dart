@@ -7,6 +7,7 @@ import '../widgets/common.dart';
 import '../widgets/compass_home.dart';
 import '../widgets/compass_reviews.dart';
 import '../widgets/cycle_gauge.dart';
+import '../widgets/plan_actions.dart';
 
 /// Goals by horizon, with their linked tasks.
 class PlanningView extends StatefulWidget {
@@ -71,6 +72,7 @@ class _PlanningViewState extends State<PlanningView> {
                           'agent helps distill it into tasks.',
                       icon: Icons.flag_rounded,
                     ),
+                  if (plans.isNotEmpty) ...[const StrategyRead(), const SizedBox(height: 8)],
                   for (final g in groups)
                     Theme(
                       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -79,7 +81,7 @@ class _PlanningViewState extends State<PlanningView> {
                         tilePadding: EdgeInsets.zero,
                         // Sprint and cycle open, the longer horizons collapsed.
                         initiallyExpanded: g.horizon == 'sprint' || g.horizon == 'cycle',
-                        title: Text('${g.horizon}  Ã‚Â·  ${g.plans.length}', style: T.label),
+                        title: Text('${g.horizon}  \u00B7  ${g.plans.length}', style: T.label),
                         children: [
                           for (final plan in g.plans)
                             Padding(
@@ -221,6 +223,8 @@ class _PlanTile extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis),
           ],
+          const SizedBox(height: 8),
+          PlanActions(plan: plan),
         ],
       ),
     );
