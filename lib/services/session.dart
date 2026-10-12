@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 
 import '../api/client.dart';
+import 'passkey_client.dart';
 
 /// Auth + connection state. Tokens live in Android EncryptedSharedPreferences
 /// via flutter_secure_storage - never in plain prefs.
@@ -260,6 +261,77 @@ class SessionService extends ChangeNotifier {
     } on OfflineException {
       api.token = previous;
       return 'No connection - check network or server URL';
+    }
+  }
+
+  /// BI26100204: the device's passkey client. Replaced by a fake in tests.
+  PasskeyClient passkeys = PlatformPasskeyClient();
+
+  /// Whether the sign-in screen should offer "Sign in with passkey": the server has one registered and this phone can
+  /// use it.
+  Future<bool> passkeyOffered(Map<String, dynamic> methods) async => methods['passkey'] == true && await passkeys.available();
+
+  Map<String, dynamic> _asMap(dynamic v) => v is Map ? v.cast<String, dynamic>() : <String, dynamic>{};
+
+  /// Sign in with a passkey: the server's options, the phone's prompt, then the server verifies the assertion and
+  /// returns the same session token a PIN sign-in does. Null on success, otherwise a plain sentence. Any failure leaves
+  /// the PIN field available, which is the screen's job.
+  Future<String?> loginPasskey() async {
+    try {
+      final opts = _asMap(await api.postJson('/api/auth/passkey/options', {}, cold: true));
+      if (opts['available'] != true || opts['options'] is! Map) return 'No passkey is set up for this app yet.';
+      final assertion = await passkeys.authenticate(_asMap(opts['options']));
+      final res = _asMap(await api.postJson('/api/auth/passkey/verify', {'response': assertion}, cold: true));
+      if (res['success'] == true && res['token'] is String) {
+        await _adopt(res['token'] as String);
+        return null;
+      }
+      return (res['error'] as String?) ?? 'Passkey sign-in did not work. Use your PIN.';
+    } on ApiException catch (e) {
+      return e.message;
+    } on OfflineException {
+      return 'No connection - check network or server URL';
+    } catch (e) {
+      return passkeyFailureFor(e).message;
+    }
+  }
+
+  /// The signed-in user's passkeys, revoked ones included (the list shows them as revoked).
+  Future<List<Map<String, dynamic>>> passkeyList() async {
+    final r = _asMap(await api.getJson('/api/auth/passkeys'));
+    final list = r['passkeys'];
+    return list is List ? [for (final p in list) if (p is Map) p.cast<String, dynamic>()] : <Map<String, dynamic>>[];
+  }
+
+  /// Add a passkey to the signed-in account, named [name]. Null on success, otherwise a plain sentence.
+  Future<String?> addPasskey(String name) async {
+    try {
+      final options = _asMap(await api.postJson('/api/auth/passkey/register/options', {}));
+      final attestation = await passkeys.register(options);
+      final res = _asMap(await api.postJson('/api/auth/passkey/register/verify', {'response': attestation, 'name': name}));
+      if (res['ok'] == true) return null;
+      return res['reason'] == 'already_registered' ? 'This passkey is already registered.' : 'The passkey could not be verified.';
+    } on ApiException {
+      return 'Could not start registration. Sign in again and retry.';
+    } on OfflineException {
+      return 'Adding a passkey needs the live server - you are offline.';
+    } catch (e) {
+      return passkeyFailureFor(e).message;
+    }
+  }
+
+  Future<String?> renamePasskey(String id, String name) => _passkeyWrite('/api/auth/passkeys/rename', {'id': id, 'name': name});
+
+  Future<String?> revokePasskey(String id) => _passkeyWrite('/api/auth/passkeys/revoke', {'id': id});
+
+  Future<String?> _passkeyWrite(String path, Map<String, dynamic> body) async {
+    try {
+      await api.postJson(path, body);
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } on OfflineException {
+      return 'This needs the live server - you are offline.';
     }
   }
 

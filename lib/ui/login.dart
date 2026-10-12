@@ -33,6 +33,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _useToken = false;
   bool _usePin = false;
   bool _editServer = false;
+  // BI26100204: the server has a passkey and this phone can use it, so the button is offered first.
+  bool _passkeyOffered = false;
   String? _error;
   Timer? _tick;
   int _secondsLeft = 30;
@@ -75,8 +77,10 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       final methods = await services.session.authMethods();
+      final passkey = await services.session.passkeyOffered(methods);
       if (!mounted) return;
       setState(() {
+        _passkeyOffered = passkey;
         _totpAvailable = methods['totp'] == true;
         _useToken = methods['totp'] != true;
         _waking = false;
@@ -133,6 +137,27 @@ class _LoginScreenState extends State<LoginScreen> {
       widget.onAuthenticated?.call();
     } else {
       _pin.clear();
+      HapticFeedback.heavyImpact();
+    }
+  }
+
+  /// Any failure opens the PIN field with a plain message, so a phone whose passkey does not work is never stuck.
+  Future<void> _submitPasskey() async {
+    if (_submitting) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final err = await AppScope.of(context).session.loginPasskey();
+    if (!mounted) return;
+    setState(() {
+      _submitting = false;
+      _error = err;
+      if (err != null) _usePin = true;
+    });
+    if (err == null) {
+      widget.onAuthenticated?.call();
+    } else {
       HapticFeedback.heavyImpact();
     }
   }
@@ -206,6 +231,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ] else ...[
+                    if (_passkeyOffered && !_usePin) ...[
+                      FilledButton.icon(
+                        key: const Key('login-passkey'),
+                        onPressed: _submitting ? null : _submitPasskey,
+                        icon: const Icon(Icons.fingerprint_rounded, size: 18),
+                        label: _submitting ? const MiniSpinner() : const Text('Sign in with passkey'),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     if (_usePin)
                       _pinForm()
                     else if (_totpAvailable == true && !_useToken)

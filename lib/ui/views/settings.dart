@@ -7,6 +7,7 @@ import '../../util/fmt.dart' as fmt;
 import '../update_flow.dart';
 import '../widgets/common.dart';
 import '../widgets/integrations_section.dart';
+import '../widgets/passkeys_card.dart';
 import '../../services/day_close_planner.dart';
 import '../../util/day_close.dart';
 import 'systems_dashboard.dart';
@@ -147,6 +148,8 @@ class _SettingsViewState extends State<SettingsView> {
                   ],
                 ),
               ),
+              const SectionLabel('Passkeys'),
+              const PasskeysCard(),
               if (widget.showIntegrations) ...[
                 const IntegrationsSection(),
               ],

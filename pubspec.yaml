@@ -13,7 +13,7 @@ publish_to: 'none'
 # stale venture-category filter), masonry track grid + icon-standard fix.
 # Build number advanced past both branches' prior values (main's own stale
 # CI bump to +9, dev's independent +9) to stay unambiguous.
-version: 0.3.91+101
+version: 0.3.92+102
 
 environment:
   sdk: ^3.12.0
@@ -63,6 +63,8 @@ dependencies:
   flutter_math_fork: ^0.7.4
   record: ^7.1.1
   cached_network_image: ^3.4.1
+  passkeys: ^2.23.1
+  device_info_plus: ^12.4.0
 
 dev_dependencies:
   flutter_test:
