@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../widgets/common.dart';
 import 'backlog.dart';
+import 'slate_decisions.dart';
 import 'tasks.dart';
 
 /// BI26092327: the menu item formerly called Tasks is Slate, with a tab strip. Tasks is the default
@@ -10,8 +10,6 @@ import 'tasks.dart';
 /// console's renderSlate(): no fake data. The chosen tab is remembered for the life of the app
 /// (the web console remembers it per browser).
 enum SlateTab { tasks, decisions, register }
-
-const slateSoon = 'Arrives with the Slate integration.';
 
 class SlateView extends StatefulWidget {
   const SlateView({super.key});
@@ -60,11 +58,8 @@ class _SlateViewState extends State<SlateView> {
         const SizedBox(height: 12),
         switch (_tab) {
           SlateTab.tasks => const TasksView(),
+          SlateTab.decisions => const DecisionsView(),
           SlateTab.register => const BacklogView(),
-          _ => Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: EmptyState(_label(_tab), slateSoon),
-            ),
         },
       ],
     );

@@ -134,6 +134,8 @@ class Store {
       of('notifications', '/api/notifications?limit=200');
   Snapshot get audit => of('audit', '/api/audit');
   Snapshot get backlog => of('backlog', '/api/backlog');
+  // BI26100534: rows waiting on a person, from hub's read-only slate view.
+  Snapshot get slateDecisions => of('slate_decisions', '/api/slate/decisions');
   Snapshot get refs => of('refs', '/api/refs');
   Snapshot get tags => of('tags', '/api/tags');
   Snapshot get dataHealth => of('dataHealth', '/api/health/data');
