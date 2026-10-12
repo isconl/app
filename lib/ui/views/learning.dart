@@ -23,6 +23,7 @@ import '../widgets/course_controls.dart';
 import '../widgets/listen_bar.dart';
 import '../widgets/module_lifecycle.dart';
 import '../widgets/reader.dart';
+import '../widgets/track_admin.dart';
 import 'learning_export_stub.dart'
     if (dart.library.io) 'learning_export_native.dart' as export_impl;
 
@@ -156,6 +157,14 @@ class _LearningViewState extends State<LearningView> {
               // stalled sync is seen the same day.
               LibraryFreshness(syncedAt: fmt.m(data)['librarySyncedAt'] ?? fmt.m(data)['syncedAt']),
 
+              // BI26100510: create, edit, archive and restore tracks.
+              Center(
+                child: TextButton(
+                  key: const Key('manage-tracks'),
+                  onPressed: () => showTrackAdmin(context, fmt.lm(fmt.m(data)['groups'])),
+                  child: Text('Manage tracks', style: T.tiny.copyWith(color: C.text3)),
+                ),
+              ),
               // ── low-emphasis library-wide action, moved off the top ──────
               if (!lib.prefetching &&
                   (lib.staleCount > 0 || lib.downloadedCount < lib.knownCount))
