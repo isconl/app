@@ -9,6 +9,7 @@ import '../widgets/common.dart';
 import '../widgets/integrations_section.dart';
 import '../widgets/news_watch_card.dart';
 import '../widgets/passkeys_card.dart';
+import '../widgets/status_briefs_card.dart';
 import '../../services/day_close_planner.dart';
 import '../../util/day_close.dart';
 import 'systems_dashboard.dart';
@@ -153,6 +154,8 @@ class _SettingsViewState extends State<SettingsView> {
               const PasskeysCard(),
               const SectionLabel('News watch'),
               const NewsWatchCard(),
+              const SectionLabel('Status briefs'),
+              const StatusBriefsCard(),
               if (widget.showIntegrations) ...[
                 const IntegrationsSection(),
               ],
