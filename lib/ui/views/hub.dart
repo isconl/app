@@ -13,6 +13,7 @@ import '../widgets/checkpoint_card.dart';
 import '../widgets/common.dart';
 import '../widgets/context_ring_card.dart';
 import '../widgets/offsite_backup_line.dart';
+import '../widgets/refresher_cards.dart';
 import '../widgets/vitals_card.dart';
 import 'tasks.dart' show showAddTaskSheet, TaskRowTile;
 
@@ -172,6 +173,7 @@ class _HubViewState extends State<HubView> {
             // ---- vitals, right after the block card (BI26092630) ----
             const VitalsCard(),
             const OffsiteBackupLine(),
+            const RefresherCards(),
             // ---- services ----
             const SectionLabel('Services'),
             _ServicesCard(services: fmt.m(state['services'])),
