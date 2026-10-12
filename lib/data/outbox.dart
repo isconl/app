@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../api/client.dart';
 import 'db.dart';
+import 'module_ops.dart';
 
 /// Queue of writes made while offline (or that failed in transit).
 /// Drained FIFO on reconnect; the server then syncs the vault to OneDrive.
@@ -21,8 +22,16 @@ class OutboxService extends ChangeNotifier {
   bool draining = false;
   String? lastError;
 
+  /// BI26101204: retire and restore actions waiting in the queue or refused, by module id, for the pending badge.
+  Map<String, ModuleOp> moduleOps = const {};
+
   Future<void> refreshCount() async {
     pending = await _db.pendingCount();
+    try {
+      moduleOps = moduleOpsFromOutbox(await _db.outboxHistory(limit: 200));
+    } catch (_) {
+      // A badge is a convenience; the queue itself is unaffected.
+    }
     notifyListeners();
   }
 

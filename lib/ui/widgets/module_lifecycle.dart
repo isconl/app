@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../api/client.dart' show OfflineException;
+import '../../data/module_ops.dart';
+import '../../data/outbox.dart' show OutboxService;
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import 'common.dart';
@@ -12,7 +14,7 @@ import 'common.dart';
 /// offline the change is queued in the outbox and shows as pending. Superseded and retired modules are not in the
 /// reading list: they sit under a History expander on the course, where retired ones can be restored. Whether the
 /// session may do it is the server's call, and a refusal is shown as the server's own reason.
-List<({String label, Color color})> lifecycleBadges(Map<String, dynamic> lesson) {
+List<({String label, Color color})> lifecycleBadges(Map<String, dynamic> lesson, {ModuleOp? op}) {
   final state = fmt.s(lesson['lifecycle']).toLowerCase();
   final out = <({String label, Color color})>[];
   if (state.isNotEmpty && state != 'live') {
@@ -26,6 +28,8 @@ List<({String label, Color color})> lifecycleBadges(Map<String, dynamic> lesson)
     ));
   }
   if (lesson['missing'] == true) out.add((label: 'missing', color: C.red));
+  // BI26101204: a retire or restore still waiting in the outbox, or refused by the server.
+  if (op != null) out.add((label: op.failed ? '${op.op} refused' : '${op.op} pending', color: op.failed ? C.red : C.amber));
   return out;
 }
 
@@ -35,19 +39,39 @@ class LifecycleBadges extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final badges = lifecycleBadges(lesson);
+    OutboxService? outbox;
+    try {
+      outbox = AppScope.of(context).outbox;
+    } catch (_) {}
+    if (outbox == null) return _badges(null);
+    return ListenableBuilder(
+      listenable: outbox,
+      builder: (context, _) => _badges(outbox!.moduleOps[fmt.s(lesson['moduleId'])]),
+    );
+  }
+
+  Widget _badges(ModuleOp? op) {
+    final badges = lifecycleBadges(lesson, op: op);
     if (badges.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 4),
-      child: Wrap(spacing: 6, children: [
-        for (final b in badges)
-          Container(
-            key: Key('lifecycle-${b.label}'),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-            decoration: BoxDecoration(border: Border.all(color: b.color), borderRadius: BorderRadius.circular(8)),
-            child: Text(b.label, style: T.tiny.copyWith(color: b.color)),
-          ),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(spacing: 6, children: [
+            for (final b in badges)
+              Container(
+                key: Key('lifecycle-${b.label}'),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(border: Border.all(color: b.color), borderRadius: BorderRadius.circular(8)),
+                child: Text(b.label, style: T.tiny.copyWith(color: b.color)),
+              ),
+          ]),
+          // The server's own reason for a refusal, where the reader will see it.
+          if (op != null && op.failed && op.reason.isNotEmpty)
+            Padding(padding: const EdgeInsets.only(top: 2), child: Text(op.reason, key: const Key('lifecycle-reason'), style: T.tiny.copyWith(color: C.red))),
+        ],
+      ),
     );
   }
 }

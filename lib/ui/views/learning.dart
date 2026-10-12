@@ -19,6 +19,7 @@ import '../../util/spaced_review.dart';
 import 'study_search_view.dart';
 import '../shell.dart' show ShellAppBar, SyncIndicator, openMenu;
 import '../widgets/common.dart';
+import '../widgets/course_controls.dart';
 import '../widgets/listen_bar.dart';
 import '../widgets/module_lifecycle.dart';
 import '../widgets/reader.dart';
@@ -990,6 +991,7 @@ class _CourseTileState extends State<CourseTile> {
               ],
             ),
           ],
+          CourseControls(courseId: courseId, course: widget.course),
           const SizedBox(height: 10),
           for (var i = 0; i < lessons.length; i++)
             LessonRow(
