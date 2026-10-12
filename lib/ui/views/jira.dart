@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/jira_compose.dart';
 
 /// Kanban, folded vertically for a phone: status sections with issue cards.
 /// Transitions are GATE-territory: online-only, always confirmed.
@@ -14,16 +15,86 @@ class JiraView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _board(AppScope.of(context));
+  }
+
+  /// The pending approvals and the create action, drawn at the top of the board. They sit inside the snapshot view's
+  /// own scroller, so nothing here scrolls.
+  Widget _header(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const JiraPendingSection(),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: const Key('jira-compose'),
+              onPressed: () => _pickTask(context),
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Create from a task'),
+            ),
+          ),
+        ],
+      );
+
+  /// Tasks that have no Jira issue yet and are not done, offered for the review sheet.
+  static List<Map<String, dynamic>> candidateTasks(List<Map<String, dynamic>> tasks) => [
+        for (final t in tasks)
+          if ((fmt.s(t['JIRA_KEY']).isEmpty || fmt.s(t['JIRA_KEY']) == '-') && fmt.s(t['STATUS']).toLowerCase() != 'done') t,
+      ];
+
+  Future<void> _pickTask(BuildContext context) async {
     final services = AppScope.of(context);
+    if (!services.sync.online) {
+      toast(context, 'Jira actions need the live server - you are offline.', error: true);
+      return;
+    }
+    final tasks = candidateTasks(fmt.lm(fmt.m(services.store.state.value)['tasks']));
+    if (tasks.isEmpty) {
+      toast(context, 'Every open task already has a Jira issue.');
+      return;
+    }
+    final id = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: C.panel,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+          children: [
+            const Text('Which task?', style: T.title),
+            for (final t in tasks.take(40))
+              ListTile(
+                key: Key('jira-task-${fmt.s(t['ID'])}'),
+                dense: true,
+                title: Text(fmt.s(t['TITLE']), style: T.body2, maxLines: 2, overflow: TextOverflow.ellipsis),
+                subtitle: Text(fmt.s(t['ID']), style: T.monoSmall),
+                onTap: () => Navigator.pop(ctx, fmt.s(t['ID'])),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (id == null || !context.mounted) return;
+    await showJiraReview(context, id);
+  }
+
+  Widget _board(AppServices services) {
     return SnapshotView(
       snapshot: services.store.jira,
       builder: (context, data) {
         final issues = fmt.lm(fmt.m(data)['issues']);
         if (issues.isEmpty) {
-          return const EmptyState(
-            'No Jira issues',
-            'Issues from the WSRU board appear here once Jira is connected.',
-            icon: Icons.view_kanban_rounded,
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(context),
+              const EmptyState(
+                'No Jira issues',
+                'Issues from the WSRU board appear here once Jira is connected.',
+                icon: Icons.view_kanban_rounded,
+              ),
+            ],
           );
         }
         final byStatus = <String, List<Map<String, dynamic>>>{};
@@ -43,6 +114,7 @@ class JiraView extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _header(context),
             for (final status in known) ...[
               SectionLabel('$status · ${byStatus[status]!.length}'),
               for (final issue in byStatus[status]!)
