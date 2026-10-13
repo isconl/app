@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../app_scope.dart';
+import '../../data/finance_repo.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import 'possessions.dart';
 
 /// Finance: KES, necessity/satisfaction scoring, recursive 50-30-20.
 /// All numbers come from the vault - this view only formats them.
@@ -248,6 +250,14 @@ class FinanceView extends StatelessWidget {
                 ],
                 // ---- wishlist ----
                 _Wishlist(currency: currency),
+                // ---- possessions (BI26100509) ----
+                PossessionsSection(
+                  repo: FinanceRepository(
+                    get: (p) => services.api.getJson(p),
+                    post: (p, b) => services.api.postJson(p, b),
+                  ),
+                  currency: currency,
+                ),
                 // ---- recent transactions ----
                 if (recent.isNotEmpty) ...[
                   const SectionLabel('Recent'),
