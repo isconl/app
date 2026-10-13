@@ -11,6 +11,7 @@ import 'widgets/chat_rail.dart';
 import 'widgets/command_palette.dart';
 import 'widgets/sidebar_rail.dart';
 import 'widgets/vault_sync_banner.dart';
+import 'view_history.dart';
 
 /// Desktop/wide-web chrome: sidebar | content | chat rail, matching
 /// dashboard's 3-column grid (see ui/adaptive_shell.dart for when this picks
@@ -25,8 +26,18 @@ class DesktopShell extends StatefulWidget {
 }
 
 class _DesktopShellState extends State<DesktopShell> {
-  String _selected = 'hub';
-  late Widget _current = findNavItem('hub').builder();
+  // BI26100157: on web a deep link (`#/inbox`) opens that view; anything else starts at the hub.
+  static String _startView() {
+    if (!kIsWeb) return 'hub';
+    final id = viewFromFragment(Uri.base.fragment);
+    return id != null && tryNavItem(id) != null ? id : 'hub';
+  }
+
+  late String _selected = _startView();
+  late Widget _current = findNavItem(_selected).builder();
+  late final ViewHistory _history = ViewHistory(_selected);
+  // Ctrl/Cmd+. hides the sidebar and the chat rail, as the console's focus mode does.
+  bool _focusMode = false;
 
   @override
   void initState() {
@@ -47,12 +58,38 @@ class _DesktopShellState extends State<DesktopShell> {
     });
   }
 
-  void _select(NavItem item) {
+  void _show(NavItem item) {
     setState(() {
       _selected = item.id;
       _current = item.builder();
     });
+    // On web the address bar follows the view, so it can be bookmarked or shared as `#/<view>`.
+    if (kIsWeb) {
+      SystemNavigator.routeInformationUpdated(uri: Uri(path: Uri.base.path, fragment: '/${item.id}'));
+    }
   }
+
+  void _select(NavItem item) {
+    if (_history.open(item.id)) _show(item);
+  }
+
+  void _step(String? id) {
+    final item = id == null ? null : tryNavItem(id);
+    if (item != null) _show(item);
+  }
+
+  void _back() => _step(_history.back());
+  void _forward() => _step(_history.forward());
+
+  /// Escape steps back only when nothing is open over the shell (a dialog or the palette handles its own
+  /// Escape first, because it holds the focus) and the focus is not in a text field.
+  void _escape() {
+    final focus = FocusManager.instance.primaryFocus?.context?.widget;
+    if (focus is EditableText) return;
+    _back();
+  }
+
+  void _toggleFocusMode() => setState(() => _focusMode = !_focusMode);
 
   void _openPalette() => showCommandPalette(context, _select);
 
@@ -65,6 +102,13 @@ class _DesktopShellState extends State<DesktopShell> {
             _openPalette,
         const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
             _openPalette,
+        // BI26100157: the console's other keys (hub app.js): Alt+Left/Right back and forward, Escape
+        // steps back with nothing open, Ctrl/Cmd+. toggles focus mode.
+        const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): _back,
+        const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): _forward,
+        const SingleActivator(LogicalKeyboardKey.escape): _escape,
+        const SingleActivator(LogicalKeyboardKey.period, control: true): _toggleFocusMode,
+        const SingleActivator(LogicalKeyboardKey.period, meta: true): _toggleFocusMode,
       },
       child: Focus(
         autofocus: true,
@@ -72,11 +116,12 @@ class _DesktopShellState extends State<DesktopShell> {
           body: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SidebarRail(
-                selected: _selected,
-                onSelect: _select,
-                onCommandPalette: _openPalette,
-              ),
+              if (!_focusMode)
+                SidebarRail(
+                  selected: _selected,
+                  onSelect: _select,
+                  onCommandPalette: _openPalette,
+                ),
               Expanded(
                 child: Column(
                   children: [
@@ -90,7 +135,7 @@ class _DesktopShellState extends State<DesktopShell> {
                   ],
                 ),
               ),
-              const ChatRail(),
+              if (!_focusMode) const ChatRail(),
             ],
           ),
         ),

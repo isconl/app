@@ -102,6 +102,14 @@ final List<NavGroup> navGroups = [
 NavItem findNavItem(String id) =>
     navGroups.expand((g) => g.items).firstWhere((i) => i.id == id);
 
+/// [findNavItem] for an id that may not exist (a web address, say): null instead of throwing.
+NavItem? tryNavItem(String id) {
+  for (final i in navGroups.expand((g) => g.items)) {
+    if (i.id == id) return i;
+  }
+  return null;
+}
+
 /// Persistent left rail for the desktop web console - the sidebar the
 /// legacy dashboard has and the mobile app doesn't need (it uses a bottom
 /// tab bar + [MenuSheet] instead). Pinned brand header, scrollable nav
