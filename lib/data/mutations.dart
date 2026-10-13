@@ -1,4 +1,5 @@
 import '../api/client.dart';
+import '../util/circle_tags.dart';
 import '../util/fmt.dart' as fmt;
 import 'db.dart';
 import 'outbox.dart';
@@ -549,6 +550,64 @@ class Mutations {
         view: 'circle',
         refresh: _store.circle,
       );
+
+  // BI26100507: tags. Adding or removing a tag on one person queues offline like a touch. Rename, merge and
+  // delete rewrite every contact that carries the tag, so they need the live server and are never queued.
+
+  Future<MutationResult> addPersonTag(String personId, String tag) => _write(
+        path: '/api/circle/tags/add',
+        body: {'personId': personId, 'tag': tag},
+        label: 'Tag · $personId · ${fmt.truncate(tag, 30)}',
+        view: 'circle',
+        refresh: _store.circle,
+        optimistic: () => _patchPersonTags(personId, (tags) => tags.contains(tag) ? tags : [...tags, tag]),
+      );
+
+  Future<MutationResult> removePersonTag(String personId, String tag) => _write(
+        path: '/api/circle/tags/remove',
+        body: {'personId': personId, 'tag': tag},
+        label: 'Untag · $personId · ${fmt.truncate(tag, 30)}',
+        view: 'circle',
+        refresh: _store.circle,
+        optimistic: () => _patchPersonTags(personId, (tags) => tags.where((t) => t != tag).toList()),
+      );
+
+  Future<MutationResult> renameTag(String from, String to) => _write(
+        path: '/api/circle/tags/rename',
+        body: {'from': from, 'to': to},
+        label: 'Rename tag · $from',
+        view: 'circle',
+        refresh: _store.circle,
+        queueable: false,
+      );
+
+  Future<MutationResult> mergeTags(List<String> sources, String into) => _write(
+        path: '/api/circle/tags/merge',
+        body: {'sources': sources, 'into': into},
+        label: 'Merge tags · $into',
+        view: 'circle',
+        refresh: _store.circle,
+        queueable: false,
+      );
+
+  Future<MutationResult> deleteTag(String tag) => _write(
+        path: '/api/circle/tags/delete',
+        body: {'tag': tag},
+        label: 'Delete tag · $tag',
+        view: 'circle',
+        refresh: _store.circle,
+        queueable: false,
+      );
+
+  Future<void> _patchPersonTags(String personId, List<String> Function(List<String>) change) =>
+      _store.circle.patchLocal((current) {
+        final map = fmt.m(current);
+        final people = fmt.lm(map['people']).map((p) {
+          if (fmt.s(p['ID']) != personId) return p;
+          return {...p, 'TAGS': serializeTags(change(parseTags(p['TAGS'])))};
+        }).toList();
+        return {...map, 'people': people};
+      });
 
   // ---------- calendar / dates ----------
 

@@ -7,6 +7,7 @@ import '../../util/fmt.dart' as fmt;
 import '../../util/markdown.dart';
 import '../shell.dart' show ShellAppBar;
 import '../widgets/common.dart';
+import 'circle_tags.dart';
 
 /// People, by ring or full flat roster. Cards show cadence state; detail
 /// view has the DIA profile, interactions, reachout suggestion, and native
@@ -45,6 +46,17 @@ class CircleView extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // BI26100507: tag management.
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                key: const Key('circle-manage-tags'),
+                onPressed: () => Navigator.push(
+                    context, MaterialPageRoute(builder: (_) => const CircleTagsScreen())),
+                icon: const Icon(Icons.sell_rounded, size: 15),
+                label: const Text('Manage tags'),
+              ),
+            ),
             for (final person in people)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -214,6 +226,10 @@ class _PersonScreenState extends State<PersonScreen> {
                 ],
               ),
             ),
+            if (id.isNotEmpty) ...[
+              const SectionLabel('Tags'),
+              PersonTagsPanel(personId: id),
+            ],
             if (reachout.isNotEmpty &&
                 fmt.s(reachout['why']).isNotEmpty) ...[
               const SectionLabel('Why reach out now'),
