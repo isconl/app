@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Your current day block, the next thing due, and quick capture to the inbox</string>
+    <string name="widget_capture">Capture</string>
+    <string name="widget_voice">Voice note</string>
+    <string name="shortcut_capture_long">Capture to inbox</string>
+    <string name="shortcut_today">Today</string>
+    <string name="shortcut_today_long">Open Today</string>
+</resources>

@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
+import '../../services/home_widget_bridge.dart';
 import '../../services/branding.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
@@ -67,6 +69,12 @@ class _SettingsViewState extends State<SettingsView> {
               const SectionLabel('Day close'),
               _DayCloseSettings(
                   onChanged: () => replanDayClose(services)),
+
+              // ---- BI26100138: the home-screen widget ----
+              if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
+                const SectionLabel('Home-screen widget'),
+                const _WidgetPrivacyCard(),
+              ],
 
               // ---- automatic context ----
               const SectionLabel('Automatic context'),
@@ -667,6 +675,48 @@ class _DayCloseSettingsState extends State<_DayCloseSettings> {
                 },
         ),
       ]),
+      ),
+    );
+  }
+}
+
+/// BI26100138: hides item titles on the home-screen widget, for a phone others can see. The widget then
+/// shows only "Event" or "Task" and the time.
+class _WidgetPrivacyCard extends StatefulWidget {
+  const _WidgetPrivacyCard();
+
+  @override
+  State<_WidgetPrivacyCard> createState() => _WidgetPrivacyCardState();
+}
+
+class _WidgetPrivacyCardState extends State<_WidgetPrivacyCard> {
+  bool _hide = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final v = (await AppScope.of(context).db.getSnapshot(HomeWidgetBridge.hideTitlesKey))?.$1;
+      if (mounted) setState(() => _hide = v == true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Panel(
+      child: SwitchListTile(
+        key: const Key('widget-hide-titles'),
+        contentPadding: EdgeInsets.zero,
+        title: Text('Hide titles on the widget', style: T.body2),
+        subtitle: Text(
+            _hide ? 'On. The widget shows only Event or Task and the time.' : 'Off. The widget shows what is next by name.',
+            style: T.tiny),
+        value: _hide,
+        onChanged: (v) async {
+          setState(() => _hide = v);
+          await AppScope.of(context).db.putSnapshot(HomeWidgetBridge.hideTitlesKey, v);
+          await HomeWidgetBridge.refreshNow();
+        },
       ),
     );
   }

@@ -13,14 +13,49 @@ class PlatformBridge {
   /// Fired when text is shared into the app while it is already running.
   void Function(String text)? onSharedText;
 
+  /// BI26100138: fired when the home-screen widget or an app shortcut opens the app while it is running:
+  /// "capture", "voice" or "today".
+  void Function(String action)? onLaunchAction;
+
   void init() {
     if (kIsWeb) return;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'sharedText' && call.arguments is String) {
         onSharedText?.call(call.arguments as String);
       }
+      if (call.method == 'launchAction' && call.arguments is String) {
+        onLaunchAction?.call(call.arguments as String);
+      }
       return null;
     });
+  }
+
+  /// The widget or shortcut action that cold-launched the app, once; null for an ordinary launch.
+  Future<String?> getLaunchAction() async {
+    if (kIsWeb) return null;
+    try {
+      return await _channel.invokeMethod<String>('getLaunchAction');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// BI26100138: hands the home-screen widget its snapshot (see home_widget_snapshot.dart) and redraws it.
+  Future<void> updateWidget(String json) async {
+    if (kIsWeb) return;
+    try {
+      await _channel.invokeMethod<void>('updateWidget', {'json': json});
+    } catch (_) {
+      // An older build without the widget: nothing to update.
+    }
+  }
+
+  /// Sends the app to the background, for a capture started from the widget that is now saved.
+  Future<void> moveToBack() async {
+    if (kIsWeb) return;
+    try {
+      await _channel.invokeMethod<void>('moveToBack');
+    } catch (_) {}
   }
 
   /// Text shared into the app via the Android share sheet (cold launch).

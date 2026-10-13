@@ -56,7 +56,23 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="text/plain"/>
             </intent-filter>
+            <!-- BI26100138: long-press shortcuts (Capture, Today); the widget opens the same actions. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts"/>
         </activity>
+
+        <!-- BI26100138: the home-screen widget. Reads a snapshot the app writes; no network of its own. -->
+        <receiver
+            android:name=".TodayWidget"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_today_info"/>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

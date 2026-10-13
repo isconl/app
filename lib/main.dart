@@ -10,12 +10,14 @@ import 'app_scope.dart';
 import 'services/alerts.dart';
 import 'services/branding.dart';
 import 'services/day_close_planner.dart';
+import 'services/home_widget_bridge.dart';
 import 'services/platform.dart';
 import 'theme.dart';
 import 'ui/widgets/brand.dart' as brand;
 import 'ui/widgets/brand.dart' show BrandMotion;
 import 'ui/adaptive_shell.dart';
 import 'ui/login.dart';
+import 'ui/quick_capture.dart';
 import 'ui/views/day_close.dart';
 import 'ui/widgets/common.dart';
 
@@ -83,6 +85,47 @@ class _RootGateState extends State<RootGate> {
     PlatformBridge.instance.getSharedText().then((text) {
       if (text != null && text.trim().isNotEmpty) _captureShare(text);
     });
+    // BI26100138: the home-screen widget and the app shortcuts open a capture. A cold launch for a capture
+    // goes back to the home screen once it is saved; a warm one stays in the app.
+    PlatformBridge.instance.onLaunchAction = (a) => _queueAction(a, cold: false);
+    PlatformBridge.instance.getLaunchAction().then((a) {
+      if (a != null) _queueAction(a, cold: true);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) HomeWidgetBridge.start(AppScope.of(context));
+    });
+  }
+
+  String? _pendingAction;
+  bool _pendingCold = false;
+
+  void _queueAction(String action, {required bool cold}) {
+    if (!mounted) return;
+    setState(() {
+      _pendingAction = action;
+      _pendingCold = cold;
+    });
+  }
+
+  /// Runs a widget or shortcut action once the shell is showing (signed in and unlocked).
+  Future<void> _runPendingAction() async {
+    final action = _pendingAction;
+    if (action == null) return;
+    _pendingAction = null;
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    final services = AppScope.of(context);
+    // "today" needs nothing more: the shell already opens on Today.
+    final Future<bool> run = switch (action) {
+      'capture' => showQuickCapture(ctx, services),
+      'voice' => showVoiceCapture(ctx, services),
+      _ => Future.value(false),
+    };
+    final saved = await run;
+    if (saved && _pendingCold) {
+      await Future<void>.delayed(const Duration(milliseconds: 900)); // let the confirmation show
+      await PlatformBridge.instance.moveToBack();
+    }
   }
 
   Future<void> _captureShare(String text) async {
@@ -157,6 +200,9 @@ class _RootGateState extends State<RootGate> {
         // repeated here so this gate doesn't depend on that invariant holding.
         if (session.biometricLock && !_unlocked && !kIsWeb) {
           return _LockScreen(onUnlock: _tryUnlock);
+        }
+        if (_pendingAction != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _runPendingAction());
         }
         return const AdaptiveShell();
       },

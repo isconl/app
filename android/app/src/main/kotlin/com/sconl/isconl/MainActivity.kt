@@ -20,6 +20,7 @@ import java.io.File
 class MainActivity : FlutterFragmentActivity() {
     private val channelName = "isconl/platform"
     private var pendingSharedText: String? = null
+    private var pendingLaunchAction: String? = null
     private var pickResult: MethodChannel.Result? = null
     private val pickRequestCode = 7301
     private val smsRequestCode = 7302
@@ -30,11 +31,30 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         pendingSharedText = extractSharedText(intent)
+        pendingLaunchAction = extractLaunchAction(intent)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getSharedText" -> {
                     result.success(pendingSharedText)
                     pendingSharedText = null
+                }
+                // BI26100138: the home-screen widget and the app shortcuts.
+                "getLaunchAction" -> {
+                    result.success(pendingLaunchAction)
+                    pendingLaunchAction = null
+                }
+                "updateWidget" -> {
+                    val json = call.argument<String>("json")
+                    if (json == null) {
+                        result.error("ARG", "json required", null)
+                    } else {
+                        TodayWidget.save(applicationContext, json)
+                        result.success(null)
+                    }
+                }
+                "moveToBack" -> {
+                    moveTaskToBack(true)
+                    result.success(null)
                 }
                 "installApk" -> {
                     val path = call.argument<String>("path")
@@ -177,6 +197,23 @@ class MainActivity : FlutterFragmentActivity() {
                 MethodChannel(it, channelName).invokeMethod("sharedText", shared)
             }
         }
+        val action = extractLaunchAction(intent)
+        if (action != null) {
+            val messenger = flutterEngine?.dartExecutor?.binaryMessenger
+            if (messenger != null) {
+                MethodChannel(messenger, channelName).invokeMethod("launchAction", action)
+            } else {
+                pendingLaunchAction = action
+            }
+        }
+    }
+
+    /** "capture", "voice" or "today" when the widget or a shortcut opened the app, else null. */
+    private fun extractLaunchAction(intent: Intent?): String? = when (intent?.action) {
+        TodayWidget.ACTION_CAPTURE -> "capture"
+        TodayWidget.ACTION_VOICE -> "voice"
+        TodayWidget.ACTION_TODAY -> "today"
+        else -> null
     }
 
     private fun extractSharedText(intent: Intent?): String? {
