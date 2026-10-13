@@ -1899,6 +1899,7 @@ class _LessonScreenState extends State<LessonScreen> {
                         docId: docId,
                         version: docVersion,
                         courseId: widget.course,
+                        listenFile: content.isEmpty ? widget.file : null,
                         fallback: content.isEmpty
                             ? _lessonOfflineNote()
                             : ReadingBody(content,

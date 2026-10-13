@@ -91,7 +91,13 @@ class AppServices {
     final sync = SyncEngine(store, outbox, apiOf);
     final mutations = Mutations(store, outbox, sync, apiOf, db);
     final modules = ModuleLibrary(db, store, apiOf);
-    final narrator = Narrator(apiOf);
+    final narrator = Narrator(apiOf)
+      // BI26101394: the place in each module and the chosen device voice survive a restart.
+      ..readSetting = (k) async {
+        final v = (await db.getSnapshot(k))?.$1;
+        return v is String ? v : null;
+      }
+      ..writeSetting = (k, v) => v == null ? db.deleteSnapshot(k) : db.putSnapshot(k, v);
     final sms = SmsIngest(apiOf);
     final updater = UpdateService(apiOf);
     final lessonNotes = LessonNotesRepository(apiOf: apiOf, mutations: mutations, db: db);

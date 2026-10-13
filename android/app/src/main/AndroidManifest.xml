@@ -85,6 +85,11 @@
         </receiver>
     </application>
     <queries>
+        <!-- BI26101394: on Android 11 and later the app must declare it talks to the speech engine,
+             or flutter_tts can't bind to it and the device voice stays silent. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

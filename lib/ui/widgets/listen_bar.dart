@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app_scope.dart';
 import '../../services/narration.dart';
@@ -113,14 +114,21 @@ class _ListenBarState extends State<ListenBar> {
                 ],
               ),
 
-              // A seek bar only where there is something real to seek. The device
-              // voice exposes no position, so faking a timeline for it would be a
-              // lie the user can hear.
-              if (mine && n.tier == NarrationTier.agent && n.duration > Duration.zero) ...[
+              // The agent's audio has a real timeline. The device voice's is estimated from word counts
+              // (BI26101394), sentence by sentence, so its times carry a "~" and a seek lands on a sentence.
+              if (mine && n.active && n.duration > Duration.zero) ...[
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    Text(fmt.clock(n.position), style: T.monoSmall),
+                    IconButton(
+                      key: const Key('listen-back-30'),
+                      tooltip: 'Back 30 seconds',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => n.skip(-30),
+                      icon: const Icon(Icons.replay_30_rounded, size: 20, color: C.text2),
+                    ),
+                    Text('${n.tier == NarrationTier.device ? '~' : ''}${fmt.clock(n.position)}',
+                        style: T.monoSmall),
                     Expanded(
                       child: SliderTheme(
                         data: SliderTheme.of(context).copyWith(
@@ -133,19 +141,49 @@ class _ListenBarState extends State<ListenBar> {
                               .clamp(0, n.duration.inMilliseconds)
                               .toDouble(),
                           max: n.duration.inMilliseconds.toDouble(),
-                          onChanged: (v) =>
-                              n.seek(Duration(milliseconds: v.round())),
+                          // The device voice restarts on each seek, so it seeks once, where the drag ends.
+                          onChanged: (v) {
+                            if (n.tier == NarrationTier.agent) n.seek(Duration(milliseconds: v.round()));
+                          },
+                          onChangeEnd: (v) {
+                            if (n.tier == NarrationTier.device) n.seek(Duration(milliseconds: v.round()));
+                          },
                         ),
                       ),
                     ),
-                    Text(fmt.clock(n.duration), style: T.monoSmall),
+                    Text('${n.tier == NarrationTier.device ? '~' : ''}${fmt.clock(n.duration)}',
+                        style: T.monoSmall),
+                    IconButton(
+                      key: const Key('listen-forward-30'),
+                      tooltip: 'Forward 30 seconds',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => n.skip(30),
+                      icon: const Icon(Icons.forward_30_rounded, size: 20, color: C.text2),
+                    ),
                   ],
                 ),
-              ] else if (mine && n.tier == NarrationTier.device)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: LinearProgressIndicator(minHeight: 2),
+              ],
+
+              // No English voice on the phone means the device voice needs the network, which defeats it.
+              if (n.needsOfflineVoice) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text('This phone has no offline English voice, so listening needs a connection.',
+                          style: T.tiny.copyWith(color: C.amber)),
+                    ),
+                    TextButton(
+                      key: const Key('listen-install-voice'),
+                      onPressed: () => launchUrl(
+                        Uri.parse('https://play.google.com/store/apps/details?id=com.google.android.tts'),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      child: const Text('Get a voice'),
+                    ),
+                  ],
                 ),
+              ],
 
               const SizedBox(height: 10),
               Row(

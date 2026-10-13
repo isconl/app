@@ -6,6 +6,9 @@ import 'package:just_audio/just_audio.dart';
 
 import '../api/client.dart';
 import '../util/fmt.dart' as fmt;
+import 'narration_script.dart';
+
+export 'narration_script.dart' show NarrationScript;
 
 /// Listening to a module instead of reading it.
 ///
@@ -60,57 +63,219 @@ class Narrator extends ChangeNotifier {
 
   static String key(String course, String file) => '$course/$file';
 
+  // ---- the device voice (BI26101394) ----
+  //
+  // The module is a NarrationScript of sentences, spoken one chunk (at most 3000 characters of whole
+  // sentences) at a time, with speak() awaiting each chunk's end. `_at` is the sentence the current chunk
+  // started on; the engine's progress callback moves `_heard` sentence by sentence inside it. Pause stops the
+  // engine and keeps `_heard`, so resume, the skips and the saved place all start on a sentence.
+
+  NarrationScript? _script;
+  int _at = 0;
+  int _heard = 0;
+
+  /// Bumped on every start, stop and skip, so a chunk loop that was overtaken ends quietly.
+  int _run = 0;
+
+  /// The device voice chosen, as the engine names it, once one has been picked.
+  String? deviceVoice;
+
+  /// Set when the engine has no voice on the phone (only network ones), so the bar can offer the install.
+  bool needsOfflineVoice = false;
+
+  /// Remembers the place in a module and the chosen voice across restarts (the snapshot store, wired in
+  /// app_scope). Null in tests.
+  Future<String?> Function(String key)? readSetting;
+  Future<void> Function(String key, String? value)? writeSetting;
+
+  static String _placeKey(String k) => 'narration.place:$k';
+  static const _voiceKey = 'narration.voice';
+
   Future<void> _wireTts() async {
     if (_ttsWired) return;
     _ttsWired = true;
     await _tts.awaitSpeakCompletion(true);
-    _tts.setCompletionHandler(() {
-      if (tier == NarrationTier.device) {
-        state = NarrationState.idle;
-        current = null;
+    _tts.setProgressHandler((text, start, end, word) {
+      final s = _script;
+      if (s == null || tier != NarrationTier.device) return;
+      final at = s.sentenceAtOffset(_at, start);
+      if (at != _heard) {
+        _heard = at;
+        position = s.positionOf(_heard, speed);
         notifyListeners();
       }
     });
     _tts.setErrorHandler((msg) {
-      error = 'The device voice failed: $msg';
+      if (tier != NarrationTier.device) return;
+      _run++;
+      error = 'The device voice stopped with an error ($msg). Tap Listen to try again.';
       state = NarrationState.idle;
+      current = null;
       notifyListeners();
     });
+    await _pickVoice();
   }
 
-  /// Read a module aloud with the device voice. Works offline, always.
+  /// English, British first, and a voice on the phone rather than one that needs the network. The user's
+  /// earlier choice wins when it is still installed.
+  Future<void> _pickVoice() async {
+    try {
+      await _tts.setLanguage('en-GB');
+      final raw = await _tts.getVoices;
+      final voices = [
+        for (final v in (raw is List ? raw : const []))
+          if (v is Map) v.map((k, val) => MapEntry('$k', '$val')),
+      ];
+      final saved = await readSetting?.call(_voiceKey);
+      final pick = chooseVoice(voices, saved: saved);
+      needsOfflineVoice = voices.isNotEmpty && pick == null;
+      if (pick != null) {
+        await _tts.setVoice({'name': pick['name']!, 'locale': pick['locale']!});
+        deviceVoice = pick['name'];
+      }
+    } catch (_) {
+      // Some engines report no voices; the default voice still speaks.
+    }
+  }
+
+  /// Read a module aloud with the device voice. Works offline, always. Starts where the listener left this
+  /// module last time, unless [fromStart].
   Future<void> speakDevice({
     required String course,
     required String file,
     required String markdown,
+    bool fromStart = false,
   }) async {
     await stop();
-    await _wireTts();
     tier = NarrationTier.device;
     current = key(course, file);
     error = null;
-    state = NarrationState.playing;
-    // The device tier has no seekable timeline to report - flutter_tts exposes
-    // no position - so duration stays zero and the UI shows a pulse rather than
-    // a progress bar it would have to fake.
-    position = Duration.zero;
-    duration = Duration.zero;
+    state = NarrationState.loading;
     notifyListeners();
 
-    final text = speakable(markdown);
-    if (text.trim().isEmpty) {
+    final script = NarrationScript(speakable(markdown));
+    if (script.isEmpty) {
       error = 'Nothing in this module to read aloud.';
       state = NarrationState.idle;
+      current = null;
       notifyListeners();
       return;
     }
-    await _tts.setSpeechRate(_ttsRate(speed));
-    await _tts.speak(text);
+    try {
+      await _wireTts();
+      await _tts.setSpeechRate(_ttsRate(speed));
+    } catch (e) {
+      error = 'The phone\'s voice engine did not start ($e). Check Text-to-speech in Android settings, '
+          'then tap Listen again.';
+      state = NarrationState.idle;
+      current = null;
+      notifyListeners();
+      return;
+    }
+    _script = script;
+    final saved = fromStart ? null : int.tryParse(await readSetting?.call(_placeKey(current!)) ?? '');
+    _heard = (saved != null && saved < script.length) ? saved : 0;
+    duration = script.durationAt(speed);
+    await _speakFrom(_heard);
   }
 
-  /// flutter_tts rates are not multiples of natural pace: on Android 0.5 is
-  /// roughly normal speech and 1.0 is comically fast. Mapped so the UI can talk
-  /// in the multiples a person expects.
+  /// Speaks chunk after chunk from sentence [from] until the end, a stop, or a newer run.
+  Future<void> _speakFrom(int from) async {
+    final s = _script;
+    if (s == null) return;
+    final run = ++_run;
+    state = NarrationState.playing;
+    _heard = from;
+    position = s.positionOf(from, speed);
+    notifyListeners();
+    var i = from;
+    while (i < s.length) {
+      final chunk = s.chunkAt(i);
+      _at = i;
+      final dynamic ok = await _tts.speak(chunk.text);
+      if (run != _run) return; // paused, stopped, skipped or restarted meanwhile
+      if (ok == 0 || ok == false) {
+        // Android refused the utterance; it is never retried in a loop.
+        error = 'The phone would not read this part aloud. Tap Listen to try again from here.';
+        state = NarrationState.idle;
+        current = null;
+        notifyListeners();
+        return;
+      }
+      i = chunk.next;
+      _heard = i;
+      position = s.positionOf(i, speed);
+      unawaited(_savePlace(i));
+      notifyListeners();
+    }
+    // The end: the next Listen starts the module from the top.
+    unawaited(_savePlace(null));
+    _script = null;
+    state = NarrationState.idle;
+    current = null;
+    position = Duration.zero;
+    notifyListeners();
+  }
+
+  Future<void> _savePlace(int? sentence) async {
+    final k = current;
+    if (k == null) return;
+    try {
+      await writeSetting?.call(_placeKey(k), sentence?.toString());
+    } catch (_) {}
+  }
+
+  /// Skip [seconds] forward or (negative) back, landing on a sentence start. Device voice only; the agent's
+  /// audio seeks on its own timeline.
+  Future<void> skip(int seconds) async {
+    if (tier == NarrationTier.agent) {
+      final p = _player;
+      if (p == null) return;
+      var to = p.position + Duration(seconds: seconds);
+      if (to < Duration.zero) to = Duration.zero;
+      if (duration > Duration.zero && to > duration) to = duration;
+      await p.seek(to);
+      return;
+    }
+    final s = _script;
+    if (s == null || current == null) return;
+    final to = s.skip(_heard, seconds, speed).clamp(0, s.length - 1);
+    final wasPlaying = state == NarrationState.playing;
+    _run++;
+    await _tts.stop();
+    _heard = to;
+    position = s.positionOf(to, speed);
+    unawaited(_savePlace(to));
+    if (wasPlaying) {
+      await _speakFrom(to);
+    } else {
+      notifyListeners();
+    }
+  }
+
+  /// Chosen in settings: the voice to use from now on, remembered.
+  Future<void> chooseDeviceVoice(Map<String, String> voice) async {
+    await _tts.setVoice({'name': voice['name']!, 'locale': voice['locale']!});
+    deviceVoice = voice['name'];
+    await writeSetting?.call(_voiceKey, voice['name']);
+    notifyListeners();
+  }
+
+  /// The installed English voices, local ones first, for the settings picker.
+  Future<List<Map<String, String>>> englishVoices() async {
+    await _wireTts();
+    final raw = await _tts.getVoices;
+    final voices = [
+      for (final v in (raw is List ? raw : const []))
+        if (v is Map) v.map((k, val) => MapEntry('$k', '$val')),
+    ].where((v) => (v['locale'] ?? '').toLowerCase().startsWith('en')).toList()
+      ..sort((a, b) => _voiceRank(b).compareTo(_voiceRank(a)));
+    return voices;
+  }
+
+  /// flutter_tts rates are not multiples of natural pace. On Android the plugin doubles the value before
+  /// handing it to the engine, so 0.5 is the engine's own 1.0, its natural pace, and 1.0 is double speed;
+  /// iOS treats 0.5 as normal too. Mapped so the UI can talk in the multiples a person expects.
   double _ttsRate(double multiple) => (0.5 * multiple).clamp(0.1, 1.0);
 
   /// Play the agent's narration. Requires a connection the first time; once
@@ -197,10 +362,20 @@ class Narrator extends ChangeNotifier {
     speed = double.parse(v.clamp(0.7, 2.0).toStringAsFixed(2));
     if (tier == NarrationTier.agent) {
       await _player?.setSpeed(speed);
-    } else if (state == NarrationState.playing) {
-      // flutter_tts cannot change rate mid-utterance, so this takes effect on
-      // the next module rather than pretending to apply now.
+    } else {
+      // An utterance keeps the rate it started with, so a playing module restarts its current sentence
+      // at the new rate; the timeline is re-estimated for it.
       await _tts.setSpeechRate(_ttsRate(speed));
+      final s = _script;
+      if (s != null) {
+        duration = s.durationAt(speed);
+        position = s.positionOf(_heard, speed);
+        if (state == NarrationState.playing) {
+          _run++;
+          await _tts.stop();
+          unawaited(_speakFrom(_heard));
+        }
+      }
     }
     notifyListeners();
   }
@@ -208,12 +383,12 @@ class Narrator extends ChangeNotifier {
   Future<void> pause() async {
     if (tier == NarrationTier.agent) {
       await _player?.pause();
-    } else {
-      // The device tier cannot resume mid-utterance on Android, so pause is
-      // stop. Saying so is better than a resume button that restarts the module.
+    } else if (_script != null) {
+      // Stop the engine and keep the sentence being heard; resume starts there.
+      _run++;
       await _tts.stop();
-      state = NarrationState.idle;
-      current = null;
+      state = NarrationState.paused;
+      unawaited(_savePlace(_heard));
     }
     notifyListeners();
   }
@@ -223,14 +398,39 @@ class Narrator extends ChangeNotifier {
       await _player?.play();
       state = NarrationState.playing;
       notifyListeners();
+    } else if (_script != null && state == NarrationState.paused) {
+      await _speakFrom(_heard);
     }
   }
 
   Future<void> seek(Duration d) async {
-    if (tier == NarrationTier.agent) await _player?.seek(d);
+    if (tier == NarrationTier.agent) {
+      await _player?.seek(d);
+      return;
+    }
+    final s = _script;
+    if (s == null) return;
+    // The device timeline is an estimate from word counts; a seek lands on the sentence starting nearest it.
+    final to = s.skip(0, d.inSeconds, speed).clamp(0, s.length - 1);
+    final wasPlaying = state == NarrationState.playing;
+    _run++;
+    await _tts.stop();
+    _heard = to;
+    position = s.positionOf(to, speed);
+    unawaited(_savePlace(to));
+    if (wasPlaying) {
+      await _speakFrom(to);
+    } else {
+      notifyListeners();
+    }
   }
 
   Future<void> stop() async {
+    _run++;
+    if (tier == NarrationTier.device && _script != null && current != null) {
+      unawaited(_savePlace(_heard));
+    }
+    _script = null;
     await _posSub?.cancel();
     await _stateSub?.cancel();
     _posSub = null;
@@ -252,6 +452,38 @@ class Narrator extends ChangeNotifier {
   }
 }
 
+/// BI26101394: the voice to use from what the engine reports (`name`, `locale`, and on Android `quality` and
+/// `network_required`). A voice that needs the network is never chosen, since this tier exists to work in
+/// airplane mode. The [saved] choice wins while it is still installed and on the phone; otherwise British
+/// English, then any English, highest quality first. Null when no English voice is on the phone.
+Map<String, String>? chooseVoice(List<Map<String, String>> voices, {String? saved}) {
+  final local = voices.where((v) => !_needsNetwork(v) && (v['locale'] ?? '').toLowerCase().startsWith('en'));
+  if (saved != null) {
+    for (final v in local) {
+      if (v['name'] == saved) return v;
+    }
+  }
+  Map<String, String>? best;
+  for (final v in local) {
+    if (best == null || _voiceRank(v) > _voiceRank(best)) best = v;
+  }
+  return best;
+}
+
+bool _needsNetwork(Map<String, String> v) {
+  final n = (v['network_required'] ?? '').toLowerCase();
+  return n == '1' || n == 'true' || (v['name'] ?? '').toLowerCase().contains('network');
+}
+
+/// British English beats other English; within that, the engine's quality figure (Android reports 100 to
+/// 500), then a local voice over a network one.
+int _voiceRank(Map<String, String> v) {
+  final locale = (v['locale'] ?? '').toLowerCase().replaceAll('_', '-');
+  final gb = locale == 'en-gb' ? 1000 : 0;
+  final quality = int.tryParse(v['quality'] ?? '') ?? 300;
+  return gb + quality + (_needsNetwork(v) ? 0 : 1);
+}
+
 /// Markdown into something worth hearing.
 ///
 /// Mirrors `speakable()` in the agent's lib/voice.js on purpose. The duplication
@@ -265,18 +497,37 @@ class Narrator extends ChangeNotifier {
 /// it exists, links keep their text and lose the URL, and what was skipped is
 /// announced at the end instead of vanishing.
 String speakable(String markdown) {
-  final lines = markdown.replaceAll('\r\n', '\n').split('\n');
+  var src = markdown.replaceAll('\r\n', '\n');
+  // BI26101394: what a 4.4.0 module carries that a listener must never hear. The front matter, comments,
+  // and LaTeX, which reads as a string of backslashes; a block formula is pointed at, a plain inline one
+  // is spoken as written.
+  src = src.replaceFirst(RegExp(r'^﻿?---\n[\s\S]*?\n---[ \t]*(\n|$)'), '');
+  src = src.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '');
+  src = src.replaceAll(RegExp(r'\$\$[\s\S]+?\$\$'), '\n(formula, see screen)\n');
+  src = src.replaceAllMapped(RegExp(r'(?<![\\$\w])\$(?=\S)([^$\n]+?)(?<=\S)\$(?![\w$])'), (m) {
+    final f = m.group(1)!;
+    return RegExp(r'[\\{}_^]').hasMatch(f) ? '(formula, see screen)' : f;
+  });
+  final lines = src.split('\n');
   final out = <String>[];
   var inCode = false;
+  var fenceIsCode = true;
   var codeSkipped = 0;
+  var activitySkipped = 0;
   var tableSkipped = 0;
 
   for (var i = 0; i < lines.length; i++) {
     var l = lines[i];
 
     if (l.trimLeft().startsWith('```')) {
+      if (!inCode) {
+        fenceIsCode = _codeFence(l.trimLeft().substring(3).trim());
+      } else if (fenceIsCode) {
+        codeSkipped++;
+      } else {
+        activitySkipped++;
+      }
       inCode = !inCode;
-      if (!inCode) codeSkipped++;
       continue;
     }
     if (inCode) continue;
@@ -300,7 +551,14 @@ String speakable(String markdown) {
 
     final h = RegExp(r'^(#{1,6})\s+(.*)$').firstMatch(l);
     if (h != null) {
-      out.addAll(['', '${h.group(2)!.replaceAll(RegExp(r'[*_`]'), '').trim()}.', '']);
+      // A movement key ("ORIENT · Sky As Sphere") is a label for the eye; the title is what is said.
+      final title = h
+          .group(2)!
+          .replaceAll(RegExp(r'[*_`]'), '')
+          .replaceFirst(RegExp(r'^[A-Z][A-Z ]{1,20}\s*[·•|:]\s*'), '')
+          .replaceAll(RegExp(r'\{[^}]*\}'), '')
+          .trim();
+      if (title.isNotEmpty) out.addAll(['', '$title.', '']);
       continue;
     }
 
@@ -309,6 +567,11 @@ String speakable(String markdown) {
     l = l.replaceFirst(RegExp(r'^(\s*)\d+[.)]\s+'), r'');
 
     l = l
+        // An image says what its alt text says; a glossary term says just the term.
+        .replaceAllMapped(RegExp(r'!\[([^\]]*)\]\([^)]*\)'),
+            (m) => m.group(1)!.trim().isEmpty ? '' : 'Image: ${m.group(1)!.trim()}.')
+        .replaceAllMapped(RegExp(r'\[\[([^\]|]+)(\|[^\]]*)?\]\]'), (m) => m.group(1)!.trim())
+        .replaceAll(RegExp(r'<[^>\n]+>'), '')
         .replaceAllMapped(RegExp(r'\[([^\]]+)\]\(([^)]+)\)'), (m) => m.group(1)!)
         .replaceAllMapped(RegExp(r'`([^`]+)`'), (m) => m.group(1)!)
         .replaceAllMapped(RegExp(r'\*\*([^*]+)\*\*'), (m) => m.group(1)!)
@@ -332,9 +595,24 @@ String speakable(String markdown) {
   if (tableSkipped > 0) {
     notes.add('$tableSkipped table${tableSkipped == 1 ? '' : 's'}');
   }
+  if (activitySkipped > 0) {
+    notes.add('$activitySkipped activit${activitySkipped == 1 ? 'y' : 'ies'}');
+  }
   if (notes.isNotEmpty) {
-    text += '\n\nThis module also contains ${notes.join(' and ')}, '
-        'which are not read aloud. Open it to read them.';
+    final list = notes.length == 1
+        ? notes.single
+        : '${notes.sublist(0, notes.length - 1).join(', ')} and ${notes.last}';
+    text += '\n\nThis module also contains $list, which are not read aloud. Open it to read them.';
   }
   return text;
 }
+
+const _codeLangs = {
+  '', 'dart', 'js', 'javascript', 'ts', 'typescript', 'python', 'py', 'bash', 'sh', 'shell', 'powershell',
+  'ps1', 'json', 'yaml', 'yml', 'toml', 'rust', 'rs', 'kotlin', 'kt', 'java', 'c', 'cpp', 'c++', 'cs',
+  'sql', 'html', 'css', 'go', 'text', 'txt', 'xml', 'r', 'swift', 'ruby', 'php', 'diff', 'console',
+};
+
+/// A fence of program code ("```python") is announced as code; anything else ("```experiment",
+/// "```chart", "```quiz") is an activity on the page.
+bool _codeFence(String info) => _codeLangs.contains(info.split(RegExp(r'\s')).first.toLowerCase());
