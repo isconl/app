@@ -88,3 +88,12 @@ reports Visual Studio missing, and the "Desktop development with C++"
 workload is a ~7GB install. Windows and Linux binaries are produced by CI
 instead; iterate on desktop layout with `flutter run -d chrome`, which
 uses the same adaptive breakpoints.
+
+## Voice check
+
+User-facing text in this repo is checked against the writing standard (no em dashes, no stock crutch words, no
+reflexive sign-offs; Slate doc `WRITING-VOICE.md`). `node scripts/voice-ci.cjs check` lints the files named in
+`.voice-lint.json` and fails only on findings that are not in `.voice-lint-baseline.json`; the baseline may only
+shrink, so fix a finding and run `node scripts/voice-ci.cjs baseline` in the same commit. A deliberate exception is
+`voice-lint-disable-next-line <reason>` above the line. CI runs the same check on pull requests and on pushes to
+dev, staging and main.

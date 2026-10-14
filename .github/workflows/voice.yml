@@ -1,0 +1,25 @@
+# The voice check (CLAUDE.md section 34, BR26100102). Fails on a NEW finding only: the findings already in
+# .voice-lint-baseline.json are fixed through the comb's rows, and the baseline may only shrink. A path filter keeps
+# it from running when no text changed, so it spends almost no Actions minutes (section 42).
+name: voice
+on:
+  pull_request:
+    paths: ['**.md', '**.html', '**.js', '**.jsx', '**.ts', '**.tsx', '**.dart', '.voice-lint*']
+  push:
+    branches: [dev, staging, main]
+    paths: ['**.md', '**.html', '**.js', '**.jsx', '**.ts', '**.tsx', '**.dart', '.voice-lint*']
+  workflow_dispatch:
+jobs:
+  voice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: new findings only
+        run: node scripts/voice-ci.cjs check --base "${{ github.event.pull_request.base.sha || github.event.before }}"
+      - name: the baseline only shrinks
+        run: node scripts/voice-ci.cjs shrink --base "${{ github.event.pull_request.base.sha || github.event.before }}"
