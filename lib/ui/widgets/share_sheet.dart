@@ -138,3 +138,87 @@ class _ShareSheetState extends State<ShareSheet> {
     );
   }
 }
+
+/// BI26100138: the capture sheet the widget's Capture button and the Capture icon shortcut open: one box, saved to
+/// the inbox through the outbox (so it works offline), nothing else to choose.
+Future<void> showQuickCapture(BuildContext context, {ShareSink? sink}) {
+  final s = sink ?? AppShareSink(AppScope.of(context));
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: QuickCapture(sink: s),
+    ),
+  );
+}
+
+class QuickCapture extends StatefulWidget {
+  const QuickCapture({super.key, required this.sink, this.onDone});
+  final ShareSink sink;
+  final VoidCallback? onDone;
+
+  @override
+  State<QuickCapture> createState() => _QuickCaptureState();
+}
+
+class _QuickCaptureState extends State<QuickCapture> {
+  final _text = TextEditingController();
+  bool _busy = false;
+  String? _message;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final body = _text.text.trim();
+    if (body.isEmpty) {
+      setState(() => _message = 'Write something first.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    final ok = await widget.sink.addInbox(body: body);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _message = ok ? 'Saved to Inbox.' : 'Could not save it. Try again.';
+    });
+    if (ok) {
+      widget.onDone?.call();
+      if (widget.onDone == null) Navigator.of(context).maybePop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Capture', style: T.title),
+            const SizedBox(height: 8),
+            TextField(
+              key: const Key('capture-text'),
+              controller: _text,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 8,
+              decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'What is on your mind?'),
+            ),
+            if (_message != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_message!, key: const Key('capture-message'), style: T.small)),
+            const SizedBox(height: 10),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: _busy ? null : () => Navigator.of(context).maybePop(), child: const Text('Cancel')),
+              const SizedBox(width: 8),
+              FilledButton(key: const Key('capture-save'), onPressed: _busy ? null : _save, child: const Text('Save')),
+            ]),
+          ]),
+        ),
+      );
+}

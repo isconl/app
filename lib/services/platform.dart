@@ -16,11 +16,17 @@ class PlatformBridge {
   /// BI26100159: fired when photos or PDFs are shared in while the app is running.
   void Function(List<SharedFile> files)? onSharedFiles;
 
+  /// BI26100138: the widget or an icon shortcut opened the app while it was running: "capture", "voice" or "today".
+  void Function(String action)? onWidgetAction;
+
   void init() {
     if (kIsWeb) return;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'sharedText' && call.arguments is String) {
         onSharedText?.call(call.arguments as String);
+      }
+      if (call.method == 'widgetAction' && call.arguments is String) {
+        onWidgetAction?.call(call.arguments as String);
       }
       if (call.method == 'sharedFiles') {
         final files = SharedFile.parseList(call.arguments);

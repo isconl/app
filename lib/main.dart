@@ -14,7 +14,9 @@ import 'services/day_close_planner.dart';
 import 'services/platform.dart';
 import 'services/prefetch.dart';
 import 'services/prefetch_worker.dart';
+import 'services/home_widget.dart';
 import 'services/share_intake.dart';
+import 'services/widget_sync.dart';
 import 'ui/widgets/share_sheet.dart';
 import 'theme.dart';
 import 'ui/widgets/brand.dart' as brand;
@@ -108,6 +110,44 @@ class _RootGateState extends State<RootGate> {
     PlatformBridge.instance.getSharedFiles().then((files) {
       if (files.isNotEmpty) _captureFiles(files);
     });
+    PlatformBridge.instance.onWidgetAction = _widgetAction;
+    HomeWidgetBridge.instance.pendingAction().then((a) {
+      if (a != null) _widgetAction(a);
+    });
+  }
+
+  String? _pendingWidgetAction;
+  bool _widgetSyncStarted = false;
+
+  /// BI26100138: the home-screen widget or an icon shortcut asked for something. "today" needs nothing more than the
+  /// app being open; "voice" points at the recorder on the Console ring, since the app has no separate voice-to-inbox path.
+  void _widgetAction(String action) {
+    if (!mounted) return;
+    if (!AppScope.of(context).session.authenticated) {
+      _pendingWidgetAction = action;
+      return;
+    }
+    if (action == 'today') return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      if (action == 'capture') {
+        showQuickCapture(ctx);
+      } else if (action == 'voice') {
+        ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(const SnackBar(content: Text('Hold record on the console ring to dictate a note.')));
+      }
+    });
+  }
+
+  void _startWidgetSync(AppServices services) {
+    if (_widgetSyncStarted || kIsWeb) return;
+    _widgetSyncStarted = true;
+    final sync = WidgetSync(services);
+    activeWidgetSync = sync;
+    sync.start();
+    final a = _pendingWidgetAction;
+    _pendingWidgetAction = null;
+    if (a != null) _widgetAction(a);
   }
 
   void _captureShare(String text) => _offerShare(ShareItem.text(text));
@@ -177,6 +217,7 @@ class _RootGateState extends State<RootGate> {
         if (session.biometricLock && !_unlocked && !kIsWeb) {
           return _LockScreen(onUnlock: _tryUnlock);
         }
+        WidgetsBinding.instance.addPostFrameCallback((_) => _startWidgetSync(services));
         return const AdaptiveShell();
       },
     );

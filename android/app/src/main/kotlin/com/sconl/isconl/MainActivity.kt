@@ -22,6 +22,15 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingSharedText: String? = null
     // BI26100159: files shared into the app, already copied into the cache folder.
     private var pendingSharedFiles: List<Map<String, Any?>>? = null
+    // BI26100138: "capture", "voice" or "today", from the widget or a shortcut.
+    private var pendingWidgetAction: String? = null
+
+    private fun widgetActionOf(intent: Intent?): String? = when (intent?.action) {
+        "com.sconl.isconl.CAPTURE" -> "capture"
+        "com.sconl.isconl.VOICE" -> "voice"
+        "com.sconl.isconl.TODAY" -> "today"
+        else -> null
+    }
     private var pickResult: MethodChannel.Result? = null
     private val pickRequestCode = 7301
     private val smsRequestCode = 7302
@@ -33,11 +42,26 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         pendingSharedText = extractSharedText(intent)
         pendingSharedFiles = extractSharedFiles(intent)
+        pendingWidgetAction = widgetActionOf(intent)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getSharedText" -> {
                     result.success(pendingSharedText)
                     pendingSharedText = null
+                }
+                // BI26100138: the widget and the icon shortcuts ask the app to open something.
+                "getWidgetAction" -> {
+                    result.success(pendingWidgetAction)
+                    pendingWidgetAction = null
+                }
+                "updateWidget" -> {
+                    val json = call.argument<String>("json")
+                    if (json == null) {
+                        result.error("ARG", "json required", null)
+                    } else {
+                        IsconlWidgetProvider.save(applicationContext, json)
+                        result.success(true)
+                    }
                 }
                 "getSharedFiles" -> {
                     result.success(pendingSharedFiles)
@@ -177,6 +201,13 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        val action = widgetActionOf(intent)
+        if (action != null) {
+            pendingWidgetAction = action
+            flutterEngine?.dartExecutor?.binaryMessenger?.let {
+                MethodChannel(it, channelName).invokeMethod("widgetAction", action)
+            }
+        }
         val files = extractSharedFiles(intent)
         if (files != null) {
             pendingSharedFiles = files

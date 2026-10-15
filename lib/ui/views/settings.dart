@@ -10,6 +10,7 @@ import '../widgets/integrations_section.dart';
 import '../widgets/journal_access.dart';
 import '../widgets/offline_narration.dart';
 import '../widgets/prefetch_card.dart';
+import '../widgets/widget_settings_card.dart';
 import '../../services/cx_grants.dart';
 import '../widgets/news_watch_card.dart';
 import '../widgets/passkeys_card.dart';
@@ -163,6 +164,8 @@ class _SettingsViewState extends State<SettingsView> {
               ),
               const SectionLabel('Prefetch'),
               const PrefetchCard(),
+              const SizedBox(height: 10),
+              const WidgetSettingsCard(),
               const SectionLabel('Offline narration'),
               const OfflineNarrationCard(),
               const SectionLabel('Journal access'),
