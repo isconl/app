@@ -25,6 +25,10 @@ class AlertService {
   /// cx canon section 3: a read-grant request opens the approval sheet. Payload is cx-grant:<id>.
   void Function(String id)? onGrant;
   static const grantPayloadPrefix = 'cx-grant:';
+
+  /// BI26100707: a missed check-in nudge opens that trip card. Payload is `trip:` plus the trip id.
+  void Function(String id)? onTrip;
+  static const tripPayloadPrefix = 'trip:';
   static const _dayCloseBase = 9100;
   static const _dayCloseSlots = 16;
 
@@ -38,6 +42,7 @@ class AlertService {
         if (r.payload == dayClosePayload) onDayClose?.call();
         final p = r.payload ?? '';
         if (p.startsWith(grantPayloadPrefix)) onGrant?.call(p.substring(grantPayloadPrefix.length));
+        if (p.startsWith(tripPayloadPrefix)) onTrip?.call(p.substring(tripPayloadPrefix.length));
       },
     );
     await _plugin
@@ -100,6 +105,44 @@ class AlertService {
         payload: dayClosePayload,
       );
     }
+  }
+
+  /// BI26100707: one local notification at [when] on the device clock, so a kit
+  /// expiry reminder or a missed check-in nudge needs no signal. Scheduling the
+  /// same [id] again replaces the earlier one.
+  Future<void> scheduleAt({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime when,
+    String? payload,
+  }) async {
+    if (!_ready) return;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'isconl_readiness',
+        'Readiness',
+        channelDescription: 'Kit expiry reminders and missed check-in nudges',
+        importance: Importance.max,
+        priority: Priority.high,
+        color: Color.fromARGB(255, 0xD2, 0x99, 0x22),
+      ),
+    );
+    await _plugin.cancel(id);
+    await _plugin.zonedSchedule(
+      id,
+      title,
+      body,
+      tz.TZDateTime.from(when, tz.UTC),
+      details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      payload: payload,
+    );
+  }
+
+  Future<void> cancelId(int id) async {
+    if (!_ready) return;
+    await _plugin.cancel(id);
   }
 
   Future<void> cancelDayClose() async {

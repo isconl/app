@@ -6,6 +6,7 @@ import '../util/equicycle.dart';
 import '../data/store.dart' show Snapshot;
 import '../data/sync.dart' show SyncPhase;
 import '../main.dart' show BrandMark;
+import '../readiness/readiness_host.dart';
 import '../services/alerts.dart';
 import '../theme.dart';
 import '../util/fmt.dart' as fmt;
@@ -929,13 +930,15 @@ class MenuSheet extends StatelessWidget {
               () => go(const RhythmView(), 'Rhythm')),
           _item(ctx, Icons.school_rounded, 'Study',
               () => go(const LearningView(), 'Study')),
-          _item(ctx, Icons.account_balance_wallet_rounded, 'Holdings',
+          _item(ctx, Icons.account_balance_wallet_rounded, 'Ledger',
               () => go(const FinanceView(), 'Ledger')),
           // BI26100207: Journal and Ideas are one item, Codex, each still on its own route.
           _item(ctx, Icons.auto_stories_rounded, 'Codex',
               () => go(const CodexView(), 'Codex'),
               badge: ideasCount > 0 ? '$ideasCount' : null),
           // BI26100207: the archetype spaces live under Identity, as on the web.
+          _item(ctx, Icons.health_and_safety_rounded, 'Readiness',
+              () => go(const ReadinessHost(), 'Readiness')),
           _item(ctx, Icons.badge_rounded, 'Identity',
               () => go(const IdentityView(), 'Identity')),
           // ── CIRCLE ───────────────────────────────────────────
@@ -1127,6 +1130,7 @@ class SecondaryScreen extends StatelessWidget {
     'holdings' || 'finance' || 'ledger' =>(const FinanceView(), 'Ledger'),
     'codex' => (const CodexView(), 'Codex'),
     'identity' => (const IdentityView(), 'Identity'),
+    'readiness' => (const ReadinessHost(), 'Readiness'),
     'journal' => (const JournalView(), 'Journal'),
     'ideas' => (const IdeasView(), 'Ideas'),
     'circle' || 'contacts' => (const ContactsView(), 'Contacts'),

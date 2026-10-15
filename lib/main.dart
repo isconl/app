@@ -17,6 +17,7 @@ import 'ui/widgets/brand.dart' show BrandMotion;
 import 'ui/adaptive_shell.dart';
 import 'ui/login.dart';
 import 'ui/views/day_close.dart';
+import 'readiness/readiness_host.dart';
 import 'ui/widgets/journal_access.dart';
 import 'ui/widgets/common.dart';
 
@@ -80,6 +81,8 @@ class _RootGateState extends State<RootGate> {
     });
     AlertService.instance.onDayClose = () => rootNavigatorKey.currentState
         ?.push(MaterialPageRoute<void>(builder: (_) => const DayCloseScreen()));
+    AlertService.instance.onTrip = (id) => rootNavigatorKey.currentState?.push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(appBar: AppBar(title: const Text('Readiness')), body: ReadinessHost(tripId: id))));
     AlertService.instance.onGrant = (id) {
       final ctx = rootNavigatorKey.currentContext;
       if (ctx != null) showGrantRequest(ctx, id);
