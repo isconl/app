@@ -7,6 +7,8 @@ import 'package:sqflite/sqflite.dart' show databaseFactory;
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
 import 'app_nav.dart';
+import 'console/audio_backends.dart' show ensureBackgroundAudio;
+import 'console/console_services.dart';
 import 'app_scope.dart';
 import 'services/alerts.dart';
 import 'services/branding.dart';
@@ -43,6 +45,8 @@ Future<void> main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
   PlatformBridge.instance.init();
+  // BI26100323: notification and lock-screen controls for the Console player. Never allowed to stop the app starting.
+  await ensureBackgroundAudio();
   final services = await AppServices.boot();
   await BrandingService.instance.load();
   runApp(IsconlApp(services: services));
@@ -128,6 +132,11 @@ class _RootGateState extends State<RootGate> {
       return;
     }
     if (action == 'today') return;
+    // BI26100323: the recording notification's Stop button.
+    if (action == 'stop-recording') {
+      ConsoleServices.of(AppScope.of(context)).recorder.stop();
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = rootNavigatorKey.currentContext;
       if (ctx == null || !ctx.mounted) return;

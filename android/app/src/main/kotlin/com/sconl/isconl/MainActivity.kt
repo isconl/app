@@ -10,14 +10,16 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
-import io.flutter.embedding.android.FlutterFragmentActivity
+import com.ryanheise.audioservice.AudioServiceFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 // FlutterFragmentActivity (not FlutterActivity) so local_auth's biometric
 // prompt, which requires a FragmentActivity host, works.
-class MainActivity : FlutterFragmentActivity() {
+// BI26100323: AudioServiceFragmentActivity is a FlutterFragmentActivity that also lets the media service (notification
+// and lock-screen controls) reuse the app's engine; the biometric prompt still gets its FragmentActivity.
+class MainActivity : AudioServiceFragmentActivity() {
     private val channelName = "isconl/platform"
     private var pendingSharedText: String? = null
     // BI26100159: files shared into the app, already copied into the cache folder.
@@ -29,6 +31,7 @@ class MainActivity : FlutterFragmentActivity() {
         "com.sconl.isconl.CAPTURE" -> "capture"
         "com.sconl.isconl.VOICE" -> "voice"
         "com.sconl.isconl.TODAY" -> "today"
+        "com.sconl.isconl.STOP_RECORDING" -> "stop-recording"
         else -> null
     }
     private var pickResult: MethodChannel.Result? = null
@@ -50,6 +53,19 @@ class MainActivity : FlutterFragmentActivity() {
                     pendingSharedText = null
                 }
                 // BI26100138: the widget and the icon shortcuts ask the app to open something.
+                // BI26100323: a foreground service of type microphone for the length of a take.
+                "startRecordingService" -> {
+                    try {
+                        RecordingService.start(applicationContext)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "stopRecordingService" -> {
+                    RecordingService.stop(applicationContext)
+                    result.success(true)
+                }
                 "getWidgetAction" -> {
                     result.success(pendingWidgetAction)
                     pendingWidgetAction = null
