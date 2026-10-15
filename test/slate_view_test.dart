@@ -11,9 +11,10 @@ void main() {
       expect(viewForNavRoute('slate')!.$2, 'Slate');
     });
 
-    test('the strip has Tasks first and defaults to it', () {
-      expect(SlateTab.values.first, SlateTab.tasks);
-      expect(SlateView.remembered, SlateTab.tasks);
+    test('the strip has Sessions first and defaults to it, with Tasks kept', () {
+      expect(SlateTab.values.first, SlateTab.sessions);
+      expect(SlateTab.values, contains(SlateTab.tasks));
+      expect(SlateView.remembered, SlateTab.sessions);
     });
   });
 }

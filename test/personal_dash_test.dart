@@ -68,11 +68,11 @@ void main() {
     await t.pumpWidget(host(dash(() async => !refuse)));
     expect(find.text('Tap to reveal'), findsOneWidget);
     expect(find.textContaining('125'), findsNothing);
-    await t.tap(find.text('HOLDINGS'));
+    await t.tap(find.text('LEDGER'));
     await t.pump();
     expect(find.text('Tap to reveal'), findsOneWidget);
     refuse = false;
-    await t.tap(find.text('HOLDINGS'));
+    await t.tap(find.text('LEDGER'));
     await t.pump();
     expect(find.text('Tap to reveal'), findsNothing);
     expect(find.textContaining('125'), findsOneWidget);
@@ -80,7 +80,7 @@ void main() {
 
   testWidgets('holdings re-mask when the app is backgrounded and when the tile leaves the screen', (t) async {
     await t.pumpWidget(host(dash(() async => true)));
-    await t.tap(find.text('HOLDINGS'));
+    await t.tap(find.text('LEDGER'));
     await t.pump();
     expect(find.textContaining('125'), findsOneWidget);
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
@@ -89,7 +89,7 @@ void main() {
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await t.pump();
 
-    await t.tap(find.text('HOLDINGS'));
+    await t.tap(find.text('LEDGER'));
     await t.pump();
     expect(find.textContaining('125'), findsOneWidget);
     await t.pumpWidget(host(const SizedBox()));
