@@ -3,6 +3,7 @@ import 'package:isconl/services/slate_hub_client.dart';
 import 'package:slate_ui/slate_ui.dart';
 
 void main() {
+  rowParsingTests();
   test('parses a session from hub in snake_case and camelCase', () {
     final a = HubSlateClient.parseSession({
       'id': 's1',
@@ -42,5 +43,27 @@ void main() {
     expect(HubSlateClient.parseState('acked'), DeliveryState.acknowledged);
     expect(HubSlateClient.parseState('delivered'), DeliveryState.delivered);
     expect(HubSlateClient.parseState(null), DeliveryState.sent);
+  });
+}
+
+void rowParsingTests() {
+  test('rows, blockers, matrix and today parse from hub shapes', () {
+    final r = HubSlateClient.parseRow({
+      'id': 'BI1', 'project': 'iSconl', 'type': 'build', 'title': 'T',
+      'effectiveStatus': 'claimed', 'claimedBySession': 's9', 'subset': 'app',
+    });
+    expect(r.status, 'claimed');
+    expect(r.isClaimed, isTrue);
+    final d = HubSlateClient.parseDetail({'id': 'BI1', 'body': 'Do it'});
+    expect(d.body, 'Do it');
+    final b = HubSlateClient.parseBlocker({'id': 'k', 'row': 'BI1', 'class': 'access', 'need': 'n', 'raised_at': 100});
+    expect(b.kind, 'access');
+    final m = HubSlateClient.parseMatrix({
+      'types': ['plan', 'build'],
+      'projects': {'a': {'plan': 1, 'build': 2}},
+    });
+    expect(m.total, 3);
+    final t = HubSlateClient.parseToday({'closed_today': 3, 'weekly_daily_average': 10, 'in_flight': 2});
+    expect(t.belowPace, isTrue);
   });
 }

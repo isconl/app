@@ -1,7 +1,7 @@
 name: slate_ui
 description: "slate's sessions board and command panel as a Flutter package, mountable in isconl and in slate's own app."
 publish_to: 'none'
-version: 0.1.0
+version: 0.2.0
 
 environment:
   sdk: ^3.12.0
