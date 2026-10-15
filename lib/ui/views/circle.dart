@@ -6,6 +6,7 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../../util/markdown.dart';
 import '../shell.dart' show ShellAppBar;
+import '../widgets/circle_depth_widgets.dart';
 import '../widgets/common.dart';
 
 /// People, by ring or full flat roster. Cards show cadence state; detail
@@ -239,6 +240,20 @@ class _PersonScreenState extends State<PersonScreen> {
                 ),
               ),
             ],
+            // BI26100507: the message written for them (copy it, send it yourself), their tags, and their folder.
+            ReachoutCard(personId: id, fallbackChannel: fmt.s(person['CHANNEL'])),
+            PersonTagsCard(
+              personId: id,
+              tags: _personTags(person),
+              onChanged: () => AppScope.of(context).store.circle.refresh(),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: CreateFolderButton(personId: id, name: name, circle: fmt.s(person['CIRCLE']), met: fmt.s(person['MET'])),
+              ),
+            ),
             if (recent.isNotEmpty) ...[
               const SectionLabel('Recent interactions'),
               Panel(
@@ -286,6 +301,13 @@ class _PersonScreenState extends State<PersonScreen> {
         ),
       ),
     );
+  }
+
+  /// The console's rule: the TAGS column, else the GROUP, split on commas, never the ring itself.
+  static List<String> _personTags(Map<String, dynamic> p) {
+    final raw = (fmt.s(p['TAGS']).isNotEmpty && fmt.s(p['TAGS']) != '-') ? fmt.s(p['TAGS']) : (fmt.s(p['GROUP']) != '-' ? fmt.s(p['GROUP']) : '');
+    final ring = fmt.s(p['CIRCLE']);
+    return [for (final t in raw.split(',')) if (t.trim().isNotEmpty && t.trim() != ring) t.trim()];
   }
 
   /// Open the person's preferred channel natively.
