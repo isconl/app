@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/client.dart';
@@ -7,6 +7,7 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../../util/markdown.dart';
 import '../widgets/common.dart';
+import '../widgets/file_actions.dart';
 
 /// The OneDrive mirror, browsable from the phone.
 ///
@@ -55,6 +56,8 @@ class _FilesViewState extends State<FilesView> {
             stack: _stack,
             onJump: (idx) => setState(() => _stack = _stack.sublist(0, idx + 1)),
           ),
+          // BI26100512: new folder and upload into the folder being viewed.
+          FolderToolbar(path: _path, onChanged: () => snapshot.refresh()),
           Expanded(
             child: SnapshotView(
               snapshot: snapshot,
@@ -92,6 +95,16 @@ class _FilesViewState extends State<FilesView> {
                         padding: const EdgeInsets.only(bottom: 6),
                         child: _ItemTile(
                           item: item,
+                          onLongPress: () => showFormSheet(
+                            context,
+                            title: fmt.truncate(fmt.s(item['name']), 60),
+                            builder: (ctx) => FileActions(
+                              itemId: fmt.s(item['id']),
+                              name: fmt.s(item['name']),
+                              isFolder: fmt.b(item['isFolder']),
+                              onChanged: () => snapshot.refresh(),
+                            ),
+                          ),
                           onTap: () {
                             if (fmt.b(item['isFolder'])) {
                               _open(fmt.s(item['name']));
@@ -116,7 +129,10 @@ class _FilesViewState extends State<FilesView> {
       context,
       title: fmt.truncate(fmt.s(item['name']), 60),
       builder: (ctx) => _FileSheet(item: item),
-    );
+    ).whenComplete(() {
+      // A rename, move or delete from the sheet changes the listing behind it.
+      if (mounted) AppScope.of(this.context).store.folder(_path).refresh();
+    });
   }
 }
 
@@ -167,9 +183,10 @@ class _Breadcrumb extends StatelessWidget {
 }
 
 class _ItemTile extends StatelessWidget {
-  const _ItemTile({required this.item, required this.onTap});
+  const _ItemTile({required this.item, required this.onTap, this.onLongPress});
   final Map<String, dynamic> item;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   static IconData _icon(String name, bool folder) {
     if (folder) return Icons.folder_rounded;
@@ -198,11 +215,12 @@ class _ItemTile extends StatelessWidget {
         : [
             fmt.bytesLabel(item['size']),
             fmt.ago(item['lastModifiedDateTime']),
-          ].where((v) => v.isNotEmpty).join(' · ');
+          ].where((v) => v.isNotEmpty).join(' Â· ');
 
     return Panel(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Row(
         children: [
           Icon(_icon(name, folder),
@@ -276,6 +294,12 @@ class _FileSheetState extends State<_FileSheet> {
                 label: const Text('Open in OneDrive'),
               ),
           ],
+        ),
+        const SizedBox(height: 12),
+        FileActions(
+          itemId: fmt.s(item['id']),
+          name: fmt.s(item['name']),
+          onChanged: () => Navigator.of(context).maybePop(),
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),

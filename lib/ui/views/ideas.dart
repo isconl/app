@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/entry_actions.dart';
 import 'codex.dart' show CodexControls, PromoteOutcome, codexVisibilityOf, promoteIdeaToTask;
 
 /// Spark: the idea pipeline.
@@ -316,6 +317,22 @@ class _IdeaTile extends StatelessWidget {
               }
               return res.ok;
             },
+          ),
+          const SizedBox(height: 14),
+          // BI26100512: sharpen and delete, and the read across the pipeline.
+          EntryActions(
+            kind: 'idea',
+            id: fmt.s(idea['ID']),
+            body: fmt.s(idea['BODY']),
+            onDeleted: () {
+              AppScope.of(context).store.ideas.refresh();
+              Navigator.of(ctx).maybePop();
+            },
+          ),
+          TextButton(
+            key: const Key('ideas-review'),
+            onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => const ReviewSheet(kind: 'idea')),
+            child: const Text('Read the whole pipeline'),
           ),
           const SizedBox(height: 14),
           // BI26092651: an idea becomes a task without leaving the sheet.

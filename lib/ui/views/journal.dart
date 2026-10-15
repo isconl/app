@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/entry_actions.dart';
 import 'codex.dart' show CodexControls, codexCell, codexVisibilityOf;
 
 /// Journal: entries with mood/energy, streaks, add offline.
@@ -241,6 +242,23 @@ class _EntryTile extends StatelessWidget {
               }
               return res.ok;
             },
+          ),
+          const SizedBox(height: 14),
+          // BI26100512: the console's edit, reflect and delete for an entry, and the read across the journal.
+          EntryActions(
+            kind: 'journal',
+            id: fmt.s(entry['ID']),
+            body: fmt.s(entry['BODY']),
+            onChanged: () => services.store.journal.refresh(),
+            onDeleted: () {
+              services.store.journal.refresh();
+              Navigator.of(context).maybePop();
+            },
+          ),
+          TextButton(
+            key: const Key('journal-review'),
+            onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => const ReviewSheet(kind: 'journal')),
+            child: const Text('Read the whole journal'),
           ),
         ],
       ),
