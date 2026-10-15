@@ -291,6 +291,28 @@ class ModuleLibrary extends ChangeNotifier {
     return done;
   }
 
+  /// The markdown of a downloaded module, or empty when it is not on the device.
+  Future<String> markdownOf(String course, String file) async {
+    final s = await _db.getSnapshot(snapshotKey(course, file));
+    return fmt.s(fmt.m(s?.$1)['content']);
+  }
+
+  /// About how many bytes a course download will fetch: the modules not yet current,
+  /// plus the narration audio the manifest says exists. A guess from the manifest, shown
+  /// before the download starts so a reader on mobile data can say no.
+  ({int text, int audio}) estimateDownload(String course, List<String> files, {bool audio = true}) {
+    var text = 0;
+    var aud = 0;
+    for (final f in files) {
+      final e = _manifest[keyOf(course, f)];
+      if (e == null) continue;
+      if (status(course, f).state != ModuleState.current) text += fmt.i(e['bytes']);
+      final a = e['audio'];
+      if (audio && a is Map && a['available'] == true) aud += fmt.i(a['bytes']);
+    }
+    return (text: text, audio: aud);
+  }
+
   /// Remove a downloaded body. Only ever called because ARCHITECT asked.
   Future<void> forget(String course, String file) async {
     await _db.deleteSnapshot(snapshotKey(course, file));

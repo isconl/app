@@ -212,6 +212,13 @@ class AudioDownloads extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Everything: used on sign-out, so downloaded narration never outlives the session.
+  Future<void> deleteAll() async {
+    if (await root.exists()) await root.delete(recursive: true);
+    progress.clear();
+    notifyListeners();
+  }
+
   Future<void> deleteModule(String course, String file, String rev) async {
     final f = _fileFor(course, file, rev);
     if (await f.exists()) await f.delete();

@@ -109,13 +109,20 @@ class _SettingsViewState extends State<SettingsView> {
                         ),
                         OutlinedButton(
                           onPressed: () async {
+                            final narration = AppScope.of(context).narrator.downloads;
                             final sure = await confirmDialog(
                                 context,
                                 'Sign out?',
-                                'The session token is discarded. Cached '
+                                'The session token is discarded and downloaded narration is removed. Cached '
                                     'data stays on this device.',
                                 action: 'Sign out');
-                            if (sure) await session.logout();
+                            if (sure) {
+                              // Downloaded narration is private to this sign-in; the rest of the cache stays (above).
+                              try {
+                                await narration?.deleteAll();
+                              } catch (_) {}
+                              await session.logout();
+                            }
                           },
                           child: const Text('Sign out'),
                         ),

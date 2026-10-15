@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app_scope.dart';
+import '../../services/audio_downloads.dart' show prettyBytes;
+import '../../services/course_offline.dart';
 import '../../data/db.dart';
 import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink;
 import '../../data/lesson_notes.dart';
@@ -885,20 +888,65 @@ class _CourseTileState extends State<CourseTile> {
   int _pulled = 0;
   int _total = 0;
 
+  String _phase = 'text';
+
   Future<void> _takeOffline(String courseId, List<String> files) async {
-    setState(() { _pulling = true; _pulled = 0; _total = files.length; });
-    ModuleLibrary? lib;
+    AppServices? services;
     try {
-      lib = AppScope.of(context).modules;
+      services = AppScope.of(context);
     } catch (_) {}
-    if (lib != null) {
-      await lib.downloadCourse(courseId, files, onProgress: (d, t) {
-        if (mounted) setState(() { _pulled = d; _total = t; });
-      });
+    if (services == null) return;
+    final svc = services;
+
+    // BI26100170: say how big it is before it starts. Mobile data is the reader's call.
+    final est = svc.modules.estimateDownload(courseId, files);
+    final total = est.text + est.audio;
+    if (total > 0) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Take this course offline?'),
+          content: Text(
+            'About ${prettyBytes(total)} (${prettyBytes(est.text)} of modules and images'
+            '${est.audio > 0 ? ', ${prettyBytes(est.audio)} of narration' : ''}). '
+            'Narration waits for Wi-Fi unless you allow mobile data in Settings.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+            FilledButton(key: const Key('offline-go'), onPressed: () => Navigator.pop(ctx, true), child: const Text('Download')),
+          ],
+        ),
+      );
+      if (go != true || !mounted) return;
     }
+
+    setState(() { _pulling = true; _pulled = 0; _total = files.length; _phase = 'text'; });
+    final api = svc.api;
+    final run = CourseOffline(
+      modules: svc.modules,
+      baseUrl: () => api.baseUrl,
+      token: () => api.token,
+      audio: svc.narrator.downloads,
+      warmImage: (url) async {
+        try {
+          await DefaultCacheManager().downloadFile(url);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      },
+    );
+    final res = await run.run(courseId, files, onProgress: (phase, d, t) {
+      if (mounted) setState(() { _phase = phase; _pulled = d; _total = t; });
+    });
     if (!mounted) return;
     setState(() => _pulling = false);
-    toast(context, '$courseId is on this device');
+    toast(
+      context,
+      res.notes.isEmpty
+          ? '$courseId is on this device: ${res.modules} modules, ${res.images} images, ${res.audio} narrations'
+          : '${res.modules} modules, ${res.images} images, ${res.audio} narrations saved. ${res.notes.first}',
+    );
   }
 
   @override
@@ -977,7 +1025,7 @@ class _CourseTileState extends State<CourseTile> {
                 Expanded(
                   child: Text(
                     _pulling
-                        ? 'Downloading $_pulled of $_total...'
+                        ? 'Downloading ${_phase == 'images' ? 'images' : _phase == 'audio' ? 'narration' : 'modules'} $_pulled of $_total...'
                         : stale > 0
                             ? '$offline of ${files.length} on this device · $stale updated'
                             : allHere

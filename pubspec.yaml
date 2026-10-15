@@ -13,7 +13,7 @@ publish_to: 'none'
 # stale venture-category filter), masonry track grid + icon-standard fix.
 # Build number advanced past both branches' prior values (main's own stale
 # CI bump to +9, dev's independent +9) to stay unambiguous.
-version: 0.3.106+116
+version: 0.3.107+117
 
 environment:
   sdk: ^3.12.0
@@ -26,6 +26,7 @@ dependencies:
     path: packages/slate_ui
   sqflite: ^2.4.2
   path_provider: ^2.1.5
+  flutter_cache_manager: ^3.4.1
   # BN26082504: .ics import needs a file picker; export reuses the existing
   # saveAndOpenExport/openFile native bridge, no new dependency for that half.
   # BN26082504 follow-up: 8.1.4's bundled Android module compiled against
