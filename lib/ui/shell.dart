@@ -47,6 +47,7 @@ import 'views/social.dart';
 import 'views/spaces.dart';
 import 'views/circle_tools.dart';
 import 'views/documents.dart';
+import 'views/ledger_tools.dart';
 import 'views/surfaced.dart';
 import 'views/teams.dart';
 import 'widgets/brand.dart' show MonoBrandMark;
@@ -937,6 +938,8 @@ class MenuSheet extends StatelessWidget {
               () => go(const LearningView(), 'Study')),
           _item(ctx, Icons.account_balance_wallet_rounded, 'Ledger',
               () => go(const FinanceView(), 'Ledger')),
+          _item(ctx, Icons.edit_note_rounded, 'Ledger tools',
+              () => go(const LedgerToolsScreen(), 'Ledger tools')),
           // BI26100207: Journal and Ideas are one item, Codex, each still on its own route.
           _item(ctx, Icons.auto_stories_rounded, 'Codex',
               () => go(const CodexView(), 'Codex'),
@@ -1139,6 +1142,7 @@ class SecondaryScreen extends StatelessWidget {
     'corporate' => (const CorporateView(), 'Corporate'),
     'rhythm' => (const RhythmView(), 'Rhythm'),
     'study' || 'learning' => (const LearningView(), 'Study'),
+    'ledger-tools' => (const LedgerToolsScreen(), 'Ledger tools'),
     'holdings' || 'finance' || 'ledger' =>(const FinanceView(), 'Ledger'),
     'codex' => (const CodexView(), 'Codex'),
     'identity' => (const IdentityView(), 'Identity'),
