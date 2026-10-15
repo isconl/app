@@ -10,6 +10,7 @@ import '../../util/equicycle.dart';
 import 'equicycle_grid_view.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/parity3b_widgets.dart';
 import '../widgets/month_grid.dart';
 import 'learning_export_stub.dart'
     if (dart.library.io) 'learning_export_native.dart' as export_impl;
@@ -840,8 +841,18 @@ class _KeyDates extends StatelessWidget {
                                 style: T.body2,
                               ),
                             ),
-                            Text(fmt.shortDate(upcoming[idx]['date']),
-                                style: T.monoSmall),
+                            Text(fmt.shortDate(upcoming[idx]['date']), style: T.monoSmall),
+                            IconButton(
+                              key: Key('delete-date-${fmt.s(upcoming[idx]['id'])}'),
+                              tooltip: 'Stop counting this date',
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.close_rounded, size: 16),
+                              onPressed: () async {
+                                final ok = await confirmDeleteDate(context, fmt.s(upcoming[idx]['id']),
+                                    fmt.s(upcoming[idx]['label']).isEmpty ? fmt.s(upcoming[idx]['title']) : fmt.s(upcoming[idx]['label']));
+                                if (ok) services.store.dates.refresh();
+                              },
+                            ),
                           ],
                         ),
                       ),

@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/parity3b_widgets.dart';
 
 /// Decision log + risk register, from /api/decisions.
 ///
@@ -213,6 +214,15 @@ class _DecisionTile extends StatelessWidget {
             const SizedBox(height: 7),
             Text('Pending ${fmt.plural(aging, 'day')}.',
                 style: T.tiny.copyWith(color: C.amber)),
+            // BI26101212: the nudge is already written; the reader copies it and sends it.
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: Key('chase-${fmt.s(decision['id'])}'),
+                onPressed: () => showChaseSheet(context, fmt.s(decision['id'])),
+                child: const Text('The chase, pre-written'),
+              ),
+            ),
           ],
           if (citing.isNotEmpty) ...[
             const SizedBox(height: 8),

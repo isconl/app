@@ -7,6 +7,7 @@ import '../widgets/common.dart';
 import '../widgets/compass_home.dart';
 import '../widgets/compass_reviews.dart';
 import '../widgets/cycle_gauge.dart';
+import '../widgets/parity3b_widgets.dart';
 import '../widgets/plan_actions.dart';
 
 /// Goals by horizon, with their linked tasks.
@@ -62,6 +63,7 @@ class _PlanningViewState extends State<PlanningView> {
                   const CompassFocus(),
                   const SizedBox(height: 12),
                   const CycleGaugeCard(),
+                  const AdherenceCard(),
                 ],
                 if (_part == 'Review') const CompassReviews(),
                 if (_part == 'Horizons') ...[

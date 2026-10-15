@@ -11,6 +11,7 @@ import '../shell.dart' show openNavRoute;
 import '../widgets/block_card.dart';
 import '../widgets/checkpoint_card.dart';
 import '../widgets/common.dart';
+import '../widgets/parity3b_widgets.dart';
 import '../widgets/context_ring_card.dart';
 import '../widgets/offsite_backup_line.dart';
 import '../widgets/refresher_cards.dart';
@@ -97,6 +98,7 @@ class _HubViewState extends State<HubView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildDate(now),
+                  const ThemeOfDayLine(),
                   const SizedBox(height: 4),
                   if (fmt.s(eq['eqShort']).isNotEmpty)
                     Wrap(

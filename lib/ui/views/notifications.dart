@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/parity3b_widgets.dart';
 
 /// Ranked notice board. Server-side RANK ordering is preserved.
 class NotificationsView extends StatefulWidget {
@@ -43,6 +44,9 @@ class _NotificationsViewState extends State<NotificationsView> {
                     selected: !_newOnly,
                     onTap: () => setState(() => _newOnly = false)),
                 const Spacer(),
+                SweepButton(onDone: () async {
+                  await services.store.notifications.refresh();
+                }),
                 if (items.isNotEmpty && _newOnly)
                   TextButton(
                     onPressed: () async {
