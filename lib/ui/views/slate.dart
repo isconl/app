@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:slate_ui/slate_ui.dart';
 
+import '../../app_scope.dart';
+import '../../services/slate_hub_client.dart';
 import 'backlog.dart';
 import 'slate_decisions.dart';
 import 'tasks.dart';
@@ -9,13 +12,13 @@ import 'tasks.dart';
 /// and Register is the drive-wide rollup that was Systems > Backlog (BI26100540: one Slate entry) until the Slate integration lands, the same shape as the web
 /// console's renderSlate(): no fake data. The chosen tab is remembered for the life of the app
 /// (the web console remembers it per browser).
-enum SlateTab { tasks, decisions, register }
+enum SlateTab { sessions, commands, tasks, decisions, register }
 
 class SlateView extends StatefulWidget {
   const SlateView({super.key});
 
   /// The tab last shown, kept across rebuilds and navigation for the life of the app.
-  static SlateTab remembered = SlateTab.tasks;
+  static SlateTab remembered = SlateTab.sessions;
 
   @override
   State<SlateView> createState() => _SlateViewState();
@@ -25,10 +28,18 @@ class _SlateViewState extends State<SlateView> {
   late SlateTab _tab = SlateView.remembered;
 
   String _label(SlateTab t) => switch (t) {
+        SlateTab.sessions => 'Sessions',
+        SlateTab.commands => 'Commands',
         SlateTab.tasks => 'Tasks',
         SlateTab.decisions => 'Decisions',
         SlateTab.register => 'Register',
       };
+
+  SlateClient _client(BuildContext context) => HubSlateClient(AppScope.of(context).api);
+
+  /// slate_ui's widgets scroll themselves, so they need a bounded height inside this Column.
+  Widget _bounded(BuildContext context, Widget child) =>
+      SizedBox(height: (MediaQuery.of(context).size.height - 260).clamp(360.0, 4000.0), child: child);
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +68,13 @@ class _SlateViewState extends State<SlateView> {
         ),
         const SizedBox(height: 12),
         switch (_tab) {
+          SlateTab.sessions => _bounded(context, SessionsBoard(client: _client(context))),
+          SlateTab.commands => _bounded(
+              context,
+              CommandPanel(
+                client: _client(context),
+                stepUp: passkeyStepUp(AppScope.of(context).api, AppScope.of(context).session.passkeys),
+              )),
           SlateTab.tasks => const TasksView(),
           SlateTab.decisions => const DecisionsView(),
           SlateTab.register => const BacklogView(),

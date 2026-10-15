@@ -113,7 +113,7 @@ List<_SubTab> _projectsSubsFor(void Function(int) openSub) => [
 // BI26100131: Settings carries the Systems dashboard, whose tiles open Ops and the Slate Register.
 List<_SubTab> _settingsSubsFor(void Function(int) openSub) => [
   _SubTab('Settings', SettingsView(onOpenSub: openSub)),
-  const _SubTab('Files',    FilesView()),
+  const _SubTab('Hold',     FilesView()),
   const _SubTab('Ops',      OpsView()),
 ];
 
@@ -257,7 +257,7 @@ class _ShellState extends State<Shell> {
   List<_SubTab> get _personalSubs => [
     _SubTab('Rhythm',    RhythmView(onOpenSub: _switchSub)),
     const _SubTab('Study',  LearningView()),
-    const _SubTab('Holdings',   FinanceView()),
+    const _SubTab('Ledger',     FinanceView()),
     const _SubTab('Codex',   CodexView()),
   ];
 
@@ -930,7 +930,7 @@ class MenuSheet extends StatelessWidget {
           _item(ctx, Icons.school_rounded, 'Study',
               () => go(const LearningView(), 'Study')),
           _item(ctx, Icons.account_balance_wallet_rounded, 'Holdings',
-              () => go(const FinanceView(), 'Holdings')),
+              () => go(const FinanceView(), 'Ledger')),
           // BI26100207: Journal and Ideas are one item, Codex, each still on its own route.
           _item(ctx, Icons.auto_stories_rounded, 'Codex',
               () => go(const CodexView(), 'Codex'),
@@ -969,8 +969,8 @@ class MenuSheet extends StatelessWidget {
               () => go(const OpsView(), 'Ops')),
           _item(ctx, Icons.apps_rounded, 'Services',
               () => go(const HostedServicesView(), 'Services')),
-          _item(ctx, Icons.folder_rounded, 'Files',
-              () => go(const FilesView(), 'Files')),
+          _item(ctx, Icons.folder_rounded, 'Hold',
+              () => go(const FilesView(), 'Hold')),
           _item(ctx, Icons.play_circle_filled_rounded, 'Media',
               () => go(const MediaView(), 'Media')),
           _item(ctx, Icons.link_rounded, 'Audit',
@@ -1124,7 +1124,7 @@ class SecondaryScreen extends StatelessWidget {
     'corporate' => (const CorporateView(), 'Corporate'),
     'rhythm' => (const RhythmView(), 'Rhythm'),
     'study' || 'learning' => (const LearningView(), 'Study'),
-    'holdings' || 'finance' => (const FinanceView(), 'Holdings'),
+    'holdings' || 'finance' || 'ledger' =>(const FinanceView(), 'Ledger'),
     'codex' => (const CodexView(), 'Codex'),
     'identity' => (const IdentityView(), 'Identity'),
     'journal' => (const JournalView(), 'Journal'),
@@ -1136,7 +1136,7 @@ class SecondaryScreen extends StatelessWidget {
     'spaces' => (const SpacesView(), 'Spaces'),
     'ops' => (const OpsView(), 'Ops'),
     'services' || 'hosted' => (const HostedServicesView(), 'Services'),
-    'files' => (const FilesView(), 'Files'),
+    'files' || 'hold' => (const FilesView(), 'Hold'),
     'media' => (const MediaView(), 'Media'),
     'audit' => (const AuditView(), 'Audit'),
     'articles' => (const ArticlesView(), 'Articles'),

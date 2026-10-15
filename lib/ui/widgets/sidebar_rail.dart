@@ -71,7 +71,7 @@ final List<NavGroup> navGroups = [
         () => const BufferView(compose: true)),
   ]),
   NavGroup('Personal', [
-    NavItem('finance', Icons.account_balance_wallet_rounded, 'Holdings', () => const FinanceView()),
+    NavItem('finance', Icons.account_balance_wallet_rounded, 'Ledger', () => const FinanceView()),
     NavItem('rhythm', Icons.local_fire_department_rounded, 'Rhythm', () => const RhythmView()),
     NavItem('journal', Icons.auto_stories_rounded, 'Journal', () => const JournalView()),
     NavItem('learning', Icons.school_rounded, 'Study', () => const LearningView()),
@@ -85,7 +85,7 @@ final List<NavGroup> navGroups = [
     NavItem('projects', Icons.folder_rounded, 'Projects', () => const ProjectsView()),
     NavItem('corporate', Icons.apartment_rounded, 'Corporate', () => const CorporateView()),
     NavItem('spaces', Icons.hub_rounded, 'Spaces', () => const SpacesView()),
-    NavItem('files', Icons.folder_rounded, 'Files', () => const FilesView()),
+    NavItem('files', Icons.folder_rounded, 'Hold', () => const FilesView()),
     NavItem('articles', Icons.article_rounded, 'Articles', () => const ArticlesView()),
     NavItem('decisions', Icons.gavel_rounded, 'Decisions & Risks', () => const DecisionsView()),
     NavItem('hosted-services', Icons.dns_rounded, 'Services', () => const HostedServicesView()),

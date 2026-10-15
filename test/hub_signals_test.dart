@@ -328,13 +328,13 @@ void main() {
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
       await tester.pump();
 
-      // Tap "Rent due" (route: "finance") -> navigates to Holdings
+      // Tap "Rent due" (route: "finance") -> navigates to Ledger
       await tester.tap(find.text('Rent due'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.byType(SecondaryScreen), findsOneWidget);
-      expect(find.text('Holdings'), findsOneWidget);
+      expect(find.text('Ledger'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 200)));
