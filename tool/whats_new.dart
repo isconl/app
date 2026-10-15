@@ -70,6 +70,9 @@ void main(List<String> args) {
   final range = below.isEmpty ? head : 'apk-v${below.first}..$head';
   final current = gather(messagesIn(range));
   problems.addAll(current.problems);
+  for (final w in current.warnings) {
+    stderr.writeln('::warning::release note: $w');
+  }
 
   // The releases before it, each from its own predecessor, newest first.
   final history = <HistoryEntry>[];

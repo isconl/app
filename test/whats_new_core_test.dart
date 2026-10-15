@@ -40,6 +40,17 @@ Note: neither does this
       expect(noteProblem(Trailer('New', 'x' * 121)), contains('121 characters'));
     });
 
+    test('gather cuts a long line to 120 with an ellipsis and warns instead of failing', () {
+      final long = 'word ' * 70;
+      final r = gather(['subject\n\nNew: $long\nNew: Short one.']);
+      expect(r.problems, isEmpty);
+      expect(r.warnings, hasLength(1));
+      expect(r.notes.added.first.length, lessThanOrEqualTo(120));
+      expect(r.notes.added.first, endsWith('...'));
+      expect(r.notes.added.last, 'Short one.');
+      expect(clipNote('x' * 120), 'x' * 120);
+    });
+
     test('a line that names a row id is refused', () {
       expect(noteProblem(const Trailer('Fixed', 'Fixed the thing from BI26101213.')), contains('row id'));
       expect(noteProblem(const Trailer('Fixed', 'Fixed the thing.')), isNull);
@@ -68,7 +79,7 @@ Note: neither does this
     });
 
     test('a bad line is reported and left out, the good ones stay', () {
-      final r = gather(['x\n\nNew: ${'y' * 130}\nNew: Fine.']);
+      final r = gather(['x\n\nNew: Fixed the thing from BI26101213.\nNew: Fine.']);
       expect(r.problems, hasLength(1));
       expect(r.notes.added, ['Fine.']);
     });

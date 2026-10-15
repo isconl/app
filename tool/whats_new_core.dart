@@ -78,17 +78,35 @@ String? noteProblem(Trailer t) {
 }
 
 class GatherResult {
-  GatherResult(this.notes, this.problems);
+  GatherResult(this.notes, this.problems, [this.warnings = const []]);
   final Notes notes;
   final List<String> problems;
+
+  /// A note that was cut to fit rather than stopping the build.
+  final List<String> warnings;
+}
+
+/// [text] cut to [maxNoteChars] at a word, with an ellipsis, or unchanged when it already fits.
+String clipNote(String text) {
+  if (text.length <= maxNoteChars) return text;
+  final room = text.substring(0, maxNoteChars - 3);
+  final space = room.lastIndexOf(' ');
+  return '${(space > 40 ? room.substring(0, space) : room).trimRight()}...';
 }
 
 /// The notes for a list of commit messages, oldest first: trailers grouped by kind, exact repeats dropped, order kept.
 GatherResult gather(List<String> messages) {
   final notes = Notes();
   final problems = <String>[];
+  final warnings = <String>[];
   for (final msg in messages) {
-    for (final t in parseTrailers(msg)) {
+    for (final parsed in parseTrailers(msg)) {
+      // A long line is cut, not fatal: a release should not be lost to a sentence's length. A row id still stops it.
+      var t = parsed;
+      if (t.text.length > maxNoteChars) {
+        warnings.add('${t.kind}: line was ${t.text.length} characters, cut to $maxNoteChars: "${t.text.substring(0, 40)}..."');
+        t = Trailer(t.kind, clipNote(t.text));
+      }
       final p = noteProblem(t);
       if (p != null) {
         problems.add(p);
@@ -98,7 +116,7 @@ GatherResult gather(List<String> messages) {
       if (!list.contains(t.text)) list.add(t.text);
     }
   }
-  return GatherResult(notes, problems);
+  return GatherResult(notes, problems, warnings);
 }
 
 /// Every line of [n], for the linter.
