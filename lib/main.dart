@@ -17,6 +17,7 @@ import 'ui/widgets/brand.dart' show BrandMotion;
 import 'ui/adaptive_shell.dart';
 import 'ui/login.dart';
 import 'ui/views/day_close.dart';
+import 'ui/widgets/journal_access.dart';
 import 'ui/widgets/common.dart';
 
 Future<void> main() async {
@@ -79,6 +80,10 @@ class _RootGateState extends State<RootGate> {
     });
     AlertService.instance.onDayClose = () => rootNavigatorKey.currentState
         ?.push(MaterialPageRoute<void>(builder: (_) => const DayCloseScreen()));
+    AlertService.instance.onGrant = (id) {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null) showGrantRequest(ctx, id);
+    };
     PlatformBridge.instance.onSharedText = _captureShare;
     PlatformBridge.instance.getSharedText().then((text) {
       if (text != null && text.trim().isNotEmpty) _captureShare(text);

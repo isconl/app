@@ -21,6 +21,10 @@ class AlertService {
   /// BI26100143: opens the Day close screen when its notification is tapped.
   void Function()? onDayClose;
   static const dayClosePayload = 'day-close';
+
+  /// cx canon section 3: a read-grant request opens the approval sheet. Payload is cx-grant:<id>.
+  void Function(String id)? onGrant;
+  static const grantPayloadPrefix = 'cx-grant:';
   static const _dayCloseBase = 9100;
   static const _dayCloseSlots = 16;
 
@@ -32,6 +36,8 @@ class AlertService {
       const InitializationSettings(android: android),
       onDidReceiveNotificationResponse: (r) {
         if (r.payload == dayClosePayload) onDayClose?.call();
+        final p = r.payload ?? '';
+        if (p.startsWith(grantPayloadPrefix)) onGrant?.call(p.substring(grantPayloadPrefix.length));
       },
     );
     await _plugin
@@ -60,6 +66,7 @@ class AlertService {
         fmt.s(n['TITLE']).isEmpty ? 'iSconl' : fmt.s(n['TITLE']),
         fmt.truncate(fmt.s(n['BODY']), 180),
         details,
+        payload: fmt.s(n['KIND']) == 'cx_grant' ? '$grantPayloadPrefix${fmt.s(n['GRANT_ID'])}' : null,
       );
     }
   }

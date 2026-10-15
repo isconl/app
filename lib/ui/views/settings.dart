@@ -7,6 +7,8 @@ import '../../util/fmt.dart' as fmt;
 import '../update_flow.dart';
 import '../widgets/common.dart';
 import '../widgets/integrations_section.dart';
+import '../widgets/journal_access.dart';
+import '../../services/cx_grants.dart';
 import '../widgets/news_watch_card.dart';
 import '../widgets/passkeys_card.dart';
 import '../widgets/status_briefs_card.dart';
@@ -150,6 +152,8 @@ class _SettingsViewState extends State<SettingsView> {
                   ],
                 ),
               ),
+              const SectionLabel('Journal access'),
+              JournalAccessCard(client: HubCxGrantsClient(AppScope.of(context).api, AppScope.of(context).session.passkeys)),
               const SectionLabel('Passkeys'),
               const PasskeysCard(),
               const SectionLabel('News watch'),
