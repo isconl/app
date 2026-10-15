@@ -14,6 +14,8 @@ import 'services/day_close_planner.dart';
 import 'services/platform.dart';
 import 'services/prefetch.dart';
 import 'services/prefetch_worker.dart';
+import 'services/share_intake.dart';
+import 'ui/widgets/share_sheet.dart';
 import 'theme.dart';
 import 'ui/widgets/brand.dart' as brand;
 import 'ui/widgets/brand.dart' show BrandMotion;
@@ -74,7 +76,7 @@ class RootGate extends StatefulWidget {
 class _RootGateState extends State<RootGate> {
   bool _unlocked = false;
   bool _authInFlight = false;
-  String? _pendingShare;
+  ShareItem? _pendingShare;
 
   @override
   void initState() {
@@ -99,33 +101,31 @@ class _RootGateState extends State<RootGate> {
       if (ctx != null) showGrantRequest(ctx, id);
     };
     PlatformBridge.instance.onSharedText = _captureShare;
+    PlatformBridge.instance.onSharedFiles = _captureFiles;
     PlatformBridge.instance.getSharedText().then((text) {
       if (text != null && text.trim().isNotEmpty) _captureShare(text);
     });
+    PlatformBridge.instance.getSharedFiles().then((files) {
+      if (files.isNotEmpty) _captureFiles(files);
+    });
   }
 
-  Future<void> _captureShare(String text) async {
+  void _captureShare(String text) => _offerShare(ShareItem.text(text));
+
+  void _captureFiles(List<SharedFile> files) => _offerShare(ShareItem.files(files));
+
+  /// BI26100159: what was shared in opens the share sheet. Held until sign-in when signed out; nothing is saved until
+  /// the reader taps Save.
+  void _offerShare(ShareItem item) {
     if (!mounted) return;
-    final services = AppScope.of(context);
-    if (!services.session.authenticated) {
-      _pendingShare = text;
+    if (!AppScope.of(context).session.authenticated) {
+      _pendingShare = item;
       return;
     }
-    final res = await services.mutations.addInbox(
-      body: text.trim(),
-      channel: 'mobile',
-      sender: 'share-sheet',
-    );
-    if (!mounted) return;
-    toast(
-      context,
-      res.queued
-          ? 'Captured to inbox - queued for sync'
-          : res.ok
-              ? 'Captured to inbox'
-              : 'Capture failed: ${res.error}',
-      error: !res.ok,
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) showShareSheet(ctx, item);
+    });
   }
 
   Future<void> _tryUnlock() async {
@@ -168,7 +168,7 @@ class _RootGateState extends State<RootGate> {
           return LoginScreen(onAuthenticated: () {
             final share = _pendingShare;
             _pendingShare = null;
-            if (share != null) _captureShare(share);
+            if (share != null) _offerShare(share);
           });
         }
         // biometricLock never becomes true on web (session.dart's

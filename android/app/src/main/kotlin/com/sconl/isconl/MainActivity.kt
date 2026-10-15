@@ -20,6 +20,8 @@ import java.io.File
 class MainActivity : FlutterFragmentActivity() {
     private val channelName = "isconl/platform"
     private var pendingSharedText: String? = null
+    // BI26100159: files shared into the app, already copied into the cache folder.
+    private var pendingSharedFiles: List<Map<String, Any?>>? = null
     private var pickResult: MethodChannel.Result? = null
     private val pickRequestCode = 7301
     private val smsRequestCode = 7302
@@ -30,11 +32,16 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         pendingSharedText = extractSharedText(intent)
+        pendingSharedFiles = extractSharedFiles(intent)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getSharedText" -> {
                     result.success(pendingSharedText)
                     pendingSharedText = null
+                }
+                "getSharedFiles" -> {
+                    result.success(pendingSharedFiles)
+                    pendingSharedFiles = null
                 }
                 "installApk" -> {
                     val path = call.argument<String>("path")
@@ -170,6 +177,13 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        val files = extractSharedFiles(intent)
+        if (files != null) {
+            pendingSharedFiles = files
+            flutterEngine?.dartExecutor?.binaryMessenger?.let {
+                MethodChannel(it, channelName).invokeMethod("sharedFiles", files)
+            }
+        }
         val shared = extractSharedText(intent)
         if (shared != null) {
             pendingSharedText = shared
@@ -177,6 +191,62 @@ class MainActivity : FlutterFragmentActivity() {
                 MethodChannel(it, channelName).invokeMethod("sharedText", shared)
             }
         }
+    }
+
+    /**
+     * Images and PDFs shared in through SEND or SEND_MULTIPLE, copied out of the sender's
+     * content provider into `cache/shared` at once: the grant to read the sender's uri ends
+     * with this activity, and the reader may save it offline long after. A file over 25 MB
+     * is reported with its size and no path so the sheet can say it is too big, rather than
+     * the phone reading it all into memory.
+     */
+    @Suppress("DEPRECATION")
+    private fun extractSharedFiles(intent: Intent?): List<Map<String, Any?>>? {
+        val action = intent?.action ?: return null
+        if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return null
+        val uris = ArrayList<Uri>()
+        if (action == Intent.ACTION_SEND) {
+            val one = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            if (one != null) uris.add(one)
+        } else {
+            val many = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+            if (many != null) uris.addAll(many)
+        }
+        if (uris.isEmpty()) return null
+        val dir = File(cacheDir, "shared")
+        dir.mkdirs()
+        val maxBytes = 25L * 1024 * 1024
+        val out = ArrayList<Map<String, Any?>>()
+        for (uri in uris) {
+            try {
+                val mime = contentResolver.getType(uri) ?: intent.type ?: "application/octet-stream"
+                var name = "shared"
+                var size = -1L
+                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        val n = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        val s = c.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                        if (n >= 0 && !c.isNull(n)) name = c.getString(n)
+                        if (s >= 0 && !c.isNull(s)) size = c.getLong(s)
+                    }
+                }
+                if (size > maxBytes) {
+                    out.add(mapOf("name" to name, "mime" to mime, "size" to size, "path" to null))
+                    continue
+                }
+                val safe = name.replace(Regex("[^A-Za-z0-9._ -]"), "_")
+                val target = File(dir, "${System.currentTimeMillis()}_$safe")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    target.outputStream().use { input.copyTo(it) }
+                }
+                out.add(mapOf("name" to name, "mime" to mime, "size" to target.length(), "path" to target.absolutePath))
+            } catch (e: Exception) {
+                // One unreadable file does not drop the rest.
+            }
+        }
+        return if (out.isEmpty()) null else out
     }
 
     private fun extractSharedText(intent: Intent?): String? {

@@ -13,14 +13,31 @@ class PlatformBridge {
   /// Fired when text is shared into the app while it is already running.
   void Function(String text)? onSharedText;
 
+  /// BI26100159: fired when photos or PDFs are shared in while the app is running.
+  void Function(List<SharedFile> files)? onSharedFiles;
+
   void init() {
     if (kIsWeb) return;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'sharedText' && call.arguments is String) {
         onSharedText?.call(call.arguments as String);
       }
+      if (call.method == 'sharedFiles') {
+        final files = SharedFile.parseList(call.arguments);
+        if (files.isNotEmpty) onSharedFiles?.call(files);
+      }
       return null;
     });
+  }
+
+  /// Photos and PDFs shared into the app via the share sheet (cold launch), already copied to the cache.
+  Future<List<SharedFile>> getSharedFiles() async {
+    if (kIsWeb) return const [];
+    try {
+      return SharedFile.parseList(await _channel.invokeMethod<Object>('getSharedFiles'));
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Text shared into the app via the Android share sheet (cold launch).
@@ -66,5 +83,31 @@ class PlatformBridge {
     } catch (_) {
       return null;
     }
+  }
+}
+
+/// One file handed in through the share sheet. [path] is empty when the file was too big to copy.
+class SharedFile {
+  const SharedFile({required this.name, required this.mime, required this.size, this.path = ''});
+  final String name;
+  final String mime;
+  final int size;
+  final String path;
+
+  bool get tooBig => path.isEmpty;
+  bool get isImage => mime.startsWith('image/');
+
+  static List<SharedFile> parseList(Object? v) {
+    if (v is! List) return const [];
+    return [
+      for (final e in v)
+        if (e is Map)
+          SharedFile(
+            name: '${e['name'] ?? 'shared'}',
+            mime: '${e['mime'] ?? 'application/octet-stream'}',
+            size: (e['size'] as num?)?.toInt() ?? 0,
+            path: e['path'] == null ? '' : '${e['path']}',
+          ),
+    ];
   }
 }
