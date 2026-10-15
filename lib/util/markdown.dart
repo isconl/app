@@ -25,6 +25,10 @@ enum MarkdownVariant { compact, reading }
 /// horizontal rules, links and tables. No external dependency, fully offline.
 /// BI26101214: lets the reader act on a paragraph: a long-press calls [onLongPress] with the
 /// paragraph's block index and text, and [footer] draws something under it (the tutor's answer).
+/// A heading's text as a lowercase, hyphen-joined slug (letters and digits only), the same rule spark uses for the
+/// section a recall question came from.
+String headingSlug(String text) => text.toLowerCase().replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+
 class ParagraphHook {
   const ParagraphHook({required this.onLongPress, required this.footer});
   final void Function(int index, String text) onLongPress;
@@ -107,6 +111,8 @@ class Markdown extends StatelessWidget {
       movements.add(movement);
       words.add(RegExp(r'\S+').allMatches(b.text.isNotEmpty ? b.text : b.quizBody).length);
       if (b.anchor.isNotEmpty) anchorIndex[b.anchor] = children.length;
+      // BI26101109: a heading is also reachable by its text slug, which is how a recall question names its section.
+      if (b.kind == _Kind.heading) anchorIndex.putIfAbsent(headingSlug(b.text), () => children.length);
       final at = children.length;
       children.add(anchors == null
           ? w

@@ -13,6 +13,7 @@ import '../../services/course_offline.dart';
 import '../../services/prefetch.dart' show DbPrefetchStore, markPrefetchOpened;
 import '../../data/db.dart';
 import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink, ParagraphHook;
+import '../widgets/recall_card.dart';
 import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
 import '../../study/cdm/cdm_lesson_body.dart';
@@ -120,6 +121,28 @@ class _LearningViewState extends State<LearningView> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Padding(padding: EdgeInsets.only(bottom: 10), child: StudySearchEntry()),
+              // BI26101109: spaced recall. Shows only when a question is due.
+              RecallCard(onReopen: (t) {
+                final course = courses.firstWhere(
+                    (c) => (fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID'])) == t.course,
+                    orElse: () => const <String, dynamic>{});
+                final lessons = fmt.lm(course['lessons']);
+                final l = lessons.firstWhere((x) => fmt.s(x['file']) == t.lesson, orElse: () => const <String, dynamic>{});
+                final rawTitle = fmt.s(l['title']).isEmpty ? t.lesson : fmt.s(l['title']);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LessonScreen(
+                      course: t.course,
+                      file: t.lesson,
+                      title: safeModuleTitle(stripEmoji(rawTitle), t.lesson),
+                      status: fmt.s(l['status']).isEmpty ? 'done' : fmt.s(l['status']),
+                      allLessons: lessons,
+                      initialAnchor: t.anchor,
+                    ),
+                  ),
+                );
+              }),
               // BI26101214: what to read right now, and the study activity map.
               CampusCard(onOpen: (courseId, lesson) {
                 if (lesson.isEmpty) return;
