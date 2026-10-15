@@ -100,9 +100,51 @@ class SessionService extends ChangeNotifier {
 
   bool _storageCorrupted = false;
 
+  /// BI26100157: in a browser the session is hub's HttpOnly cookie, so no token is written to browser storage
+  /// (anything on the page could read it there). On the phone it stays in the encrypted keystore as before.
+  static bool get persistsToken => !kIsWeb;
+
+  /// Moves a token a browser stored before this change into the cookie, then forgets it. Returns false when hub
+  /// refuses it (an expired session), in which case the reader signs in again.
+  Future<bool> _adoptStoredWebToken(String token) async {
+    if (token.isEmpty) return false;
+    try {
+      api.token = token;
+      await api.postJson('/api/auth/adopt', {});
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      api.token = '';
+      try {
+        await _storage.delete(key: 'token');
+      } catch (_) {}
+    }
+  }
+
+  /// Whether the browser's cookie is a live session, asked of hub (`/api/auth/verify`).
+  Future<bool> _cookieSessionLive() async {
+    try {
+      final r = await api.postJson('/api/auth/verify', {});
+      return r is Map && r['valid'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> load() async {
     serverUrl = await _readSafe('serverUrl') ?? defaultServer;
-    final token = await _readSafe('token') ?? '';
+    var token = await _readSafe('token') ?? '';
+    if (!persistsToken) {
+      api.baseUrl = serverUrl;
+      if (token.isNotEmpty) await _adoptStoredWebToken(token);
+      token = '';
+      biometricLock = false;
+      authenticated = !needsServer && await _cookieSessionLive();
+      ready = true;
+      notifyListeners();
+      return;
+    }
     biometricLock = (await _readSafe('bioLock')) == '1';
     _bioChosen = (await _readSafe('bioChosen')) == '1';
     if (_storageCorrupted) {
@@ -336,8 +378,9 @@ class SessionService extends ChangeNotifier {
   }
 
   Future<void> _adopt(String token) async {
+    // On the web the cookie hub just set carries the session; the token is kept in memory for this page only.
     api.token = token;
-    await _storage.write(key: 'token', value: token);
+    if (persistsToken) await _storage.write(key: 'token', value: token);
     authenticated = true;
     notifyListeners();
     // After the code, the fingerprint. Awaited after notifying so the shell

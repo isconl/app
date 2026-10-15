@@ -192,6 +192,19 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: flutter build apk --release
 
+      # BI26100157: the web build that replaces the hub console. It rides on the Android job (one Flutter setup, one
+      # cache, Linux minutes) and can never stop the APK reaching the release: a failure here is a warning and an
+      # artefact that is simply not attached.
+      - name: Build web
+        id: web
+        if: matrix.platform == 'android'
+        continue-on-error: true
+        run: flutter build web --release
+
+      - name: Warn if the web build failed
+        if: matrix.platform == 'android' && steps.web.outcome == 'failure'
+        run: echo "::warning::flutter build web failed; the release carries the APK only. Fix it in the next push."
+
       - name: Build Windows
         if: matrix.platform == 'windows'
         run: flutter build windows --release
@@ -210,6 +223,14 @@ jobs:
           NAME="${{ needs.version.outputs.date }}_isconl_v${{ needs.version.outputs.version }}.apk"
           cp build/app/outputs/flutter-apk/app-release.apk "$NAME"
           echo "ARTEFACT=$NAME" >> "$GITHUB_ENV"
+
+      - name: Name web artefact
+        if: matrix.platform == 'android' && steps.web.outcome == 'success'
+        shell: bash
+        run: |
+          WEB="${{ needs.version.outputs.date }}_isconl_v${{ needs.version.outputs.version }}_web.tar.gz"
+          tar -czf "$WEB" -C build/web .
+          echo "WEB_ARTEFACT=$WEB" >> "$GITHUB_ENV"
 
       - name: Name Windows artefact
         if: matrix.platform == 'windows'
@@ -235,7 +256,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: apk-v${{ needs.version.outputs.version }}
-        run: gh release upload "$TAG" "$ARTEFACT" --clobber
+        run: |
+          gh release upload "$TAG" "$ARTEFACT" --clobber
+          if [ -n "${WEB_ARTEFACT:-}" ]; then gh release upload "$TAG" "$WEB_ARTEFACT" --clobber; fi
 
   # BI26100126: the release is opened as a DRAFT and published only here, after the
   # APK is confirmed attached. A failed build leaves a draft, never an empty
