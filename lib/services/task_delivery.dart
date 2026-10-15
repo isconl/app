@@ -17,8 +17,12 @@ class Deliverable {
     this.webUrl = '',
     this.onedrive,
     this.stale = false,
+    this.rel = '',
   });
   final String name;
+
+  /// The path the document routes take (open, replace, share). Empty when the hub gave none.
+  final String rel;
 
   /// `linked` (attached, certain) or `found` (the search's best guess).
   final String source;
@@ -91,6 +95,7 @@ class HubTaskDeliveryClient implements TaskDeliveryClient {
         webUrl: '${d['webUrl'] ?? ''}',
         onedrive: d['onedrive'] is bool ? d['onedrive'] as bool : null,
         stale: d['stale'] == true,
+        rel: '${d['rel'] ?? d['path'] ?? ''}',
       );
 
   @override

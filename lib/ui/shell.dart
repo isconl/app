@@ -46,6 +46,7 @@ import 'views/slate.dart';
 import 'views/social.dart';
 import 'views/spaces.dart';
 import 'views/circle_tools.dart';
+import 'views/documents.dart';
 import 'views/surfaced.dart';
 import 'views/teams.dart';
 import 'widgets/brand.dart' show MonoBrandMark;
@@ -955,6 +956,8 @@ class MenuSheet extends StatelessWidget {
               () => go(const CircleView(ring: 'social'), 'Social')),
           _item(ctx, Icons.hub_outlined, 'Circle tools',
               () => go(const CircleToolsScreen(), 'Circle tools')),
+          _item(ctx, Icons.description_rounded, 'Documents',
+              () => go(const DocumentsScreen(), 'Documents')),
           _item(ctx, Icons.contacts_rounded, 'Contacts',
               () => go(const ContactsView(), 'Contacts')),
           // ── SPACES ───────────────────────────────────────────
@@ -1125,6 +1128,7 @@ class SecondaryScreen extends StatelessWidget {
     'teams' => (const TeamsView(), 'Teams'),
     'surfaced' => (const SurfacedView(), 'Surfaced'),
     'circle-tools' => (const CircleToolsScreen(), 'Circle tools'),
+    'documents' || 'writer' || 'quill' => (const DocumentsScreen(), 'Documents'),
     'inbox' => (const InboxView(), 'Inbox'),
     'buffer' || 'social' => (const SocialView(), 'Buffer'),
     'kanban' || 'jira' => (const JiraView(), 'Kanban'),

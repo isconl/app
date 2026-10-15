@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../services/task_delivery.dart';
 import '../../theme.dart';
 import 'common.dart';
+import 'documents_widgets.dart';
 
 /// The rest of the console's task page: the covering note, who it goes to,
 /// coverage with Provision, the files it produced with relink, and the delivery
@@ -238,6 +239,7 @@ class _TaskDeliverySectionState extends State<TaskDeliverySection> {
                       '${d.onedrive == false ? ', not on OneDrive yet' : d.stale ? ', OneDrive copy is behind' : ''}',
                       style: T.tiny.copyWith(color: (d.onedrive == false || d.stale) ? C.amber : C.text3),
                     ),
+                    if (d.rel.isNotEmpty && widget.online) DeliverableActions(rel: d.rel, name: d.name, onChanged: () => _load()),
                   ]),
                 ),
                 if (d.webUrl.isNotEmpty) TextButton(key: Key('open-${d.name}'), onPressed: () => widget.openUrl(d.webUrl), child: const Text('Open')),
