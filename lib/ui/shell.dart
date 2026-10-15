@@ -45,6 +45,7 @@ import 'status_chip.dart';
 import 'views/slate.dart';
 import 'views/social.dart';
 import 'views/spaces.dart';
+import 'views/surfaced.dart';
 import 'views/teams.dart';
 import 'widgets/brand.dart' show MonoBrandMark;
 import 'whats_new_sheet.dart';
@@ -903,6 +904,8 @@ class MenuSheet extends StatelessWidget {
           // here, same pattern as Buffer/Ideas/Media/Audit/Outbox.
           _item(ctx, Icons.dashboard_rounded, 'Channels',
               () => go(const ChannelsHomeView(), 'Channels')),
+          _item(ctx, Icons.flag_rounded, 'Surfaced',
+              () => go(const SurfacedView(), 'Surfaced')),
           _item(ctx, Icons.groups_rounded, 'Teams',
               () => go(const TeamsView(), 'Teams')),
           _item(ctx, Icons.inbox_rounded, 'Inbox',
@@ -1117,6 +1120,7 @@ class SecondaryScreen extends StatelessWidget {
     'notifications' || 'alerts' => (const NotificationsView(), 'Alerts'),
     'channels' => (const ChannelsHomeView(), 'Channels'),
     'teams' => (const TeamsView(), 'Teams'),
+    'surfaced' => (const SurfacedView(), 'Surfaced'),
     'inbox' => (const InboxView(), 'Inbox'),
     'buffer' || 'social' => (const SocialView(), 'Buffer'),
     'kanban' || 'jira' => (const JiraView(), 'Kanban'),

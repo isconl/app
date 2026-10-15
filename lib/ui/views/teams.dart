@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../api/client.dart';
 import '../../app_scope.dart';
+import '../../services/teams_api.dart';
+import 'team_actions.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
@@ -10,8 +12,9 @@ import '../widgets/common.dart';
 ///
 /// ONE BOARD, FIVE PER LEADER, THREE DAYS DEEP. Three tabs, the same as the console: Board (the work in lanes, a depth
 /// chip per person), People (the reporting tree with role, forces and depth, and the Architect panel) and Talk (a
-/// placeholder until phase 2). An organisation and a team picker sit above them. Management (creating a team, boarding a
-/// person, moving work) stays on the console; the phone is where he SEES.
+/// placeholder until phase 2). An organisation and a team picker sit above them. BI26101211: the phone also edits a member,
+/// marks one as left (after asking), moves work along its lifecycle and gives it to someone else. Creating a team and
+/// boarding a person stay on the console.
 
 /// One lane of the board: its title, what it holds, and the items in it.
 class TeamLane {
@@ -88,7 +91,10 @@ List<({Map<String, dynamic> member, int depth, bool hasKids})> memberTree(Map<St
 }
 
 class TeamsView extends StatefulWidget {
-  const TeamsView({super.key});
+  const TeamsView({super.key, this.client});
+
+  /// The team write routes. Tests pass a fake; the app goes through hub.
+  final TeamsClient? client;
 
   @override
   State<TeamsView> createState() => _TeamsViewState();
@@ -102,6 +108,19 @@ class _TeamsViewState extends State<TeamsView> {
 
   void _load() {
     _future = AppScope.of(context).api.getJson('/api/teams');
+  }
+
+  /// Reloads the teams after a write, so the board shows what the agent now has.
+  Future<void> _reload() async {
+    final f = AppScope.of(context).api.getJson('/api/teams');
+    if (mounted) {
+      setState(() {
+        _future = f;
+      });
+    }
+    // Not awaited: the board shows its spinner and then the new data, and the writer's
+    // message should not wait on a slow network.
+    f.then<void>((_) {}, onError: (_) {});
   }
 
   @override
@@ -132,6 +151,11 @@ class _TeamsViewState extends State<TeamsView> {
         final team = teams.firstWhere((t) => fmt.s(t['id']) == _teamId, orElse: () => teams.first);
         final orgId = fmt.s(team['orgId']);
         final inOrg = teams.where((t) => fmt.s(t['orgId']) == orgId).toList();
+        final actions = TeamActions(
+          client: widget.client ?? HubTeamsClient(AppScope.of(context).api),
+          teamId: fmt.s(team['id']),
+          onChanged: _reload,
+        );
         return RefreshIndicator(
           onRefresh: () async {
             final f = AppScope.of(context).api.getJson('/api/teams');
@@ -158,10 +182,14 @@ class _TeamsViewState extends State<TeamsView> {
               _Tabs(index: _tab, onTab: (i) => setState(() => _tab = i)),
               const SizedBox(height: 10),
               if (_tab == 0)
-                _Board(team: team, org: orgs.cast<Map<String, dynamic>?>().firstWhere((o) => fmt.s(o?['id']) == orgId, orElse: () => null))
+                _Board(
+                    team: team,
+                    actions: actions,
+                    org: orgs.cast<Map<String, dynamic>?>().firstWhere((o) => fmt.s(o?['id']) == orgId, orElse: () => null))
               else if (_tab == 1)
                 _People(
                   team: team,
+                  actions: actions,
                   spanLimit: spanLimit,
                   folded: _folded,
                   onFold: (id) => setState(() => _folded.contains(id) ? _folded.remove(id) : _folded.add(id)),
@@ -261,8 +289,9 @@ Color _levelBg(String level) => level == 'green' ? C.greenBg : level == 'amber' 
 String _days(double d) => d == d.roundToDouble() ? d.toStringAsFixed(0) : d.toStringAsFixed(1);
 
 class _Board extends StatelessWidget {
-  const _Board({required this.team, required this.org});
+  const _Board({required this.team, required this.org, required this.actions});
   final Map<String, dynamic> team;
+  final TeamActions actions;
   final Map<String, dynamic>? org;
 
   @override
@@ -298,16 +327,18 @@ class _Board extends StatelessWidget {
           Text('$slipped ${slipped == 1 ? 'item is' : 'items are'} past due', style: T.monoSmall.copyWith(color: C.red)),
         ],
         const SizedBox(height: 10),
-        for (final lane in lanes) _LaneCard(lane: lane, names: names),
+        for (final lane in lanes) _LaneCard(lane: lane, names: names, team: team, actions: actions),
       ],
     );
   }
 }
 
 class _LaneCard extends StatelessWidget {
-  const _LaneCard({required this.lane, required this.names});
+  const _LaneCard({required this.lane, required this.names, required this.team, required this.actions});
   final TeamLane lane;
   final Map<String, String> names;
+  final Map<String, dynamic> team;
+  final TeamActions actions;
 
   @override
   Widget build(BuildContext context) {
@@ -343,6 +374,21 @@ class _LaneCard extends StatelessWidget {
                       ].join(' · '),
                       style: T.tiny.copyWith(color: w['late'] == true ? C.red : C.text3),
                     ),
+                    // Move it along its lifecycle, or hand it to someone else.
+                    Wrap(spacing: 6, children: [
+                      for (final m in workMoves(fmt.s(w['status'])))
+                        TextButton(
+                          key: Key('work-${m.to}-${fmt.s(w['id'])}'),
+                          onPressed: () => actions.move(context, w, m.to),
+                          child: Text(m.label),
+                        ),
+                      if (!['signed', 'dropped'].contains(fmt.s(w['status'])))
+                        TextButton(
+                          key: Key('work-give-${fmt.s(w['id'])}'),
+                          onPressed: () => actions.reassign(context, team, w),
+                          child: const Text('Give to...'),
+                        ),
+                    ]),
                   ],
                 ),
               ),
@@ -353,8 +399,9 @@ class _LaneCard extends StatelessWidget {
 }
 
 class _People extends StatelessWidget {
-  const _People({required this.team, required this.spanLimit, required this.folded, required this.onFold});
+  const _People({required this.team, required this.actions, required this.spanLimit, required this.folded, required this.onFold});
   final Map<String, dynamic> team;
+  final TeamActions actions;
   final int spanLimit;
   final Set<String> folded;
   final ValueChanged<String> onFold;
@@ -416,7 +463,15 @@ class _People extends StatelessWidget {
               if (owner.isNotEmpty) Text('$owner at the root', style: T.tiny.copyWith(color: C.text3)),
               const SizedBox(height: 6),
               if (tree.isEmpty) Text('nobody yet', style: T.tiny.copyWith(color: C.text3)),
-              for (final e in tree) _MemberRow(entry: e, spanLimit: spanLimit, folded: folded.contains(fmt.s(e.member['id'])), onFold: onFold),
+              for (final e in tree)
+                _MemberRow(
+                  entry: e,
+                  spanLimit: spanLimit,
+                  folded: folded.contains(fmt.s(e.member['id'])),
+                  onFold: onFold,
+                  onEdit: () => actions.editMember(context, team, e.member),
+                  onLeaves: () => actions.removeMember(context, e.member),
+                ),
             ],
           ),
         ),
@@ -426,7 +481,16 @@ class _People extends StatelessWidget {
 }
 
 class _MemberRow extends StatelessWidget {
-  const _MemberRow({required this.entry, required this.spanLimit, required this.folded, required this.onFold});
+  const _MemberRow({
+    required this.entry,
+    required this.spanLimit,
+    required this.folded,
+    required this.onFold,
+    required this.onEdit,
+    required this.onLeaves,
+  });
+  final VoidCallback onEdit;
+  final VoidCallback onLeaves;
   final ({Map<String, dynamic> member, int depth, bool hasKids}) entry;
   final int spanLimit;
   final bool folded;
@@ -479,6 +543,15 @@ class _MemberRow extends StatelessWidget {
             ),
           ),
           Badge2('${_days(fmt.d(m['depth']))}d', color: _levelBg(level), textColor: _levelFg(level)),
+          PopupMenuButton<String>(
+            key: Key('member-menu-$id'),
+            tooltip: 'Edit or mark as left',
+            onSelected: (v) => v == 'edit' ? onEdit() : onLeaves(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'edit', child: Text('Edit')),
+              PopupMenuItem(value: 'leaves', child: Text('Leaves the team')),
+            ],
+          ),
         ],
       ),
     );
