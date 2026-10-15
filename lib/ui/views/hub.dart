@@ -14,6 +14,7 @@ import '../widgets/common.dart';
 import '../widgets/parity3b_widgets.dart';
 import '../widgets/context_ring_card.dart';
 import '../widgets/offsite_backup_line.dart';
+import '../widgets/debrief_card.dart';
 import '../widgets/october_ring_card.dart';
 import '../widgets/refresher_cards.dart';
 import '../widgets/vitals_card.dart';
@@ -130,6 +131,8 @@ class _HubViewState extends State<HubView> {
             const CheckpointCard(),
             // ---- Data October (PI26093009): hides when the hub has no feed ----
             const OctoberRingCard(),
+            // ---- the evening debrief, from 18:00 (BI26100529) ----
+            const DebriefCard(),
             // ---- console ring ----
             const ContextRingCard(),
             // ---- orientation ----
