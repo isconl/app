@@ -6,6 +6,7 @@ import 'package:just_audio/just_audio.dart';
 
 import '../api/client.dart';
 import '../util/fmt.dart' as fmt;
+import 'audio_downloads.dart';
 
 /// Listening to a module instead of reading it.
 ///
@@ -92,9 +93,15 @@ class MemoryNarrationStore implements NarrationStore {
 }
 
 class Narrator extends ChangeNotifier {
-  Narrator(this._apiProvider, {TtsDriver? tts, NarrationStore? store})
+  Narrator(this._apiProvider, {TtsDriver? tts, NarrationStore? store, this.downloads})
       : _tts = tts ?? FlutterTtsDriver(),
         _store = store;
+
+  /// Narration kept on the phone. Played first when its revision matches.
+  final AudioDownloads? downloads;
+
+  /// Where the current audio comes from: downloaded, streamed or device.
+  String? source;
 
   final ApiClient Function() _apiProvider;
 
@@ -229,6 +236,7 @@ class Narrator extends ChangeNotifier {
     await stop();
     await _wireTts();
     tier = NarrationTier.device;
+    source = 'device';
     current = key(course, file);
     error = null;
     state = NarrationState.playing;
@@ -332,6 +340,8 @@ class Narrator extends ChangeNotifier {
   Future<void> playAgent({
     required String course,
     required String file,
+    String? rev,
+    String? fallbackMarkdown,
   }) async {
     await stop();
     tier = NarrationTier.agent;
@@ -368,18 +378,35 @@ class Narrator extends ChangeNotifier {
       });
       // The route is Bearer-gated, so the header travels with the media request
       // rather than the token being put in a URL where it would end up in logs.
-      final d = await p.setAudioSource(AudioSource.uri(
-        uri,
-        headers: api.token.isEmpty ? null : {'Authorization': 'Bearer ${api.token}'},
-      ));
+      // Order: the copy on the phone (only if it is this revision), then the
+      // stream; a failure of both falls through to the device voice below.
+      final saved = (rev == null || downloads == null) ? null : await downloads!.local(course, file, rev);
+      final Duration? d;
+      if (saved != null) {
+        d = await p.setAudioSource(AudioSource.file(saved.path));
+        source = 'downloaded';
+      } else {
+        d = await p.setAudioSource(AudioSource.uri(
+          uri,
+          headers: api.token.isEmpty ? null : {'Authorization': 'Bearer ${api.token}'},
+        ));
+        source = 'streamed';
+      }
       duration = d ?? Duration.zero;
       await p.setSpeed(speed);
       await p.play();
       state = NarrationState.playing;
     } catch (e) {
+      if (fallbackMarkdown != null && fallbackMarkdown.trim().isNotEmpty) {
+        // Neither a local file nor the stream worked (airplane mode, narration not made
+        // yet): the device voice still reads it.
+        await speakDevice(course: course, file: file, markdown: fallbackMarkdown);
+        return;
+      }
       error = 'Could not play the narration. It may not be made yet.';
       state = NarrationState.idle;
       current = null;
+      source = null;
     }
     notifyListeners();
   }

@@ -1,4 +1,9 @@
+import 'dart:io' show Directory;
+
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'api/client.dart';
 import 'data/db.dart';
@@ -8,6 +13,7 @@ import 'data/mutations.dart';
 import 'data/outbox.dart';
 import 'data/store.dart';
 import 'data/sync.dart';
+import 'services/audio_downloads.dart';
 import 'services/narration.dart';
 import 'services/narration_store.dart';
 import 'services/session.dart';
@@ -92,7 +98,24 @@ class AppServices {
     final sync = SyncEngine(store, outbox, apiOf);
     final mutations = Mutations(store, outbox, sync, apiOf, db);
     final modules = ModuleLibrary(db, store, apiOf);
-    final narrator = Narrator(apiOf, store: DbNarrationStore(db));
+    // Narration kept on the phone for offline listening (BI26101397). Not on the web build.
+    AudioDownloads? downloads;
+    if (!kIsWeb) {
+      try {
+        final docs = await getApplicationDocumentsDirectory();
+        downloads = AudioDownloads(
+          root: Directory('${docs.path}/narration'),
+          apiProvider: apiOf,
+          isOnWifi: () async {
+            final r = await Connectivity().checkConnectivity();
+            return r.contains(ConnectivityResult.wifi) || r.contains(ConnectivityResult.ethernet);
+          },
+        );
+      } catch (_) {
+        // No storage: narration still streams and the device voice still reads.
+      }
+    }
+    final narrator = Narrator(apiOf, store: DbNarrationStore(db), downloads: downloads);
     final sms = SmsIngest(apiOf);
     final updater = UpdateService(apiOf);
     final lessonNotes = LessonNotesRepository(apiOf: apiOf, mutations: mutations, db: db);

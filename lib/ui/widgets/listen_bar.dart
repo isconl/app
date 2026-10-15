@@ -6,6 +6,7 @@ import '../../services/narration.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import 'common.dart';
+import 'offline_narration.dart';
 
 /// The listen control on a reading page.
 ///
@@ -75,7 +76,12 @@ class _ListenBarState extends State<ListenBar> {
                       // Prefer the agent's voice when a current one exists;
                       // otherwise the device reads it now rather than later.
                       if (hasNarration && !staleNarration) {
-                        await n.playAgent(course: widget.course, file: widget.file);
+                        await n.playAgent(
+                          course: widget.course,
+                          file: widget.file,
+                          rev: fmt.s(audio?['rev']),
+                          fallbackMarkdown: widget.markdown,
+                        );
                       } else {
                         await n.speakDevice(
                           course: widget.course,
@@ -89,7 +95,7 @@ class _ListenBarState extends State<ListenBar> {
                   Expanded(
                     child: Text(
                       mine && n.tier == NarrationTier.agent
-                          ? 'The agent reading it'
+                          ? (n.source == 'downloaded' ? 'Playing the copy on this phone' : 'Streaming from the agent')
                           : mine
                               ? 'This device reading it'
                               : hasNarration
@@ -166,6 +172,13 @@ class _ListenBarState extends State<ListenBar> {
                 ),
               ],
 
+              if (hasNarration && !staleNarration && n.downloads != null)
+                OfflineRow(
+                  downloads: n.downloads!,
+                  course: widget.course,
+                  file: widget.file,
+                  rev: fmt.s(audio?['rev']),
+                ),
               const SizedBox(height: 10),
               Row(
                 children: [

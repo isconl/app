@@ -8,6 +8,7 @@ import '../update_flow.dart';
 import '../widgets/common.dart';
 import '../widgets/integrations_section.dart';
 import '../widgets/journal_access.dart';
+import '../widgets/offline_narration.dart';
 import '../../services/cx_grants.dart';
 import '../widgets/news_watch_card.dart';
 import '../widgets/passkeys_card.dart';
@@ -152,6 +153,8 @@ class _SettingsViewState extends State<SettingsView> {
                   ],
                 ),
               ),
+              const SectionLabel('Offline narration'),
+              const OfflineNarrationCard(),
               const SectionLabel('Journal access'),
               JournalAccessCard(client: HubCxGrantsClient(AppScope.of(context).api, AppScope.of(context).session.passkeys)),
               const SectionLabel('Passkeys'),
