@@ -9,6 +9,7 @@ import 'data/outbox.dart';
 import 'data/store.dart';
 import 'data/sync.dart';
 import 'services/narration.dart';
+import 'services/narration_store.dart';
 import 'services/session.dart';
 import 'services/sms_ingest.dart';
 import 'services/updater.dart';
@@ -91,7 +92,7 @@ class AppServices {
     final sync = SyncEngine(store, outbox, apiOf);
     final mutations = Mutations(store, outbox, sync, apiOf, db);
     final modules = ModuleLibrary(db, store, apiOf);
-    final narrator = Narrator(apiOf);
+    final narrator = Narrator(apiOf, store: DbNarrationStore(db));
     final sms = SmsIngest(apiOf);
     final updater = UpdateService(apiOf);
     final lessonNotes = LessonNotesRepository(apiOf: apiOf, mutations: mutations, db: db);

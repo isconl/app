@@ -141,11 +141,30 @@ class _ListenBarState extends State<ListenBar> {
                     Text(fmt.clock(n.duration), style: T.monoSmall),
                   ],
                 ),
-              ] else if (mine && n.tier == NarrationTier.device)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: LinearProgressIndicator(minHeight: 2),
+              ] else if (mine && n.tier == NarrationTier.device && n.chunkCount > 0) ...[
+                const SizedBox(height: 8),
+                // The device voice is read in chunks, so the bar shows real
+                // progress and a chunk is the unit of skipping.
+                LinearProgressIndicator(minHeight: 2, value: n.deviceProgress),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      key: const Key('listen-back'),
+                      tooltip: 'Back a section',
+                      icon: const Icon(Icons.replay_rounded, size: 20),
+                      onPressed: () => n.skip(-1),
+                    ),
+                    Text('${n.chunkIndex + 1} of ${n.chunkCount}', style: T.monoSmall),
+                    IconButton(
+                      key: const Key('listen-forward'),
+                      tooltip: 'Forward a section',
+                      icon: const Icon(Icons.forward_rounded, size: 20),
+                      onPressed: () => n.skip(1),
+                    ),
+                  ],
                 ),
+              ],
 
               const SizedBox(height: 10),
               Row(
@@ -165,8 +184,27 @@ class _ListenBarState extends State<ListenBar> {
 
               if (n.error != null && mine) ...[
                 const SizedBox(height: 8),
-                Text(n.error!, style: T.tiny.copyWith(color: C.red)),
+                Text(n.error!, key: const Key('listen-error'), style: T.tiny.copyWith(color: C.red)),
+                if (n.tier == NarrationTier.device)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      key: const Key('listen-retry'),
+                      onPressed: () => n.retry(widget.markdown),
+                      child: const Text('Try again'),
+                    ),
+                  ),
               ],
+              if (mine && n.needsVoiceData)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'No offline voice is installed. Open your phone settings, Text-to-speech output, '
+                    'and install Google speech data for British English to listen without a signal.',
+                    key: const Key('listen-voice-data'),
+                    style: T.tiny.copyWith(color: C.amber),
+                  ),
+                ),
             ],
           ),
         );

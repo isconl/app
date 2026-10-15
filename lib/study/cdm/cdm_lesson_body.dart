@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
+import '../../ui/widgets/listen_bar.dart';
 import 'cdm_model.dart';
 import 'cdm_source.dart';
 import 'cdm_view.dart';
@@ -72,4 +73,40 @@ class _CdmLessonBodyState extends State<CdmLessonBody> {
       },
     );
   }
+}
+
+/// The Listen bar for a module served as a deck document: it reads the same
+/// cached document the body draws, so it works offline and costs no request.
+class CdmListenBar extends StatefulWidget {
+  const CdmListenBar({super.key, required this.docId, required this.version, required this.course, required this.file});
+  final String docId;
+  final String version;
+  final String course;
+  final String file;
+
+  @override
+  State<CdmListenBar> createState() => _CdmListenBarState();
+}
+
+class _CdmListenBarState extends State<CdmListenBar> {
+  Future<String>? _text;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_text != null) return;
+    final services = AppScope.of(context);
+    final source = CdmSource(services.api, services.db.cdm);
+    _text = source.open(widget.docId, widget.version).then((d) => d == null ? '' : cdmSpeakableMarkdown(d));
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<String>(
+        future: _text,
+        builder: (context, snap) {
+          final md = snap.data ?? '';
+          if (md.isEmpty) return const SizedBox.shrink();
+          return ListenBar(course: widget.course, file: widget.file, markdown: md);
+        },
+      );
 }

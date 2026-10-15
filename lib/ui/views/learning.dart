@@ -1892,6 +1892,9 @@ class _LessonScreenState extends State<LessonScreen> {
                           course: widget.course,
                           file: widget.file,
                           markdown: content),
+                    // BI26101394: a document-served module with no markdown still gets a Listen bar.
+                    if (content.isEmpty && docId.isNotEmpty && docVersion.isNotEmpty)
+                      CdmListenBar(docId: docId, version: docVersion, course: widget.course, file: widget.file),
                     if (docId.isNotEmpty && docVersion.isNotEmpty)
                       // BI26092620: a module served as a deck document is drawn natively
                       // from the version-keyed cache; the markdown reader is its fallback.

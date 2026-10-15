@@ -201,3 +201,46 @@ List<CdmNode> _nodes(Object? raw, String prefix) {
   }
   return out;
 }
+
+/// Plain reading text for a deck document, so the Listen bar works on modules
+/// served as documents whose markdown `content` is empty (BI26101394 item 7).
+///
+/// It walks the blocks in reading order and keeps the words a person would say:
+/// headings, paragraphs, list items and callout text. Anything addressed only to
+/// authors is left out. Block shapes it does not know contribute nothing rather
+/// than their raw JSON.
+String cdmSpeakableMarkdown(CdmDoc doc) {
+  final out = StringBuffer();
+  if (doc.headline.trim().isNotEmpty) out.writeln('# ${doc.headline.trim()}\n');
+  if ((doc.subtitle ?? '').trim().isNotEmpty) out.writeln('${doc.subtitle!.trim()}\n');
+
+  String textOf(Object? v) => v is String ? v.trim() : '';
+
+  void add(Object? v) {
+    final s = textOf(v);
+    if (s.isNotEmpty) out.writeln('$s\n');
+  }
+
+  void walk(List<CdmNode> nodes) {
+    for (final n in nodes) {
+      if (n.strList('aud').contains('author')) continue;
+      final title = n.strOrNull('title') ?? n.strOrNull('heading');
+      if (title != null && (n.type == 'section' || n.type == 'callout' || n.type == 'heading')) {
+        out.writeln('## ${title.trim()}\n');
+      }
+      for (final k in ['text', 'body', 'md', 'markdown', 'lead', 'summary']) {
+        add(n.json[k]);
+      }
+      final items = n.json['items'];
+      if (items is List) {
+        for (final it in items) {
+          add(it is Map ? (it['text'] ?? it['label']) : it);
+        }
+      }
+      walk(n.children);
+    }
+  }
+
+  walk(doc.sections);
+  return out.toString().trim();
+}
