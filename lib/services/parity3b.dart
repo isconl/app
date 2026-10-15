@@ -70,10 +70,6 @@ class HubParity3bApi implements Parity3bApi {
   static Map<String, dynamic> _m(Object? v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
   static List<dynamic> _l(Object? v) => v is List ? v : const [];
 
-  static void _ok(Map<String, dynamic> d) {
-    if (d['success'] != true) throw ApiException(0, '${d['error'] ?? 'Refused'}');
-  }
-
   @override
   Future<ChaseDraft> chase(String decisionId) async {
     final d = _m(await api.getJson('/api/decisions/chase?id=${Uri.encodeQueryComponent(decisionId)}'));

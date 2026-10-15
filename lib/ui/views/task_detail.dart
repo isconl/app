@@ -6,6 +6,7 @@ import '../../util/fmt.dart' as fmt;
 import '../../util/markdown.dart';
 import '../shell.dart' show ShellAppBar;
 import '../widgets/common.dart';
+import '../widgets/study_extras.dart';
 import '../widgets/task_delivery_section.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/task_delivery.dart';
@@ -312,6 +313,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     ],
                   ),
                 ),
+              // BI26101214: the lesson from the vault that fits this task, before starting it.
+              PrimeCard(query: '${fmt.s(task['TITLE'])} ${fmt.s(task['WHY'])}'.trim()),
               // BI26101210: notes, recipients, coverage, deliverables and delivery state, as the console has them.
               TaskDeliverySection(
                 taskId: widget.taskId,

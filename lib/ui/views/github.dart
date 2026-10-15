@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
+import '../../services/study_extras.dart';
 import '../widgets/common.dart';
+import '../widgets/study_extras.dart';
 
 /// GitHub snapshot: repos, notifications, contribution map.
 class GithubView extends StatelessWidget {
@@ -24,8 +26,7 @@ class GithubView extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (contributions.isNotEmpty) ...[
-              const SectionLabel('Contributions'),
-              Panel(child: _ContributionMap(data: contributions)),
+              ContributionsCard(title: 'Activity', canRefresh: true, loader: (refresh) => HubStudyExtrasApi(services.api).githubContributions(refresh: refresh)),
             ],
             if (notifications.isNotEmpty) ...[
               const SectionLabel('Notifications'),
@@ -146,78 +147,6 @@ class GithubView extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-/// Contribution heatmap in brand greens.
-class _ContributionMap extends StatelessWidget {
-  const _ContributionMap({required this.data});
-  final Map<String, dynamic> data;
-
-  @override
-  Widget build(BuildContext context) {
-    // Accept either {weeks: [{days:[{count}]}]} or {days: [{date,count}]}.
-    List<List<int>> weeks = [];
-    final weeksRaw = fmt.l(data['weeks']);
-    if (weeksRaw.isNotEmpty) {
-      weeks = [
-        for (final w in weeksRaw)
-          [
-            for (final day in fmt.l(fmt.m(w)['days']))
-              fmt.i(fmt.m(day)['count'])
-          ]
-      ];
-    } else {
-      final days = fmt.lm(data['days']);
-      if (days.isEmpty) {
-        return Text('No contribution data', style: T.small);
-      }
-      var week = <int>[];
-      for (final day in days) {
-        week.add(fmt.i(day['count']));
-        if (week.length == 7) {
-          weeks.add(week);
-          week = [];
-        }
-      }
-      if (week.isNotEmpty) weeks.add(week);
-    }
-    if (weeks.isEmpty) return Text('No contribution data', style: T.small);
-    final recent = weeks.length > 20
-        ? weeks.sublist(weeks.length - 20)
-        : weeks;
-
-    Color cellColor(int count) {
-      if (count <= 0) return C.surface;
-      if (count < 3) return C.greenDim.withValues(alpha: 0.45);
-      if (count < 6) return C.greenDim;
-      return C.greenBright;
-    }
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      reverse: true,
-      child: Row(
-        children: [
-          for (final week in recent)
-            Column(
-              children: [
-                for (var day = 0; day < 7; day++)
-                  Container(
-                    width: 9,
-                    height: 9,
-                    margin: const EdgeInsets.all(1.2),
-                    decoration: BoxDecoration(
-                      color: cellColor(
-                          day < week.length ? week[day] : 0),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-              ],
-            ),
-        ],
-      ),
     );
   }
 }

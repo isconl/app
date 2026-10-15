@@ -23,9 +23,18 @@ enum MarkdownVariant { compact, reading }
 /// Compact markdown renderer covering what the agent actually emits:
 /// headings, bold/italic, inline + fenced code, lists, blockquotes,
 /// horizontal rules, links and tables. No external dependency, fully offline.
+/// BI26101214: lets the reader act on a paragraph: a long-press calls [onLongPress] with the
+/// paragraph's block index and text, and [footer] draws something under it (the tutor's answer).
+class ParagraphHook {
+  const ParagraphHook({required this.onLongPress, required this.footer});
+  final void Function(int index, String text) onLongPress;
+  final Widget Function(int index, String text) footer;
+}
+
 class Markdown extends StatelessWidget {
   const Markdown(this.source,
       {super.key,
+      this.paragraphHook,
       this.anchors,
       this.baseStyle,
       this.variant = MarkdownVariant.compact,
@@ -35,6 +44,9 @@ class Markdown extends StatelessWidget {
       this.imageSizes = const {},
       this.onModuleLink});
   final String source;
+
+  /// Long-press and footer for paragraphs; null leaves paragraphs as they were.
+  final ParagraphHook? paragraphHook;
 
   /// BI26100537: a `[[link:text|module:<course>/<NN>#anchor]]` was tapped. Null leaves the link inert.
   final void Function(ModuleLink link)? onModuleLink;
@@ -75,10 +87,22 @@ class Markdown extends StatelessWidget {
     final anchorIndex = <String, int>{};
     var movement = '';
     for (var i = 0; i < blocks.length; i++) {
-      final w = _renderBlock(blocks[i], style,
+      var w = _renderBlock(blocks[i], style,
           first: i == 0, lead: i > 0 && blocks[i - 1].kind == _Kind.heading, figures: figures);
       if (w == null) continue;
       final b = blocks[i];
+      final hook = paragraphHook;
+      if (hook != null && b.kind == _Kind.paragraph) {
+        final at = i;
+        w = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onLongPress: () => hook.onLongPress(at, b.text),
+            child: w,
+          ),
+          hook.footer(at, b.text),
+        ]);
+      }
       if (b.kind == _Kind.heading && b.level <= 2) movement = b.text.trim();
       movements.add(movement);
       words.add(RegExp(r'\S+').allMatches(b.text.isNotEmpty ? b.text : b.quizBody).length);

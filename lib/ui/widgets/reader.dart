@@ -57,8 +57,11 @@ class ReadingSurface extends StatelessWidget {
 /// paragraph is quote it.
 class ReadingBody extends StatelessWidget {
   const ReadingBody(this.markdown,
-      {super.key, this.courseId = '', this.baseUrl = '', this.token = '', this.anchors, this.onModuleLink});
+      {super.key, this.courseId = '', this.baseUrl = '', this.token = '', this.anchors, this.onModuleLink, this.paragraphHook});
   final String markdown;
+
+  /// BI26101214: long-press and a footer on each paragraph (the tutor).
+  final ParagraphHook? paragraphHook;
 
   /// BI26100537: a link to another module (and section) was tapped.
   final void Function(ModuleLink link)? onModuleLink;
@@ -79,6 +82,7 @@ class ReadingBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return SelectionArea(
       child: Markdown(markdown,
+          paragraphHook: paragraphHook,
           anchors: anchors,
           variant: MarkdownVariant.reading,
           courseId: courseId,

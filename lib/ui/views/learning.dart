@@ -12,7 +12,7 @@ import '../../services/audio_downloads.dart' show prettyBytes;
 import '../../services/course_offline.dart';
 import '../../services/prefetch.dart' show DbPrefetchStore, markPrefetchOpened;
 import '../../data/db.dart';
-import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink;
+import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink, ParagraphHook;
 import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
 import '../../study/cdm/cdm_lesson_body.dart';
@@ -27,6 +27,8 @@ import '../shell.dart' show ShellAppBar, SyncIndicator, openMenu;
 import '../widgets/common.dart';
 import '../widgets/course_controls.dart';
 import '../widgets/listen_bar.dart';
+import '../widgets/study_extras.dart';
+import '../../services/study_extras.dart';
 import '../widgets/module_lifecycle.dart';
 import '../widgets/reader.dart';
 import '../widgets/track_admin.dart';
@@ -118,6 +120,29 @@ class _LearningViewState extends State<LearningView> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Padding(padding: EdgeInsets.only(bottom: 10), child: StudySearchEntry()),
+              // BI26101214: what to read right now, and the study activity map.
+              CampusCard(onOpen: (courseId, lesson) {
+                if (lesson.isEmpty) return;
+                final course = courses.firstWhere(
+                    (c) => (fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID'])) == courseId,
+                    orElse: () => const <String, dynamic>{});
+                final lessons = fmt.lm(course['lessons']);
+                final l = lessons.firstWhere((x) => fmt.s(x['file']) == lesson, orElse: () => const <String, dynamic>{});
+                final rawTitle = fmt.s(l['title']).isEmpty ? lesson : fmt.s(l['title']);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LessonScreen(
+                      course: courseId,
+                      file: lesson,
+                      title: safeModuleTitle(stripEmoji(rawTitle), lesson),
+                      status: fmt.s(l['status']).isEmpty ? 'new' : fmt.s(l['status']),
+                      allLessons: lessons,
+                    ),
+                  ),
+                );
+              }),
+              ContributionsCard(title: 'Study activity', loader: (_) => HubStudyExtrasApi(services.api).studyContributions()),
               // ── transient prefetch progress only - the idle summary moved
               // down to each track card, where "how much of THIS is offline"
               // is actually actionable rather than one global number nobody
@@ -1690,8 +1715,24 @@ class _LessonScreenState extends State<LessonScreen> {
     );
   }
 
+  /// BI26101214: the tutor for this module. Turn on Ask in the app bar and every paragraph
+  /// offers it; a long-press works too. The answer shows under the paragraph asked about.
+  TutorController? _tutorC;
+
+  TutorController get _tutor => _tutorC ??= TutorController(
+        api: HubStudyExtrasApi(AppScope.of(context).api),
+        course: widget.course,
+        file: widget.file,
+      );
+
+  ParagraphHook _paragraphHook() => ParagraphHook(
+        onLongPress: (i, t) => askTutorAbout(context, _tutor, i, t),
+        footer: (i, t) => TutorFooter(controller: _tutor, paragraph: i, text: t),
+      );
+
   @override
   void dispose() {
+    _tutorC?.dispose();
     _resumeDebounce?.cancel();
     _undoTimer?.cancel();
     _saveResumeNow();
@@ -1872,6 +1913,12 @@ class _LessonScreenState extends State<LessonScreen> {
                 icon: Text('Aa', style: T.w600(T.body2).copyWith(color: C.text)),
                 onPressed: () => showReaderComfortSheet(context),
               ),
+              IconButton(
+                key: const Key('reader-tutor'),
+                tooltip: 'Ask the tutor about a paragraph',
+                icon: const Icon(Icons.school_outlined, size: 20),
+                onPressed: () => _tutor.toggleMode(),
+              ),
               _ExportPdfButton(course: widget.course, file: widget.file),
             ],
           ),
@@ -1958,6 +2005,7 @@ class _LessonScreenState extends State<LessonScreen> {
                         fallback: content.isEmpty
                             ? _lessonOfflineNote()
                             : ReadingBody(content,
+                                paragraphHook: _paragraphHook(),
                                 anchors: _anchors,
                                 onModuleLink: _openModuleLink,
                                 courseId: widget.course,
@@ -1968,6 +2016,7 @@ class _LessonScreenState extends State<LessonScreen> {
                       _lessonOfflineNote()
                     else
                       ReadingBody(content,
+                          paragraphHook: _paragraphHook(),
                           anchors: _anchors,
                           onModuleLink: _openModuleLink,
                           courseId: widget.course,
