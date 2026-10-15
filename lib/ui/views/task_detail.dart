@@ -6,6 +6,9 @@ import '../../util/fmt.dart' as fmt;
 import '../../util/markdown.dart';
 import '../shell.dart' show ShellAppBar;
 import '../widgets/common.dart';
+import '../widgets/task_delivery_section.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../services/task_delivery.dart';
 
 /// Deep view of one task: effort, career context, brief, draft, Jira card.
 /// Cached per task, so previously opened tasks read fully offline.
@@ -309,6 +312,21 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     ],
                   ),
                 ),
+              // BI26101210: notes, recipients, coverage, deliverables and delivery state, as the console has them.
+              TaskDeliverySection(
+                taskId: widget.taskId,
+                task: task,
+                client: HubTaskDeliveryClient(services.api),
+                online: services.sync.online,
+                openUrl: (url) async {
+                  try {
+                    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                  } catch (_) {}
+                },
+                onChanged: () async {
+                  await snap.refresh();
+                },
+              ),
               const SizedBox(height: 10),
             ],
           );
