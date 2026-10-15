@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,8 @@ import 'services/alerts.dart';
 import 'services/branding.dart';
 import 'services/day_close_planner.dart';
 import 'services/platform.dart';
+import 'services/prefetch.dart';
+import 'services/prefetch_worker.dart';
 import 'theme.dart';
 import 'ui/widgets/brand.dart' as brand;
 import 'ui/widgets/brand.dart' show BrandMotion;
@@ -78,6 +81,14 @@ class _RootGateState extends State<RootGate> {
     super.initState();
     AlertService.instance.init().then((_) {
       if (mounted) replanDayClose(AppScope.of(context));
+    });
+    // BI26100140: set the background prefetch schedule from the saved toggle, then one pass now.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final s = AppScope.of(context);
+      final settings = await DbPrefetchStore(s.db).settings();
+      await syncPrefetchSchedule(settings);
+      unawaited(prefetchNow(s));
     });
     AlertService.instance.onDayClose = () => rootNavigatorKey.currentState
         ?.push(MaterialPageRoute<void>(builder: (_) => const DayCloseScreen()));

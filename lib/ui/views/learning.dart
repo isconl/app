@@ -10,6 +10,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../app_scope.dart';
 import '../../services/audio_downloads.dart' show prettyBytes;
 import '../../services/course_offline.dart';
+import '../../services/prefetch.dart' show DbPrefetchStore, markPrefetchOpened;
 import '../../data/db.dart';
 import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink;
 import '../../data/lesson_notes.dart';
@@ -1394,6 +1395,8 @@ class _LessonScreenState extends State<LessonScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final lib = AppScope.of(context).modules;
+      // BI26100140: opening a prefetched module makes it the reader's own, so eviction never takes it.
+      unawaited(markPrefetchOpened(DbPrefetchStore(AppScope.of(context).db), widget.course, widget.file));
       final st = lib.status(widget.course, widget.file);
       if (st.state == ModuleState.stale) {
         await lib.download(widget.course, widget.file);
