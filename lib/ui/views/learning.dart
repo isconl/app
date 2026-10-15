@@ -12,6 +12,8 @@ import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink;
 import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
 import '../../study/cdm/cdm_lesson_body.dart';
+import '../../study/trajectory/trajectory_model.dart';
+import '../../study/trajectory/trajectory_section.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../../util/reader_prefs.dart';
@@ -1920,6 +1922,9 @@ class _LessonScreenState extends State<LessonScreen> {
                           courseId: widget.course,
                           baseUrl: services.api.baseUrl,
                           token: services.api.token),
+                    // BI26101207: a Trajectory module's forecast block, read from the served payload.
+                    if (Trajectory.tryParse(lessonMap['trajectory'], sconlOnly: lessonMap['sconlOnly'] ?? lessonMap['sconl_only']) case final traj?)
+                      TrajectorySection(course: widget.course, file: widget.file, trajectory: traj),
                     _LessonNotes(course: widget.course, file: widget.file),
                     // BI26092613: "Mark as done" button at the end of the module,
                     // full width, in the track colour. Shows "Done · undo" for 5 seconds.
