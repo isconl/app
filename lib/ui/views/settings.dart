@@ -6,6 +6,7 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../update_flow.dart';
 import '../widgets/common.dart';
+import '../widgets/standard_tag.dart';
 import '../widgets/integrations_section.dart';
 import '../widgets/journal_access.dart';
 import '../widgets/offline_narration.dart';
@@ -166,6 +167,8 @@ class _SettingsViewState extends State<SettingsView> {
               const PrefetchCard(),
               const SizedBox(height: 10),
               const WidgetSettingsCard(),
+              const SectionLabel('Study'),
+              const Panel(child: StandardOnListSwitch()),
               const SectionLabel('Offline narration'),
               const OfflineNarrationCard(),
               const SectionLabel('Journal access'),

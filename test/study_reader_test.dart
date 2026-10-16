@@ -12,6 +12,7 @@ import 'package:isconl/data/outbox.dart';
 import 'package:isconl/data/store.dart';
 import 'package:isconl/data/sync.dart';
 import 'package:isconl/data/vault_mirror.dart';
+import 'package:isconl/services/course_standard.dart';
 import 'package:isconl/services/narration.dart';
 import 'package:isconl/services/session.dart';
 import 'package:isconl/services/sms_ingest.dart';
@@ -313,6 +314,9 @@ void main() {
   });
 
   group('BI26092613: UI widgets and reader lifecycle', () {
+    // BI26101601: the standard tag at the foot of a module starts no database work in these tests.
+    setUp(() => CourseStandard.instance.debugPreload(version: '4.5.0'));
+
     testWidgets('header line renders words, min read, reviewed date, and version', (tester) async {
       final services = (await tester.runAsync(() => buildTestServices()))!;
       final api = services.session.api as _TestApiClient;

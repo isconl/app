@@ -34,6 +34,9 @@ import '../widgets/module_lifecycle.dart';
 import '../widgets/reader.dart';
 import '../widgets/sub_tabs.dart';
 import '../../util/tab_memory.dart';
+import '../widgets/standard_tag.dart';
+import '../../services/course_standard.dart';
+import '../../util/module_standard.dart';
 import '../widgets/track_admin.dart';
 import 'learning_export_stub.dart'
     if (dart.library.io) 'learning_export_native.dart' as export_impl;
@@ -1339,6 +1342,18 @@ class LessonRow extends StatelessWidget {
                       ReadingBar(course: courseId, file: file, color: trackColor),
                     // BI26100110: a lifecycle badge for anything but a live module (superseded, draft, missing).
                     LifecycleBadges(lesson),
+                    // BI26101601: the optional standard tag (Settings > Study), for spotting a stale course.
+                    ListenableBuilder(
+                      listenable: CourseStandard.instance,
+                      builder: (context, _) => CourseStandard.instance.showOnList
+                          ? StandardTagLine(
+                              compact: true,
+                              version: fmt.s(lesson['version'] ?? lesson['VERSION']).isEmpty
+                                  ? null
+                                  : fmt.s(lesson['version'] ?? lesson['VERSION']),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
                   ],
                 ),
               ),
@@ -2148,6 +2163,8 @@ class _LessonScreenState extends State<LessonScreen> {
                         ],
                       ),
                     ),
+                    // BI26101601: the quiet "standard 4.5" line at the foot of every module.
+                    StandardTagLine(version: frontmatterVersion(content) ?? (version.isEmpty ? null : version)),
                   ],
                 );
               },
