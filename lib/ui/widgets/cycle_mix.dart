@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
+import '../../util/cycle_theme.dart';
 import '../../util/equicycle.dart';
 import 'common.dart';
 
@@ -18,19 +19,18 @@ class CycleMixCard extends StatefulWidget {
   State<CycleMixCard> createState() => _CycleMixCardState();
 }
 
-/// The default 13-word rotation, same order as the web's
-/// getEquicycleContext() and calendar.dart's _EqContext.
-const _rotation = [
-  'Plant', 'Push', 'Climb', 'Reap', 'Dig', 'Weave', 'Mend', 'Scout',
-  'Scale', 'Make', 'Run', 'Stock', 'Audit',
-];
-
 class _CycleRef {
   _CycleRef(this.eqYear, this.cycleNum);
   final int eqYear;
   final int cycleNum;
   String get key => eq2CycleKey(eqYear, cycleNum);
-  String get defaultWord => _rotation[(cycleNum - 1).clamp(0, 12)];
+  String get defaultWord => rotationWord(cycleNum);
+
+  /// The up to two cycles before this one in the same year, newest first: the word Compass holds.
+  List<_CycleRef> get held => [
+        for (var back = 1; back <= 2; back++)
+          if (cycleNum - back >= 1) _CycleRef(eqYear, cycleNum - back),
+      ];
   _CycleRef get next =>
       cycleNum >= 13 ? _CycleRef(eqYear + 1, 1) : _CycleRef(eqYear, cycleNum + 1);
 
@@ -100,7 +100,7 @@ class _CycleMixCardState extends State<CycleMixCard> {
   void _loadCycles() {
     final now = _now;
     if (now == null) return;
-    for (final c in [now, now.next]) {
+    for (final c in [now, now.next, ...now.held, ...now.next.held]) {
       _load(c.key);
     }
   }
@@ -234,7 +234,12 @@ class _CycleMixCardState extends State<CycleMixCard> {
 
   Widget _row(String label, _CycleRef c) {
     final m = _mixes[c.key];
-    final word = m?.words.first ?? c.defaultWord;
+    final resolved = resolveCycleWord(
+      cycleNum: c.cycleNum,
+      own: m?.words.first,
+      held: [for (final h in c.held) _mixes[h.key]?.words.first],
+    );
+    final word = resolved.word;
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Column(
@@ -245,6 +250,10 @@ class _CycleMixCardState extends State<CycleMixCard> {
               Text('$label · cycle ${c.cycleNum}', style: T.monoSmall),
               const SizedBox(width: 10),
               Text(word.toUpperCase(), style: T.w500(T.body2).copyWith(color: C.greenBright)),
+              if (resolved.source == CycleWordSource.rotation) ...[
+                const SizedBox(width: 6),
+                Text('(default, not chosen)', style: T.small.copyWith(color: C.text3)),
+              ],
               const Spacer(),
               TextButton(onPressed: () => _edit(c), child: const Text('Set mix')),
               if (m != null)
