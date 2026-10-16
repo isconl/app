@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/sub_tabs.dart';
+
 import '../../services/ledger_tools.dart';
 import '../../theme.dart';
 import '../widgets/ledger_widgets.dart';
@@ -77,13 +79,7 @@ class _LedgerToolsScreenState extends State<LedgerToolsScreen> with WidgetsBindi
     return DefaultTabController(
       length: 5,
       child: Column(children: [
-        const TabBar(isScrollable: true, tabs: [
-          Tab(text: 'Accounts'),
-          Tab(text: 'Income'),
-          Tab(text: 'Review'),
-          Tab(text: 'Report'),
-          Tab(text: 'Assets'),
-        ]),
+        subTabBar(keyPrefix: 'ledger-tools', scrollable: true, labels: const ['Accounts', 'Income', 'Review', 'Report', 'Assets']),
         Expanded(
           child: TabBarView(children: [
             AccountsTab(api: widget.api),

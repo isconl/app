@@ -105,7 +105,13 @@ ThemeData buildTheme() {
     colorScheme: const ColorScheme.dark(
       primary: C.green,
       onPrimary: C.textInverse,
-      secondary: C.cyan,
+      // BI26101519: no blue in a control. Material derives chips, segmented buttons, selected
+      // toggles and tonal fills from the secondary family, so it is the app's green.
+      secondary: C.green,
+      onSecondary: C.textInverse,
+      secondaryContainer: C.greenBg2,
+      onSecondaryContainer: C.greenBright,
+      tertiary: C.green,
       surface: C.panel,
       onSurface: C.text,
       error: C.red,
@@ -231,9 +237,26 @@ ThemeData buildTheme() {
     ),
     chipTheme: base.chipTheme.copyWith(
       backgroundColor: C.surface,
+      selectedColor: C.greenBg2,
+      checkmarkColor: C.greenBright,
       side: const BorderSide(color: C.border),
       labelStyle: T.small,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? C.green : null),
+        foregroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? C.textInverse : C.text2),
+        side: const WidgetStatePropertyAll(BorderSide(color: C.border)),
+      ),
+    ),
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? C.green : null),
+      checkColor: const WidgetStatePropertyAll(C.textInverse),
+      side: const BorderSide(color: C.text3, width: 1.5),
+    ),
+    radioTheme: RadioThemeData(
+      fillColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? C.green : C.text3),
     ),
     listTileTheme: const ListTileThemeData(
       iconColor: C.text3,

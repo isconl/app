@@ -32,6 +32,8 @@ import '../widgets/study_extras.dart';
 import '../../services/study_extras.dart';
 import '../widgets/module_lifecycle.dart';
 import '../widgets/reader.dart';
+import '../widgets/sub_tabs.dart';
+import '../../util/tab_memory.dart';
 import '../widgets/track_admin.dart';
 import 'learning_export_stub.dart'
     if (dart.library.io) 'learning_export_native.dart' as export_impl;
@@ -64,14 +66,65 @@ class _LearningViewState extends State<LearningView> {
     });
   }
 
+  /// BI26101519: Study has three tabs, Map, Campus and Tracks, opening on Campus (what to read now). The
+  /// last one chosen is remembered on the device. Each tab scrolls on its own under the fixed tab bar.
+  static const _tabLabels = ['Map', 'Campus', 'Tracks'];
+  static const _defaultTab = 1;
+  int _tab = _defaultTab;
+  int _restored = 0; // part of the tab bar's key, bumped only when a saved choice is applied
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_tabRead) return;
+    _tabRead = true;
+    readTabIndex(AppScope.of(context).db, 'study', _tabLabels.length).then((saved) {
+      if (mounted && saved != null && saved != _tab) {
+        setState(() {
+          _tab = saved;
+          _restored++;
+        });
+      }
+    });
+  }
+
+  bool _tabRead = false;
+
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
-    return ListenableBuilder(
-      listenable: services.modules,
-      builder: (context, _) => SnapshotView(
-        snapshot: services.store.learning,
-        builder: (context, data) {
+    Widget tab(int t) => ListenableBuilder(
+          listenable: services.modules,
+          builder: (context, _) => SnapshotView(
+            snapshot: services.store.learning,
+            builder: (context, data) => _body(context, data, t),
+          ),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(padding: EdgeInsets.fromLTRB(14, 10, 14, 6), child: StudySearchEntry()),
+        Expanded(
+          child: SubTabs(
+            key: ValueKey('study-view-$_restored'),
+            keyPrefix: 'study',
+            labels: _tabLabels,
+            initialIndex: _tab,
+            onChanged: (i) {
+              _tab = i;
+              writeTabIndex(services.db, 'study', i);
+            },
+            children: [tab(0), tab(1), tab(2)],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _body(BuildContext context, dynamic data, int tab) {
+    final services = AppScope.of(context);
+    return Builder(
+        builder: (context) {
           final courses = fmt.lm(fmt.m(data)['courses']);
           // BI26100538: a library with no courses but with tracks still shows its tracks.
           if (courses.isEmpty && fmt.lm(fmt.m(data)['groups']).isEmpty) {
@@ -120,9 +173,12 @@ class _LearningViewState extends State<LearningView> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Padding(padding: EdgeInsets.only(bottom: 10), child: StudySearchEntry()),
+              // Map tab: the study activity map.
+              if (tab == 0)
+                ContributionsCard(title: 'Study activity', loader: (_) => HubStudyExtrasApi(services.api).studyContributions()),
+              // Campus tab: what to read right now.
               // BI26101109: spaced recall. Shows only when a question is due.
-              RecallCard(onReopen: (t) {
+              if (tab == 1) RecallCard(onReopen: (t) {
                 final course = courses.firstWhere(
                     (c) => (fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID'])) == t.course,
                     orElse: () => const <String, dynamic>{});
@@ -144,7 +200,7 @@ class _LearningViewState extends State<LearningView> {
                 );
               }),
               // BI26101214: what to read right now, and the study activity map.
-              CampusCard(onOpen: (courseId, lesson) {
+              if (tab == 1) CampusCard(onOpen: (courseId, lesson) {
                 if (lesson.isEmpty) return;
                 final course = courses.firstWhere(
                     (c) => (fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID'])) == courseId,
@@ -165,12 +221,12 @@ class _LearningViewState extends State<LearningView> {
                   ),
                 );
               }),
-              ContributionsCard(title: 'Study activity', loader: (_) => HubStudyExtrasApi(services.api).studyContributions()),
+              // Tracks tab: the track cards and the offline progress.
               // ── transient prefetch progress only - the idle summary moved
               // down to each track card, where "how much of THIS is offline"
               // is actually actionable rather than one global number nobody
               // can act on from the landing screen.
-              if (lib.prefetching)
+              if (tab == 2 && lib.prefetching)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10, left: 2),
                   child: Row(
@@ -191,36 +247,38 @@ class _LearningViewState extends State<LearningView> {
               // Sconl 26 Sep 2026: emoji-free, colour-coded track cards.
               // A square card takes one cell at about 1:1; a wide card spans both
               // columns at about 2:1. If tile is missing, square is used.
-              StaggeredGrid.count(
-                crossAxisCount: 2,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                children: [
-                  for (final group in tracks)
-                    StaggeredGridTile.fit(
-                      crossAxisCellCount: group.isWide ? 2 : 1,
-                      child: TrackCard(
-                        group: group,
-                        courses: coursesForTrack[group.id] ?? const [],
+              if (tab == 2)
+                StaggeredGrid.count(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  children: [
+                    for (final group in tracks)
+                      StaggeredGridTile.fit(
+                        crossAxisCellCount: group.isWide ? 2 : 1,
+                        child: TrackCard(
+                          group: group,
+                          courses: coursesForTrack[group.id] ?? const [],
+                        ),
                       ),
-                    ),
-                ],
-              ),
+                  ],
+                ),
 
               // BI26100538: when the library was last synced from the vault. Amber past 24 hours, so a
               // stalled sync is seen the same day.
-              LibraryFreshness(syncedAt: fmt.m(data)['librarySyncedAt'] ?? fmt.m(data)['syncedAt']),
+              if (tab == 2) LibraryFreshness(syncedAt: fmt.m(data)['librarySyncedAt'] ?? fmt.m(data)['syncedAt']),
 
               // BI26100510: create, edit, archive and restore tracks.
-              Center(
-                child: TextButton(
-                  key: const Key('manage-tracks'),
-                  onPressed: () => showTrackAdmin(context, fmt.lm(fmt.m(data)['groups'])),
-                  child: Text('Manage tracks', style: T.tiny.copyWith(color: C.text3)),
+              if (tab == 2)
+                Center(
+                  child: TextButton(
+                    key: const Key('manage-tracks'),
+                    onPressed: () => showTrackAdmin(context, fmt.lm(fmt.m(data)['groups'])),
+                    child: Text('Manage tracks', style: T.tiny.copyWith(color: C.text3)),
+                  ),
                 ),
-              ),
               // ── low-emphasis library-wide action, moved off the top ──────
-              if (!lib.prefetching &&
+              if (tab == 2 && !lib.prefetching &&
                   (lib.staleCount > 0 || lib.downloadedCount < lib.knownCount))
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
@@ -245,7 +303,6 @@ class _LearningViewState extends State<LearningView> {
             ],
           );
         },
-      ),
     );
   }
 }

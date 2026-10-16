@@ -596,36 +596,36 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
               const BrandMark(size: 26),
             const SizedBox(width: 10),
           ],
+          // BI26101519: the title and the minified cycle line and chip on ONE row. The title is measured
+          // first and never cut for the code part; the code part takes what is left and drops to nothing
+          // (not to a second line) when there is no room.
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(title, style: T.title, overflow: TextOverflow.ellipsis),
-                // BI26100541: the status chips sit on their own line under the title, so the
-                // title is never cut short. The cycle line leads, the chip follows.
-                ListenableBuilder(
-                  listenable: services.store.state,
-                  builder: (context, _) {
-                    final eq =
-                        fmt.m(fmt.m(services.store.state.value)['time']);
-                    final line = fmt.s(eq['eqShort']);
-                    if (line.isEmpty && chipSource == null) return const SizedBox.shrink();
-                    return Row(
-                      children: [
-                        if (line.isNotEmpty)
-                          Flexible(
-                            child: Text(line,
-                                style: T.monoSmall.copyWith(fontSize: 9.5),
-                                overflow: TextOverflow.ellipsis),
-                          ),
-                        if (chipSource != null)
-                          StatusChipLabel(source: chipSource!, separator: line.isNotEmpty),
-                      ],
-                    );
-                  },
-                ),
-              ],
+            child: ListenableBuilder(
+              listenable: services.store.state,
+              builder: (context, _) {
+                final eq = fmt.m(fmt.m(services.store.state.value)['time']);
+                final line = fmt.s(eq['eqShort']);
+                return AppBarTitleRow(
+                  title: title,
+                  trailing: line.isEmpty && chipSource == null
+                      ? null
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (line.isNotEmpty)
+                              Flexible(
+                                child: Text(line,
+                                    key: const Key('appbar-cycle-line'),
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    style: T.monoSmall.copyWith(fontSize: 9.5, color: C.text3),
+                                    overflow: TextOverflow.ellipsis),
+                              ),
+                            if (chipSource != null) StatusChipLabel(source: chipSource!, separator: line.isNotEmpty),
+                          ],
+                        ),
+                );
+              },
             ),
           ),
         ],
@@ -645,6 +645,42 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
         const SizedBox(width: 4),
       ],
     );
+  }
+}
+
+/// The title, then the minified code part on the same row (BI26101519). [trailing] is only shown in the
+/// width the title leaves free, and only when that is wide enough to read; otherwise the title stands alone.
+class AppBarTitleRow extends StatelessWidget {
+  const AppBarTitleRow({super.key, required this.title, this.trailing});
+  final String title;
+  final Widget? trailing;
+
+  static const _gap = 8.0;
+  static const _minTrailing = 40.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final titleText = Text(title, style: T.title, maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis);
+    final t = trailing;
+    if (t == null) return Align(alignment: Alignment.centerLeft, child: titleText);
+    return LayoutBuilder(builder: (context, c) {
+      final painter = TextPainter(
+        text: TextSpan(text: title, style: T.title),
+        maxLines: 1,
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout();
+      final left = c.maxWidth - painter.width - _gap;
+      if (left < _minTrailing) return Align(alignment: Alignment.centerLeft, child: titleText);
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          titleText,
+          const SizedBox(width: _gap),
+          SizedBox(width: left, child: Align(alignment: Alignment.centerLeft, child: t)),
+        ],
+      );
+    });
   }
 }
 
@@ -668,10 +704,13 @@ String syncMarkLabel(SyncMark mark, int pending) => switch (mark) {
 /// One stroked cloud in the app bar (BI26100539): green when all is synced, yellow when something
 /// waits, a crossed cloud offline. The count lives in the tap message, not a badge.
 class SyncCloud extends StatelessWidget {
-  const SyncCloud({super.key, required this.mark, required this.label, this.onTap});
+  const SyncCloud({super.key, required this.mark, required this.label, this.onTap, this.updateAvailable = false});
   final SyncMark mark;
   final String label;
   final VoidCallback? onTap;
+
+  /// BI26101519: a new release is waiting. Shown as a dot on this one cloud, never as a second icon.
+  final bool updateAvailable;
 
   @override
   Widget build(BuildContext context) {
@@ -681,12 +720,32 @@ class SyncCloud extends StatelessWidget {
       SyncMark.synced => const Icon(Icons.cloud_outlined, size: 18, color: C.green),
     };
     return Semantics(
-      label: label,
+      label: updateAvailable ? '$label, update available' : label,
       button: true,
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
-        child: Padding(padding: const EdgeInsets.all(10), child: ExcludeSemantics(child: icon)),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: ExcludeSemantics(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                icon,
+                if (updateAvailable)
+                  const Positioned(
+                    right: -2,
+                    top: -2,
+                    child: DecoratedBox(
+                      key: Key('sync-update-dot'),
+                      decoration: BoxDecoration(color: C.greenBright, shape: BoxShape.circle),
+                      child: SizedBox(width: 7, height: 7),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -699,7 +758,7 @@ class SyncIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([services.sync, services.outbox]),
+      listenable: Listenable.merge([services.sync, services.outbox, services.updater]),
       builder: (context, _) {
         final sync = services.sync;
         final pending = services.outbox.pending;
@@ -707,6 +766,7 @@ class SyncIndicator extends StatelessWidget {
             online: sync.online, busy: sync.phase != SyncPhase.idle, pending: pending);
         return SyncCloud(
           mark: mark,
+          updateAvailable: services.updater.updateAvailable,
           label: syncMarkLabel(mark, pending),
           onTap: () {
             HapticFeedback.selectionClick();
@@ -740,10 +800,9 @@ class OfflineBanner extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           color: C.amberBg,
+          // BI26101519: text only. The app bar's one cloud already shows offline.
           child: Row(
             children: [
-              const Icon(Icons.cloud_off_rounded, size: 13, color: C.amber),
-              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   queued > 0

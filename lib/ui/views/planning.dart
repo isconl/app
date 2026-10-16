@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/sub_tabs.dart';
+
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
@@ -54,11 +56,13 @@ class _PlanningViewState extends State<PlanningView> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Segmented(
-                  options: compassParts,
-                  value: _part,
-                  onChanged: (v) => setState(() => _part = v),
+                SubTabsBar(
+                  keyPrefix: 'compass',
+                  labels: compassParts,
+                  index: compassParts.indexOf(_part),
+                  onSelect: (i) => setState(() => _part = compassParts[i]),
                 ),
+                const SizedBox(height: Sz.gap),
                 if (_part == 'Focus') ...[
                   const CompassFocus(),
                   const SizedBox(height: 12),

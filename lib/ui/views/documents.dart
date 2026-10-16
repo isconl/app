@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/sub_tabs.dart';
+
 import '../../services/documents.dart';
 import '../widgets/documents_widgets.dart';
 
@@ -27,7 +29,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-      TabBar(controller: _tabs, tabs: const [Tab(text: 'Documents'), Tab(text: 'New')]),
+      subTabBar(keyPrefix: 'documents', controller: _tabs, labels: const ['Documents', 'New']),
       Expanded(
         child: TabBarView(controller: _tabs, children: [
           DocumentsLibrary(

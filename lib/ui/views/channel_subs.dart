@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/sub_tabs.dart';
+
 import '../../app_scope.dart';
 import '../../data/db.dart';
 import '../../theme.dart';
@@ -147,15 +149,11 @@ class _ToolsViewState extends State<ToolsView> {
     final current = views.contains(_prefs.selected) ? _prefs.selected : views.first;
     final db = widget.prefs == null ? AppScope.of(context).db : null;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-        child: SegmentedButton<String>(
-          key: const Key('tools-switch'),
-          style: SegmentedButton.styleFrom(selectedBackgroundColor: C.green, selectedForegroundColor: C.textInverse),
-          segments: [for (final v in views) ButtonSegment(value: v, label: Text(_labels[v] ?? v))],
-          selected: {current},
-          onSelectionChanged: (s) => _prefs.select(s.first, db: db),
-        ),
+      SubTabsBar(
+        keyPrefix: 'tools',
+        labels: [for (final v in views) _labels[v] ?? v],
+        index: views.indexOf(current),
+        onSelect: (i) => _prefs.select(views[i], db: db),
       ),
       Expanded(
         child: switch (current) {

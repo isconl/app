@@ -115,11 +115,15 @@ void main() {
     await t.pump();
     await t.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
     await t.pump();
+    // BI26101519: a fresh store opens on Equicycle, not Gregorian.
+    expect(find.byType(GregorianMonthGrid), findsNothing);
+    await t.tap(find.byKey(const ValueKey('calendar-tab-gregorian')));
+    await t.pump();
     expect(find.byType(GregorianMonthGrid), findsOneWidget);
-    await t.tap(find.text('Equicycle'));
+    await t.tap(find.byKey(const ValueKey('calendar-tab-equicycle')));
     await t.pump();
     expect(find.byType(GregorianMonthGrid), findsNothing);
-    await t.tap(find.text('Gregorian'));
+    await t.tap(find.byKey(const ValueKey('calendar-tab-gregorian')));
     await t.pump();
     expect(find.byType(GregorianMonthGrid), findsOneWidget);
     for (var i = 0; i < 3; i++) {

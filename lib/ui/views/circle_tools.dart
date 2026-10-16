@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/sub_tabs.dart';
+
 import '../../app_scope.dart';
 import '../../services/circle_depth.dart';
 import '../../util/fmt.dart' as fmt;
@@ -29,13 +31,7 @@ class CircleToolsScreen extends StatelessWidget {
     return DefaultTabController(
       length: 5,
       child: Column(children: [
-        const TabBar(isScrollable: true, tabs: [
-          Tab(text: 'Tags'),
-          Tab(text: 'Who can'),
-          Tab(text: 'Gallery'),
-          Tab(text: 'Import'),
-          Tab(text: 'Read'),
-        ]),
+        subTabBar(keyPrefix: 'circle-tools', scrollable: true, labels: const ['Tags', 'Who can', 'Gallery', 'Import', 'Read']),
         Expanded(
           child: TabBarView(children: [
             TagsManager(api: api, onChanged: () => AppScope.of(context).store.circle.refresh()),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../widgets/sub_tabs.dart';
 import 'package:slate_ui/slate_ui.dart';
 
 import '../../app_scope.dart';
@@ -43,25 +45,14 @@ class _SlateViewState extends State<SlateView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          height: 34,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: [
-              for (final t in SlateTab.values)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(_label(t)),
-                    selected: _tab == t,
-                    onSelected: (_) => setState(() {
-                      _tab = t;
-                      SlateView.remembered = t;
-                    }),
-                  ),
-                ),
-            ],
-          ),
+        SubTabsBar(
+          keyPrefix: 'slate',
+          labels: [for (final t in SlateTab.values) _label(t)],
+          index: SlateTab.values.indexOf(_tab),
+          onSelect: (i) => setState(() {
+            _tab = SlateTab.values[i];
+            SlateView.remembered = _tab;
+          }),
         ),
         const SizedBox(height: 12),
         switch (_tab) {

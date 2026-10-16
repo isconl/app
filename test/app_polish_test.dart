@@ -16,9 +16,28 @@ class _Chip extends StatusChipSource {
   StatusChip? current(BuildContext context) => StatusChip('reap · 23/28', (_) {});
 }
 
-// BI26100541: chips under the title, the same bar on menu views, w800 landing titles.
+// BI26100541: the same bar on menu views, w800 landing titles. BI26101519: title and code part on one row.
 void main() {
-  testWidgets('a long page title is not cut short and the chip sits on the line below it', (t) async {
+  testWidgets('the title and the minified chip share one row at 360 px, with no overflow', (t) async {
+    final services = (await t.runAsync(() => buildTestServices(ScriptedApi({}))))!;
+    t.view.physicalSize = const Size(360, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(AppScope(
+      services: services,
+      child: MaterialApp(home: Scaffold(appBar: ShellAppBar(title: 'Hub', chipSource: _Chip()))),
+    ));
+    await t.pump();
+    expect(t.takeException(), isNull);
+    final title = t.getRect(find.text('Hub'));
+    final chip = t.getRect(find.byKey(const Key('status-chip')));
+    // The chip is to the right of the title and its box sits inside the title's row, not under it.
+    expect(chip.left, greaterThan(title.right));
+    expect(chip.center.dy, inInclusiveRange(title.top, title.bottom));
+    expect(t.widget<Text>(find.byKey(const Key('status-chip'))).data, 'reap · 23/28');
+  });
+
+  testWidgets('a long title is never cut for the code part: the code part drops out instead', (t) async {
     final services = (await t.runAsync(() => buildTestServices(ScriptedApi({}))))!;
     t.view.physicalSize = const Size(360, 800);
     t.view.devicePixelRatio = 1;
@@ -29,12 +48,26 @@ void main() {
       child: MaterialApp(home: Scaffold(appBar: ShellAppBar(title: title, chipSource: _Chip()))),
     ));
     await t.pump();
-    final titleText = t.widget<Text>(find.text(title));
-    expect(titleText.overflow, TextOverflow.ellipsis);
     expect(t.takeException(), isNull);
-    // The title is whole (its box is as wide as its text needs) and the chip is below it.
-    expect(t.getBottomLeft(find.text(title)).dy, lessThanOrEqualTo(t.getTopLeft(find.byKey(const Key('status-chip'))).dy + 1));
-    expect(t.widget<Text>(find.byKey(const Key('status-chip'))).data, 'reap · 23/28');
+    expect(t.widget<Text>(find.text(title)).overflow, TextOverflow.ellipsis);
+    expect(find.byKey(const Key('status-chip')), findsNothing);
+  });
+
+  testWidgets('one cloud in the app bar for each sync state, and the update dot is on that same cloud', (t) async {
+    Future<void> pump(SyncMark mark, {bool update = false}) => t.pumpWidget(MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(actions: [SyncCloud(mark: mark, label: 'x', updateAvailable: update)]),
+          ),
+        ));
+    for (final mark in SyncMark.values) {
+      await pump(mark);
+      final clouds = find.byWidgetPredicate((w) => w is Icon && (w.icon == Icons.cloud_outlined || w.icon == Icons.cloud_off_outlined));
+      expect(clouds, findsOneWidget, reason: '$mark');
+      expect(find.byKey(const Key('sync-update-dot')), findsNothing);
+    }
+    await pump(SyncMark.synced, update: true);
+    expect(find.byKey(const Key('sync-update-dot')), findsOneWidget);
+    expect(find.byIcon(Icons.cloud_outlined), findsOneWidget);
   });
 
   testWidgets('a view opened from the menu wears the same bar: logo, title, chips, cloud', (t) async {

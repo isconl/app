@@ -61,8 +61,7 @@ class _VaultSyncBannerState extends State<VaultSyncBanner> {
       color: C.redBg,
       child: Row(
         children: [
-          const Icon(Icons.cloud_off_rounded, size: 14, color: C.red),
-          const SizedBox(width: 8),
+          // BI26101519: text only; the one cloud in the app bar carries the state.
           Expanded(child: Text(msg, style: T.small.copyWith(color: C.red))),
         ],
       ),

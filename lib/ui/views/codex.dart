@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/sub_tabs.dart';
 import 'ideas.dart';
 import 'journal.dart';
 
@@ -18,36 +19,14 @@ class CodexView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: tabs.length,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-            child: Text('what you thought, and what you did about it', key: const ValueKey('codex-subtitle'), style: T.small.copyWith(color: C.text3)),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: TabBar(
-              key: const ValueKey('codex-tabs'),
-              isScrollable: false,
-              indicatorColor: C.greenBright,
-              labelColor: C.greenBright,
-              unselectedLabelColor: C.text3,
-              dividerColor: C.border,
-              tabs: [for (final t in tabs) Tab(text: t)],
-            ),
-          ),
-          const SizedBox(height: Sz.gap),
-          const Expanded(
-            child: TabBarView(
-              physics: NeverScrollableScrollPhysics(),
-              children: [JournalView(), IdeasView(), CodexScansView()],
-            ),
-          ),
-        ],
+    return SubTabs(
+      keyPrefix: 'codex',
+      labels: tabs,
+      header: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+        child: Text('what you thought, and what you did about it', key: const ValueKey('codex-subtitle'), style: T.small.copyWith(color: C.text3)),
       ),
+      children: const [JournalView(), IdeasView(), CodexScansView()],
     );
   }
 }

@@ -12,6 +12,8 @@ import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/parity3b_widgets.dart';
 import '../widgets/month_grid.dart';
+import '../widgets/sub_tabs.dart';
+import '../../util/tab_memory.dart';
 import 'learning_export_stub.dart'
     if (dart.library.io) 'learning_export_native.dart' as export_impl;
 
@@ -21,6 +23,14 @@ import 'learning_export_stub.dart'
 /// week/hour grid, renderPlannerCalendar()) is now built here too, following
 /// BT26091023's 5am-first / merged-Rest-row structure from the start.
 enum _CalMode { gregorian, equicycle, planner }
+
+/// BI26101519: the tab order, Equicycle first. A fresh install opens on it.
+const _calModes = [_CalMode.equicycle, _CalMode.gregorian, _CalMode.planner];
+String _calModeLabel(_CalMode m) => switch (m) {
+      _CalMode.equicycle => 'Equicycle',
+      _CalMode.gregorian => 'Gregorian',
+      _CalMode.planner => 'Planner',
+    };
 
 /// BI26100205 (Equicycle 2): the position comes from the cached year table
 /// (util/equicycle.dart), never from arithmetic here. When no table covers
@@ -61,7 +71,7 @@ class CalendarView extends StatefulWidget {
 class _CalendarViewState extends State<CalendarView> {
   late DateTime _month;
   DateTime? _selected;
-  _CalMode _mode = _CalMode.gregorian;
+  _CalMode _mode = _CalMode.equicycle;
   bool _busy = false;
 
   // BN26091025: server-driven cycle theme (GET /api/cycle-theme), keyed by
@@ -95,6 +105,10 @@ class _CalendarViewState extends State<CalendarView> {
       final services = AppScope.of(context);
       services.sync.touch(services.store.dates);
       EquicycleYears.instance.ensureLoaded(services.api, services.db);
+      // The last mode chosen on this device wins; a fresh install keeps Equicycle.
+      readTabIndex(services.db, 'calendar', _calModes.length).then((i) {
+        if (mounted && i != null) setState(() => _mode = _calModes[i]);
+      });
     });
   }
 
@@ -303,25 +317,19 @@ class _CalendarViewState extends State<CalendarView> {
   Widget _modeAndActionsRow() {
     return Row(
       children: [
-        // BN26091024: explicit green selected-state -- SegmentedButton has
-        // no style override by default, so it was falling back to Material
-        // 3's default blue secondaryContainer tone instead of the app's own
-        // green theme primary (theme.dart's ColorScheme.dark never sets
-        // secondaryContainer, so nothing derived it from C.green).
-        SegmentedButton<_CalMode>(
-          style: SegmentedButton.styleFrom(
-            selectedBackgroundColor: C.green,
-            selectedForegroundColor: C.textInverse,
+        // BI26101519: the shared sub-page tab style (the Codex underline), Equicycle first and the default.
+        Expanded(
+          child: SubTabsBar(
+            keyPrefix: 'calendar',
+            labels: [for (final m in _calModes) _calModeLabel(m)],
+            index: _calModes.indexOf(_mode),
+            onSelect: (i) {
+              setState(() => _mode = _calModes[i]);
+              writeTabIndex(AppScope.of(context).db, 'calendar', i);
+            },
           ),
-          segments: const [
-            ButtonSegment(value: _CalMode.gregorian, label: Text('Gregorian')),
-            ButtonSegment(value: _CalMode.equicycle, label: Text('Equicycle')),
-            ButtonSegment(value: _CalMode.planner, label: Text('Planner')),
-          ],
-          selected: {_mode},
-          onSelectionChanged: (s) => setState(() => _mode = s.first),
         ),
-        const Spacer(),
+        const SizedBox(width: 4),
         if (_busy)
           const SizedBox(
               width: 18,

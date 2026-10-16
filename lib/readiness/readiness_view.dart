@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../ui/widgets/sub_tabs.dart';
+
 import '../theme.dart';
 import 'readiness_controller.dart';
 import 'readiness_model.dart';
@@ -82,7 +84,7 @@ class _ReadinessViewState extends State<ReadinessView> with SingleTickerProvider
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: widget.controller,
         builder: (context, _) => Column(children: [
-          TabBar(controller: _tabs, tabs: const [Tab(text: 'Kits'), Tab(text: 'Trips')]),
+          subTabBar(keyPrefix: 'readiness', controller: _tabs, labels: const ['Kits', 'Trips']),
           Expanded(
             child: TabBarView(controller: _tabs, children: [
               _KitsTab(controller: widget.controller, pickDate: widget.pickDate, now: widget.now),
