@@ -4,6 +4,8 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show openNavRoute;
+import '../../util/freshness.dart';
+import 'as_of_line.dart';
 import 'common.dart';
 
 /// BI26092624: the web's checkpoint on the mobile Hub, between the date block and the ring console.
@@ -84,6 +86,12 @@ class _CheckpointCardState extends State<CheckpointCard> {
                             const SizedBox(height: 8),
                             Text(status, key: const Key('checkpoint-status'), style: T.statusMono),
                           ],
+                          // BI26101521: when the task it names last changed, if the payload says.
+                          AsOfLine(
+                            snapshot: snap,
+                            snapshotKey: 'checkpoint',
+                            sourceDate: parseSourceDate(v['updated'] ?? v['taskUpdated']),
+                          ),
                         ],
                       ),
                     ),

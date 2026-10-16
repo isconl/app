@@ -11,6 +11,8 @@ import '../../util/day_close.dart';
 import 'spaced_review_view.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show openNavRoute;
+import '../../util/freshness.dart';
+import '../widgets/as_of_line.dart';
 import '../widgets/block_card.dart';
 import '../widgets/checkpoint_card.dart';
 import '../widgets/common.dart';
@@ -157,6 +159,7 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
                     newAlerts,
                     review.length,
                   ),
+                  AsOfLine(snapshot: services.store.signals, snapshotKey: 'signals'),
                 ],
               ),
             ),
@@ -189,9 +192,16 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
                   );
                 }
                 if (blocks.isNotEmpty) {
-                  return BlockCard(
-                    blocks: blocks,
-                    currentId: currentId,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      BlockCard(
+                        blocks: blocks,
+                        currentId: currentId,
+                      ),
+                      // BI26101521: the plan's own date shows a plan from another day as stale.
+                      AsOfLine(snapshot: services.store.day, snapshotKey: 'day', sourceDate: parseSourceDate(dayData['date'])),
+                    ],
                   );
                 }
 

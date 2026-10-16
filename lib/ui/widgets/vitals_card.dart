@@ -5,6 +5,8 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show SecondaryScreen;
 import '../views/vitals.dart';
+import '../../util/freshness.dart';
+import 'as_of_line.dart';
 import 'common.dart';
 import 'data_health_card.dart';
 
@@ -85,6 +87,8 @@ class _VitalsCardState extends State<VitalsCard> {
                       ],
                     ),
                   ),
+              // BI26101521: the source's own measuredAt makes a stale measurement show even after a fresh fetch.
+              AsOfLine(snapshot: snap, snapshotKey: 'vitals', sourceDate: parseSourceDate(v['measuredAt'])),
             ],
           ),
         );

@@ -7,6 +7,7 @@ import '../../app_scope.dart';
 import '../../services/october.dart';
 import '../../theme.dart';
 import '../shell.dart' show openNavRoute;
+import 'as_of_line.dart';
 import 'common.dart';
 
 /// PI26093009: the Data October ring on Today. One ring for the share decided and moved, three arcs for the tiers,
@@ -28,6 +29,7 @@ class OctoberRingCard extends StatefulWidget {
 
 class _OctoberRingCardState extends State<OctoberRingCard> {
   OctoberProgress? _p;
+  DateTime? _fetchedAt;
   Timer? _timer;
 
   @override
@@ -49,7 +51,12 @@ class _OctoberRingCardState extends State<OctoberRingCard> {
     try {
       final api = widget.api ?? HubOctoberApi(AppScope.of(context).api);
       final p = await api.progress();
-      if (mounted) setState(() => _p = p);
+      if (mounted) {
+        setState(() {
+          _p = p;
+          _fetchedAt = (widget.now ?? DateTime.now)();
+        });
+      }
     } catch (_) {
       // Offline or an older hub: keep whatever is showing, draw nothing if there was nothing.
     }
@@ -96,6 +103,8 @@ class _OctoberRingCardState extends State<OctoberRingCard> {
               padding: const EdgeInsets.only(top: 8),
               child: Text('Next chunk ready: about ${OctoberProgress.gb(p.nextChunkGb)} GB, about ${p.nextChunkMinutes} minutes.', key: const Key('october-next'), style: T.small.copyWith(color: C.amber)),
             ),
+          // BI26101521: this card keeps its own data, so it carries its own fetch time.
+          AsOfText(snapshotKey: 'october', fetchedAt: _fetchedAt, onTap: _load, now: widget.now),
         ]),
       ),
     );
