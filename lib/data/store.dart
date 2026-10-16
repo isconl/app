@@ -170,6 +170,8 @@ class Store {
   /// integration-credential status map and from the unrelated axial
   /// `spaces` tree above; this is "every app/engine the owner runs."
   Snapshot get hostedServices => of('hostedServices', '/services');
+  Snapshot get ops => of('ops', '/api/ops/status');
+  Snapshot get courseStandard => of('courseStandard', '/api/learning/standard');
 
   /// Per-entity caches (task detail, lessons, DIA profiles...).
   Snapshot detail(String kind, String id, String path) =>
