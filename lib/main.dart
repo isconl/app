@@ -12,6 +12,7 @@ import 'console/console_services.dart';
 import 'app_scope.dart';
 import 'services/alerts.dart';
 import 'services/branding.dart';
+import 'services/close_feed.dart';
 import 'services/day_close_planner.dart';
 import 'services/platform.dart';
 import 'services/prefetch.dart';
@@ -24,6 +25,7 @@ import 'theme.dart';
 import 'ui/widgets/brand.dart' as brand;
 import 'ui/widgets/brand.dart' show BrandMotion;
 import 'ui/adaptive_shell.dart';
+import 'ui/shell.dart' show openNavRoute;
 import 'ui/login.dart';
 import 'ui/views/day_close.dart';
 import 'readiness/readiness_host.dart';
@@ -79,7 +81,7 @@ class RootGate extends StatefulWidget {
   State<RootGate> createState() => _RootGateState();
 }
 
-class _RootGateState extends State<RootGate> {
+class _RootGateState extends State<RootGate> with WidgetsBindingObserver {
   bool _unlocked = false;
   bool _authInFlight = false;
   ShareItem? _pendingShare;
@@ -87,9 +89,15 @@ class _RootGateState extends State<RootGate> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     AlertService.instance.init().then((_) {
       if (mounted) replanDayClose(AppScope.of(context));
     });
+    // BI26101529: tapping a slate-close notification opens the Slate tab.
+    AlertService.instance.onSlateRow = (_) {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) openNavRoute(ctx, 'slate');
+    };
     // BI26100140: set the background prefetch schedule from the saved toggle, then one pass now.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -117,6 +125,34 @@ class _RootGateState extends State<RootGate> {
     PlatformBridge.instance.onWidgetAction = _widgetAction;
     HomeWidgetBridge.instance.pendingAction().then((a) {
       if (a != null) _widgetAction(a);
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// BI26101529: the live close poll runs while the app is in front; the 15-minute background task covers the rest.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final feed = activeCloseFeed;
+    if (feed == null) return;
+    if (state == AppLifecycleState.resumed) {
+      if (feed.prefs.enabled) feed.start();
+    } else if (state == AppLifecycleState.paused) {
+      feed.stop();
+    }
+  }
+
+  void _startCloseFeed(AppServices services) {
+    if (activeCloseFeed != null || kIsWeb) return;
+    final feed = CloseFeed(api: () => services.api, db: services.db, notify: AlertService.instance.showSlateCloses);
+    activeCloseFeed = feed;
+    feed.load().then((_) {
+      syncCloseFeedSchedule(feed.prefs.enabled);
+      if (feed.prefs.enabled) feed.start();
     });
   }
 
@@ -226,7 +262,10 @@ class _RootGateState extends State<RootGate> {
         if (session.biometricLock && !_unlocked && !kIsWeb) {
           return _LockScreen(onUnlock: _tryUnlock);
         }
-        WidgetsBinding.instance.addPostFrameCallback((_) => _startWidgetSync(services));
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _startWidgetSync(services);
+          _startCloseFeed(services);
+        });
         return const AdaptiveShell();
       },
     );

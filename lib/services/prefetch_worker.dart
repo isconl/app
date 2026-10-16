@@ -13,6 +13,8 @@ import '../data/db.dart';
 import '../data/modules.dart';
 import '../data/store.dart';
 import '../util/fmt.dart' as fmt;
+import 'alerts.dart';
+import 'close_feed.dart';
 import 'prefetch.dart';
 import 'session.dart';
 
@@ -53,6 +55,8 @@ Future<bool> wifiAndCharging() async {
 @pragma('vm:entry-point')
 void prefetchDispatcher() {
   Workmanager().executeTask((task, input) async {
+    // BI26101529: WorkManager has one dispatcher per app, so the slate-close poll shares this one.
+    if (task == closeFeedTaskName) return runCloseFeedBackground();
     try {
       final db = await AppDb.open();
       final session = SessionService();
@@ -100,6 +104,47 @@ Future<void> syncPrefetchSchedule(PrefetchSettings settings) async {
   } catch (_) {
     // No WorkManager (tests, unsupported device): the foreground pass still works.
   }
+}
+
+/// BI26101529: the background poll of the slate close feed, every 15 minutes (Android's minimum) on any
+/// network. On when the "Slate closes" switch is on, cancelled when it is off.
+const closeFeedUniqueName = 'isconl.closefeed.periodic';
+const closeFeedTaskName = 'isconl.closefeed';
+
+Future<void> syncCloseFeedSchedule(bool enabled) async {
+  if (!_supported) return;
+  try {
+    final wm = Workmanager();
+    await wm.initialize(prefetchDispatcher);
+    if (enabled) {
+      await wm.registerPeriodicTask(
+        closeFeedUniqueName,
+        closeFeedTaskName,
+        frequency: const Duration(minutes: 15),
+        constraints: Constraints(networkType: NetworkType.connected),
+        existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+      );
+    } else {
+      await wm.cancelByUniqueName(closeFeedUniqueName);
+    }
+  } catch (_) {
+    // No WorkManager (tests, unsupported device): the foreground poll still works.
+  }
+}
+
+/// The background entry for [closeFeedTaskName]: its own database, session and notifier, one poll with no wait.
+Future<bool> runCloseFeedBackground() async {
+  try {
+    final db = await AppDb.open();
+    final session = SessionService();
+    await session.load();
+    await AlertService.instance.init();
+    final feed = CloseFeed(api: () => session.api, db: db, notify: AlertService.instance.showSlateCloses);
+    await feed.pollOnce(wait: 0);
+  } catch (_) {
+    // Swallowed on purpose: the next period tries again.
+  }
+  return true;
 }
 
 /// A pass while the app is open, for when the phone is already on Wi-Fi and

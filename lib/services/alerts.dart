@@ -7,6 +7,7 @@ import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../util/fmt.dart' as fmt;
+import 'close_feed.dart' show CloseNotice;
 
 /// System notifications for high-severity agent alerts discovered on sync.
 /// No web implementation is registered for this plugin, so it stays quietly
@@ -29,6 +30,9 @@ class AlertService {
   /// BI26100707: a missed check-in nudge opens that trip card. Payload is `trip:` plus the trip id.
   void Function(String id)? onTrip;
   static const tripPayloadPrefix = 'trip:';
+  /// BI26101529: a slate-close notification was tapped. The argument is the row id, or empty for a group.
+  void Function(String id)? onSlateRow;
+  static const slateRowPayloadPrefix = 'slate-row:';
   static const _dayCloseBase = 9100;
   static const _dayCloseSlots = 16;
 
@@ -43,6 +47,7 @@ class AlertService {
         final p = r.payload ?? '';
         if (p.startsWith(grantPayloadPrefix)) onGrant?.call(p.substring(grantPayloadPrefix.length));
         if (p.startsWith(tripPayloadPrefix)) onTrip?.call(p.substring(tripPayloadPrefix.length));
+        if (p.startsWith(slateRowPayloadPrefix)) onSlateRow?.call(p.substring(slateRowPayloadPrefix.length));
       },
     );
     await _plugin
@@ -72,6 +77,35 @@ class AlertService {
         fmt.truncate(fmt.s(n['BODY']), 180),
         details,
         payload: fmt.s(n['KIND']) == 'cx_grant' ? '$grantPayloadPrefix${fmt.s(n['GRANT_ID'])}' : null,
+      );
+    }
+  }
+
+  /// BI26101529: slate closes, on their own Android channel so they can be tuned in system settings. A group
+  /// (three or more in one fetch) is one notification that expands to the list; a notice holding a
+  /// sensitive row is private on the lock screen.
+  Future<void> showSlateCloses(List<CloseNotice> notices) async {
+    if (!_ready) return;
+    for (final n in notices) {
+      await _plugin.show(
+        n.id,
+        n.title,
+        n.body,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            'isconl_slate_closes',
+            'Slate closes',
+            channelDescription: 'A notification each time a slate row is closed',
+            importance: Importance.defaultImportance,
+            color: const Color.fromARGB(255, 0x3F, 0xB9, 0x50),
+            visibility: n.private ? NotificationVisibility.private : NotificationVisibility.public,
+            groupKey: 'isconl_slate_closes',
+            styleInformation: n.grouped
+                ? InboxStyleInformation(n.lines, contentTitle: n.title, summaryText: 'Slate')
+                : BigTextStyleInformation(n.body),
+          ),
+        ),
+        payload: n.payload,
       );
     }
   }

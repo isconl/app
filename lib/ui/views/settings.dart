@@ -6,6 +6,7 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../update_flow.dart';
 import '../widgets/common.dart';
+import '../widgets/slate_closes_card.dart';
 import '../widgets/standard_tag.dart';
 import '../widgets/integrations_section.dart';
 import '../widgets/journal_access.dart';
@@ -163,6 +164,8 @@ class _SettingsViewState extends State<SettingsView> {
                   ],
                 ),
               ),
+              const SectionLabel('Notifications'),
+              const SlateClosesCard(),
               const SectionLabel('Prefetch'),
               const PrefetchCard(),
               const SizedBox(height: 10),
