@@ -130,6 +130,42 @@
                 android:resource="@xml/isconl_widget_info"/>
         </receiver>
 
+        <!-- BI26101528: one-tap clock. The quick-settings tile, its long-press (clock out), the home-screen widget and
+             the widget button's receiver. None of them touches the network; taps are queued in ClockStore. -->
+        <service
+            android:name=".ClockTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_clock_tile"
+            android:label="@string/clock_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE"/>
+            </intent-filter>
+        </service>
+        <activity
+            android:name=".ClockOutActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES"/>
+            </intent-filter>
+        </activity>
+        <receiver
+            android:name=".ClockWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/clock_widget_info"/>
+        </receiver>
+        <receiver
+            android:name=".ClockActionReceiver"
+            android:exported="false"/>
+
         <!-- Live capture. A backfill on open would miss anything that arrived
              while the app was closed, and polling the inbox would be both slower
              and heavier than being told. -->

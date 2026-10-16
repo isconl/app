@@ -46,6 +46,29 @@ class MainActivity : AudioServiceFragmentActivity() {
         pendingSharedText = extractSharedText(intent)
         pendingSharedFiles = extractSharedFiles(intent)
         pendingWidgetAction = widgetActionOf(intent)
+        // BI26101528: the clock. `drain` hands over the taps the tile and widget queued; `publish` gives them the
+        // journal head and the app-lock flag.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "isconl/clock").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "drain" -> result.success(ClockStore.drain(applicationContext))
+                "publish" -> {
+                    val json = call.argument<String>("json")
+                    if (json == null) {
+                        result.error("ARG", "json required", null)
+                    } else {
+                        try {
+                            ClockStore.publish(applicationContext, json)
+                            ClockWidgetProvider.refresh(applicationContext)
+                            ClockTap.refreshTile(applicationContext)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("CLOCK", e.message, null)
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getSharedText" -> {

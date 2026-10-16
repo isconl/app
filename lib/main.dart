@@ -12,6 +12,7 @@ import 'console/console_services.dart';
 import 'app_scope.dart';
 import 'services/alerts.dart';
 import 'services/branding.dart';
+import 'services/clock.dart';
 import 'services/close_feed.dart';
 import 'services/day_close_planner.dart';
 import 'services/platform.dart';
@@ -137,6 +138,8 @@ class _RootGateState extends State<RootGate> with WidgetsBindingObserver {
   /// BI26101529: the live close poll runs while the app is in front; the 15-minute background task covers the rest.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // BI26101528: taps queued by the tile and widget while the app was away are taken over each time it is in front.
+    if (state == AppLifecycleState.resumed) _runClockPass();
     final feed = activeCloseFeed;
     if (feed == null) return;
     if (state == AppLifecycleState.resumed) {
@@ -144,6 +147,29 @@ class _RootGateState extends State<RootGate> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.paused) {
       feed.stop();
     }
+  }
+
+  ClockService? _clock;
+
+  /// BI26101528: hand over the tile's and widget's queued taps, deliver, announce refusals, publish the head.
+  void _runClockPass() {
+    final s = _clockServices;
+    if (s == null || kIsWeb) return;
+    _clock ??= ClockService(
+      db: s.db,
+      api: () => s.api,
+      outbox: s.outbox,
+      notifyRefusal: AlertService.instance.showClockRefused,
+    );
+    unawaited(_clock!.pass(locked: s.session.biometricLock));
+  }
+
+  AppServices? _clockServices;
+
+  void _startClock(AppServices services) {
+    if (_clockServices != null) return;
+    _clockServices = services;
+    _runClockPass();
   }
 
   void _startCloseFeed(AppServices services) {
@@ -265,6 +291,7 @@ class _RootGateState extends State<RootGate> with WidgetsBindingObserver {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _startWidgetSync(services);
           _startCloseFeed(services);
+          _startClock(services);
         });
         return const AdaptiveShell();
       },

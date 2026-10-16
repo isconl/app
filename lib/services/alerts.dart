@@ -110,6 +110,25 @@ class AlertService {
     }
   }
 
+  /// BI26101528: the work-hours book refused a clock entry; one notification names the rule.
+  Future<void> showClockRefused(String rule) async {
+    if (!_ready) return;
+    await _plugin.show(
+      9400,
+      'Clock entry refused',
+      rule,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'isconl_clock',
+          'Clock',
+          channelDescription: 'A clock entry the work-hours book could not take',
+          importance: Importance.defaultImportance,
+          color: Color.fromARGB(255, 0xD2, 0x99, 0x22),
+        ),
+      ),
+    );
+  }
+
   /// BI26100143: one notification per day at the review time for the next
   /// few days (rescheduled whenever the settings or the counts change). Each
   /// is a one-shot so a skipped weekend is simply not scheduled.
