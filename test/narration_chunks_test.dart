@@ -8,6 +8,7 @@ import 'package:isconl/services/narration.dart';
 /// real engine does while it is talking.
 class FakeTts implements TtsDriver {
   final spoken = <String>[];
+  final attempts = <String>[];
   Object? result = 1;
   bool hold = false;
   Completer<Object?>? _gate;
@@ -28,6 +29,13 @@ class FakeTts implements TtsDriver {
 
   @override
   Future<Object?> speak(String text) {
+    attempts.add(text);
+    if (throwTimes > 0) {
+      throwTimes--;
+      return Future.error(Exception('error from TextToSpeech (speak) -8'));
+    }
+    if (refuseOver != null && text.length > refuseOver!) return Future.value(0);
+    if (refuseContaining != null && text.contains(refuseContaining!)) return Future.value(0);
     spoken.add(text);
     if (!hold) return Future.value(result);
     _gate = Completer<Object?>();
@@ -42,6 +50,17 @@ class FakeTts implements TtsDriver {
 
   @override
   Future<void> stop() async => release(0);
+
+  bool engine = true;
+  @override
+  Future<bool> engineReady() async => engine;
+
+  /// speak() throws for the first [throwTimes] calls, the way Android's -8 surfaces.
+  int throwTimes = 0;
+  /// speak() refuses any text longer than this, like an engine with a small input limit.
+  int? refuseOver;
+  /// speak() refuses any text containing this.
+  String? refuseContaining;
 }
 
 Narrator _narrator(FakeTts tts, [NarrationStore? store]) =>
@@ -78,6 +97,81 @@ void main() {
     test('paragraphs and blank text are handled', () {
       expect(chunkSentences('   '), isEmpty);
       expect(chunkSentences('One.\n\nTwo.'), ['One. Two.']);
+    });
+  });
+
+  group('BI26101522: what the engine is given', () {
+    test('no chunk passes 3,500 characters, even when the caller asks for more', () {
+      final s = List.generate(2000, (i) => 'word$i').join(' ');
+      final chunks = chunkSentences(s, max: 9000);
+      expect(chunks.every((c) => c.length <= maxChunkChars), isTrue);
+      expect(chunks.length, greaterThan(1));
+    });
+
+    test('empty and whitespace-only passages are dropped', () {
+      expect(chunkSentences('\n\n   \n\n'), isEmpty);
+      expect(chunkSentences('| | |'), isEmpty);
+    });
+
+    test('control characters, lone surrogates and table pipes are removed', () {
+      final dirty = 'One\u0000 two\u0007 three \uD800 four | five \u{1F600} six.';
+      final clean = cleanForSpeech(dirty);
+      expect(clean, isNot(contains('\u0000')));
+      expect(clean, isNot(contains('\u0007')));
+      expect(clean, isNot(contains('|')));
+      expect(clean.codeUnits.contains(0xD800), isFalse);
+      expect(clean, contains('\u{1F600}')); // a whole surrogate pair stays
+      expect(cleanForSpeech('a\nb\tc'), 'a\nb\tc');
+    });
+  });
+
+  group('BI26101522: a refused chunk', () {
+    test('speak throwing -8 once is split in two and the module still finishes', () async {
+      final tts = FakeTts()..throwTimes = 1;
+      final n = _narrator(tts);
+      await n.speakDevice(course: 'c', file: 'f.md', markdown: 'First half of it here and the second half there.');
+      expect(n.state, NarrationState.idle);
+      expect(n.error, isNull);
+      expect(n.notice, isNull);
+      expect(tts.attempts.length, 3); // the whole chunk (refused), then its two halves
+      expect(tts.spoken.join(' '), 'First half of it here and the second half there.');
+    });
+
+    test('a passage the engine refuses even in halves is skipped, with a note, and the rest is read', () async {
+      final tts = FakeTts()..refuseContaining = 'POISON';
+      final n = _narrator(tts);
+      // Two sentences of about 1,800 characters each make two chunks; the first holds the refused word at
+      // both ends, so neither half of it can be read.
+      final bad = 'POISON ${List.filled(900, 'a').join(' ')} POISON.';
+      final good = '${List.filled(900, 'b').join(' ')}.';
+      await n.speakDevice(course: 'c', file: 'f.md', markdown: '$bad $good');
+      expect(n.state, NarrationState.idle);
+      expect(n.error, isNull);
+      expect(n.notice, 'Skipped 1 passage the voice could not read.');
+      expect(tts.spoken.length, 1);
+      expect(tts.spoken.first, good);
+    });
+
+    test('when nothing can be read the message is plain and carries no raw error', () async {
+      final tts = FakeTts()..result = 0;
+      final n = _narrator(tts);
+      await n.speakDevice(course: 'c', file: 'f.md', markdown: 'Hello there.');
+      expect(n.error, contains('would not start'));
+      expect(n.error, isNot(contains('-8')));
+      expect(n.error, isNot(contains('Exception')));
+    });
+
+    test('with no engine installed it says how to set one up, and tries again on retry', () async {
+      final tts = FakeTts()..engine = false;
+      final n = _narrator(tts);
+      await n.speakDevice(course: 'c', file: 'f.md', markdown: 'Hello there.');
+      expect(n.error, contains('No text-to-speech engine'));
+      expect(n.error, contains('Settings'));
+      expect(tts.attempts, isEmpty);
+      tts.engine = true;
+      await n.retry('Hello there.');
+      expect(n.error, isNull);
+      expect(tts.spoken, ['Hello there.']);
     });
   });
 

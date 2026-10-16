@@ -44,6 +44,10 @@ abstract class TtsDriver {
   /// finished. A result of 1 is success; anything else means the engine refused.
   Future<Object?> speak(String text);
   Future<void> stop();
+
+  /// False only when the phone has no text-to-speech engine to speak with. A slow or failed
+  /// answer counts as ready: the speak call then reports the real problem.
+  Future<bool> engineReady();
 }
 
 class FlutterTtsDriver implements TtsDriver {
@@ -72,6 +76,16 @@ class FlutterTtsDriver implements TtsDriver {
   Future<Object?> speak(String text) => _t.speak(text);
   @override
   Future<void> stop() async => _t.stop();
+
+  @override
+  Future<bool> engineReady() async {
+    try {
+      final engines = await _t.getEngines.timeout(const Duration(seconds: 3));
+      return engines is! List || engines.isNotEmpty;
+    } catch (_) {
+      return true;
+    }
+  }
 }
 
 /// Where the voice choice and the per-module position are kept. The app backs
@@ -141,6 +155,14 @@ class Narrator extends ChangeNotifier {
   String? _textHash;
 
   bool _ttsWired = false;
+
+  /// True when the phone has no text-to-speech engine, so the bar can say how to set one up.
+  bool noEngine = false;
+
+  /// A passage the voice could not read was skipped; the module carried on.
+  String? notice;
+  int _skipped = 0;
+  bool _spokenAny = false;
   Map<String, String>? _voice;
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<PlayerState>? _stateSub;
@@ -179,6 +201,12 @@ class Narrator extends ChangeNotifier {
   Future<void> _wireTts() async {
     if (_ttsWired) return;
     _ttsWired = true;
+    // Wait for the engine before the first speak: a cold start that speaks too early gets refused.
+    noEngine = !await _tts.engineReady();
+    if (noEngine) {
+      _ttsWired = false; // look again on the next try, in case one has been set up since
+      return;
+    }
     await _tts.awaitSpeakCompletion(true);
     try {
       await _tts.setLanguage('en-GB');
@@ -239,20 +267,29 @@ class Narrator extends ChangeNotifier {
     source = 'device';
     current = key(course, file);
     error = null;
+    notice = null;
+    _skipped = 0;
+    _spokenAny = false;
     state = NarrationState.playing;
     position = Duration.zero;
     duration = Duration.zero;
     notifyListeners();
 
+    if (noEngine) {
+      _fail('No text-to-speech engine is set up. Install or enable one in Settings, then Accessibility, '
+          'then Text-to-speech, and try again.');
+      return;
+    }
     final text = speakable(markdown);
-    if (text.trim().isEmpty) {
+    final chunks = chunkSentences(text);
+    if (chunks.isEmpty) {
       error = 'Nothing in this module to read aloud.';
       state = NarrationState.idle;
       current = null;
       notifyListeners();
       return;
     }
-    _chunks = chunkSentences(text);
+    _chunks = chunks;
     _textHash = '${text.length}:${text.hashCode}';
     _chunkIndex = await _savedIndex(current!);
     await _tts.setSpeechRate(_ttsRate(speed));
@@ -287,20 +324,20 @@ class Narrator extends ChangeNotifier {
       if (run != _run) return;
       await _savePosition();
       notifyListeners();
-      Object? result;
-      try {
-        result = await _tts.speak(_chunks[_chunkIndex]);
-      } catch (e) {
-        if (run != _run) return;
-        _fail('The device voice failed: $e');
-        return;
-      }
+      final spoke = await _speakOrSplit(_chunks[_chunkIndex], run);
       if (run != _run) return;
-      if (result != 1 && result != true) {
+      if (spoke) {
+        _spokenAny = true;
+      } else {
+        _skipped++;
+        notice = 'Skipped $_skipped passage${_skipped == 1 ? '' : 's'} the voice could not read.';
+      }
+      _chunkIndex++;
+      if (!_spokenAny && (_skipped >= 2 || _chunkIndex >= _chunks.length)) {
+        // Nothing has been read and passages keep being refused: the engine itself is the problem, not the text.
         _fail('The device voice would not start. Check Text-to-speech in your phone settings, then try again.');
         return;
       }
-      _chunkIndex++;
     }
     if (run != _run) return;
     // Finished the whole module: forget the position so Listen starts over.
@@ -312,6 +349,37 @@ class Narrator extends ChangeNotifier {
     _chunks = const [];
     _chunkIndex = 0;
     notifyListeners();
+  }
+
+  /// Speaks one chunk. When the engine refuses it (Android's -8, an invalid request) the chunk is split
+  /// in two and each half tried once; a half that is refused again is skipped. Returns whether
+  /// anything of the chunk was read. Only the length goes to the log, never the text.
+  Future<bool> _speakOrSplit(String chunk, int run, {bool split = true}) async {
+    if (await _speakOnce(chunk, run)) return true;
+    if (run != _run) return false;
+    if (!split || chunk.length < 2) return false;
+    final cut = chunk.lastIndexOf(' ', chunk.length ~/ 2);
+    final at = cut > 0 ? cut : chunk.length ~/ 2;
+    final a = chunk.substring(0, at).trim();
+    final b = chunk.substring(at).trim();
+    var any = false;
+    for (final half in [a, b]) {
+      if (half.isEmpty) continue;
+      if (run != _run) return any;
+      if (await _speakOnce(half, run)) any = true;
+    }
+    return any;
+  }
+
+  Future<bool> _speakOnce(String chunk, int run) async {
+    try {
+      final result = await _tts.speak(chunk);
+      if (result == 1 || result == true) return true;
+      debugPrint('narration: the engine refused a chunk of ${chunk.length} characters (result $result)');
+    } catch (e) {
+      debugPrint('narration: speak failed for a chunk of ${chunk.length} characters: $e');
+    }
+    return false;
   }
 
   void _fail(String message) {
@@ -513,6 +581,36 @@ class Narrator extends ChangeNotifier {
   }
 }
 
+/// The most characters one speak call is given. Android's limit is 4,000 on most engines.
+const maxChunkChars = 3500;
+
+/// Drops what some engines refuse outright: control characters (newlines and tabs are kept), lone
+/// surrogates, and the pipes of a table row, which are read as noise at best.
+String cleanForSpeech(String text) {
+  final out = StringBuffer();
+  final units = text.codeUnits;
+  for (var i = 0; i < units.length; i++) {
+    final u = units[i];
+    if (u == 0x0A || u == 0x09) {
+      out.writeCharCode(u);
+    } else if (u < 0x20 || u == 0x7F || (u >= 0x80 && u < 0xA0)) {
+      continue;
+    } else if (u == 0x7C) {
+      out.write(' ');
+    } else if (u >= 0xD800 && u <= 0xDBFF) {
+      if (i + 1 < units.length && units[i + 1] >= 0xDC00 && units[i + 1] <= 0xDFFF) {
+        out.writeCharCode(u);
+        out.writeCharCode(units[++i]);
+      }
+    } else if (u >= 0xDC00 && u <= 0xDFFF) {
+      continue;
+    } else {
+      out.writeCharCode(u);
+    }
+  }
+  return out.toString().replaceAll(RegExp(r'[ \t]{2,}'), ' ');
+}
+
 /// Splits [text] into pieces of at most [max] characters for the engine, never
 /// in the middle of a sentence unless one sentence alone is longer than [max],
 /// in which case it breaks at the last comma or space that fits.
@@ -521,6 +619,9 @@ class Narrator extends ChangeNotifier {
 /// (4,000 characters), so 3,000 leaves headroom. Mirrors the sentence chunker in
 /// `vault/scripts/tts_service.py`.
 List<String> chunkSentences(String text, {int max = 3000}) {
+  // BI26101522: no chunk past 3,500 characters whatever the caller asks, and nothing the engine rejects.
+  if (max > maxChunkChars) max = maxChunkChars;
+  text = cleanForSpeech(text);
   final sentences = <String>[];
   for (final para in text.replaceAll('\r\n', '\n').split(RegExp(r'\n{2,}'))) {
     final p = para.replaceAll('\n', ' ').trim();

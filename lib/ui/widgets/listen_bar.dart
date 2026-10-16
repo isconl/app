@@ -208,6 +208,11 @@ class _ListenBarState extends State<ListenBar> {
                     ),
                   ),
               ],
+              if (mine && n.notice != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(n.notice!, key: const Key('listen-notice'), style: T.tiny.copyWith(color: C.amber)),
+                ),
               if (mine && n.needsVoiceData)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
