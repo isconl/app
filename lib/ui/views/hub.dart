@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'continue_reading.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
+import '../../util/current_block.dart';
 import '../../util/day_close.dart';
 import 'spaced_review_view.dart';
 import '../../util/fmt.dart' as fmt;
@@ -33,10 +36,41 @@ class HubView extends StatefulWidget {
   State<HubView> createState() => _HubViewState();
 }
 
-class _HubViewState extends State<HubView> {
+class _HubViewState extends State<HubView> with WidgetsBindingObserver {
+  Timer? _minute;
+  String? _lastBlockId;
+
+  /// BI26101517: the block card follows the clock. Once a minute, when the current block has changed,
+  /// the day snapshot is fetched again; it is also fetched when the app comes back to the foreground.
+  void _tick() {
+    if (!mounted) return;
+    final services = AppScope.of(context);
+    final id = currentBlockId(fmt.m(services.store.day.value), DateTime.now());
+    if (_lastBlockId != null && id != _lastBlockId) services.store.day.refresh();
+    _lastBlockId = id;
+    setState(() {});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      AppScope.of(context).store.day.refresh();
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _minute?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _minute = Timer.periodic(const Duration(minutes: 1), (_) => _tick());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         final store = AppScope.of(context).store;
@@ -90,7 +124,6 @@ class _HubViewState extends State<HubView> {
                     )
                   : const SizedBox.shrink(),
             ),
-            const ReviewCard(),
             const ContinueReadingCard(),
             // ---- hero — date/due/review card, always first ----
             // BI26100541: no card behind the date, badges and strip; they sit on the page.
@@ -146,9 +179,15 @@ class _HubViewState extends State<HubView> {
                 final blocks = rawBlocks
                     .map((b) => Map<String, dynamic>.from(fmt.m(b)))
                     .toList();
-                final currentId = fmt.s(dayData['currentId'] ??
-                    fmt.m(dayData['now'])['id']);
+                final currentId = currentBlockId(dayData, DateTime.now());
 
+                // A plan from an earlier day is never shown as today's.
+                if (blocks.isNotEmpty && dayIsStale(dayData, DateTime.now())) {
+                  return const Panel(
+                    key: Key('day-updating'),
+                    child: Text('Updating…', style: TextStyle(color: C.text3)),
+                  );
+                }
                 if (blocks.isNotEmpty) {
                   return BlockCard(
                     blocks: blocks,
@@ -178,6 +217,8 @@ class _HubViewState extends State<HubView> {
                 );
               },
             ),
+            // ---- the review strip, just below the block card and above vitals (BI26101517) ----
+            const ReviewCard(),
             // ---- vitals, right after the block card (BI26092630) ----
             const VitalsCard(),
             const OffsiteBackupLine(),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
+import '../../util/current_block.dart';
 import '../../util/fmt.dart' as fmt;
 import '../views/task_detail.dart';
 import 'common.dart';
@@ -87,21 +88,24 @@ class _BlockCardState extends State<BlockCard> {
     super.dispose();
   }
 
+  /// The matched block's index, or -1 when no block is current: never a silent block 0 (BI26101517).
   int get _currentIndex {
-    if (widget.blocks.isEmpty) return 0;
-    final idx = widget.blocks.indexWhere((b) =>
-        fmt.s(b['id']).toLowerCase() == widget.currentId?.toLowerCase());
-    return idx >= 0 ? idx : 0;
+    final id = widget.currentId?.toLowerCase();
+    if (widget.blocks.isEmpty || id == null || id.isEmpty) return -1;
+    return widget.blocks.indexWhere((b) => fmt.s(b['id']).toLowerCase() == id);
   }
+
+  bool get _hasCurrent => _currentIndex >= 0;
 
   int get _nextIndex {
     if (widget.blocks.isEmpty) return 0;
+    if (!_hasCurrent) return nextBlockIndex(widget.blocks, DateTime.now());
     return (_currentIndex + 1) % widget.blocks.length;
   }
 
   Map<String, dynamic>? get _activeBlock {
     if (widget.blocks.isEmpty) return null;
-    final idx = _showNext ? _nextIndex : _currentIndex;
+    final idx = _showNext || !_hasCurrent ? _nextIndex : _currentIndex;
     return widget.blocks[idx];
   }
 
@@ -122,7 +126,7 @@ class _BlockCardState extends State<BlockCard> {
     final tasks = rawTasks.map((t) => Map<String, dynamic>.from(fmt.m(t))).toList();
     final slots = fmt.i(block['slots']);
     final note = fmt.s(block['note']);
-    final isNow = !_showNext;
+    final isNow = _hasCurrent && !_showNext;
 
     final startClock = fmt.s(block['startClock']);
     final endClock = fmt.s(block['endClock']);
@@ -149,7 +153,9 @@ class _BlockCardState extends State<BlockCard> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  isNow ? 'NOW · $blockName' : 'NEXT · $blockName',
+                  isNow
+                      ? 'NOW · $blockName'
+                      : (_hasCurrent ? 'NEXT · $blockName' : 'BETWEEN BLOCKS · NEXT · $blockName'),
                   style: T.label.copyWith(color: tone, letterSpacing: 1.0),
                 ),
                 if (timeRange.isNotEmpty) ...[
@@ -173,7 +179,7 @@ class _BlockCardState extends State<BlockCard> {
                 ],
               ],
             ),
-            if (widget.blocks.length > 1)
+            if (widget.blocks.length > 1 && _hasCurrent)
               TextButton(
                 onPressed: () => setState(() => _showNext = !_showNext),
                 style: TextButton.styleFrom(
