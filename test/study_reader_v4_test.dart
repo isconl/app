@@ -67,7 +67,8 @@ void main() {
     testWidgets('one callout per section: the first element, numbered k.j, with its kind name, not its authored label', (t) async {
       await _pump(t, _v4);
       final labels = t.widgetList<Text>(find.byKey(const Key('callout-label'))).map((x) => x.data).toList();
-      expect(labels, ['0.1  NOTE', '1.1  ILLUSTRATION', '2.1  NOTE']);
+      // BI26101804: section 0's callout is its objective (the prior line is a plain italic prerequisite).
+      expect(labels, ['0.2  OBJECTIVE', '1.1  ILLUSTRATION', '2.1  NOTE']);
       expect(find.textContaining('A mandate arrives late', findRichText: true), findsOneWidget);
       // The demoted elements are still read, as prose, with no label.
       expect(find.textContaining('You can name the five parts.', findRichText: true), findsOneWidget);

@@ -95,6 +95,13 @@ class Markdown extends StatelessWidget {
           first: i == 0, lead: i > 0 && blocks[i - 1].kind == _Kind.heading, figures: figures);
       if (w == null) continue;
       final b = blocks[i];
+      // BI26101804: a probe followed by its answer is one unit: the probe, then a Reveal answer button that opens the
+      // answer in place. The answer is never drawn as a second callout.
+      if (b.kind == _Kind.callout && b.callout?.kind == 'probe' && i + 1 < blocks.length &&
+          blocks[i + 1].kind == _Kind.callout && blocks[i + 1].callout?.kind == 'answer') {
+        w = _RevealAnswer(probe: w, answer: _callout(blocks[i + 1], style));
+        i++;
+      }
       final hook = paragraphHook;
       if (hook != null && b.kind == _Kind.paragraph) {
         final at = i;
@@ -252,7 +259,10 @@ class Markdown extends StatelessWidget {
           ),
         );
       case _Kind.callout:
-        return block.demoted ? _prose(block, style) : _callout(block, style);
+        if (block.zeroRole == 'prerequisite') return _prerequisite(block, style);
+        if (block.zeroRole == 'aside') return _aside(block);
+        if (block.callout?.kind == 'answer') return _RevealAnswer(answer: _callout(block, style));
+        return block.demoted ? _prose(block, style) : _callout(block, style, prominent: block.zeroRole == 'objective');
       case _Kind.quiz:
         return _quizCallout(block, style);
       case _Kind.table:
@@ -267,6 +277,8 @@ class Markdown extends StatelessWidget {
         return _image(block, figures);
       case _Kind.paragraph:
         if (block.text.trim().isEmpty) return null;
+        if (block.zeroRole == 'prerequisite') return _prerequisite(block, style);
+        if (block.zeroRole == 'aside') return _aside(block);
         return _paragraph(block.text, style, lead: lead);
     }
   }
@@ -313,22 +325,55 @@ class Markdown extends StatelessWidget {
   Widget _prose(_Block block, TextStyle style) =>
       _paragraph(block.text, style, cite: block.cite);
 
+  /// BI26101804: the prerequisite is a plain italic line with a bold-italic label, no box.
+  Widget _prerequisite(_Block block, TextStyle style) {
+    final body = style.copyWith(
+      color: C.text2,
+      fontStyle: FontStyle.italic,
+      fontSize: _reading ? 15 : 13,
+      height: 1.6 + (_reading ? ReaderPrefs.instance.lineBoost : 0),
+    );
+    return Padding(
+      key: const Key('prerequisite-line'),
+      padding: EdgeInsets.symmetric(vertical: _reading ? 8 : 4),
+      child: Text.rich(TextSpan(children: [
+        TextSpan(text: 'Prerequisite  ', style: body.copyWith(fontWeight: FontWeight.w700)),
+        _inline(block.text, body),
+      ])),
+    );
+  }
+
+  /// BI26101804: "Where this fits" is a small grey aside, no box.
+  Widget _aside(_Block block) {
+    final small = T.tiny.copyWith(color: C.text3, height: 1.5);
+    return Padding(
+      key: const Key('where-this-fits'),
+      padding: EdgeInsets.symmetric(vertical: _reading ? 6 : 3),
+      child: Text.rich(TextSpan(children: [
+        TextSpan(text: 'Where this fits  ', style: small.copyWith(fontWeight: FontWeight.w600)),
+        _inline(block.text, small),
+      ])),
+    );
+  }
+
   /// One callout: coloured background, left strip line, label above the body.
   ///
   /// Same shape for all five so the eye learns it once; only the colour and the
   /// label change. It is a Container rather than a Card on purpose - a card
   /// would set it apart from the prose, and a callout is part of the reading,
   /// not an aside beside it.
-  Widget _callout(_Block block, TextStyle style) {
+  Widget _callout(_Block block, TextStyle style, {bool prominent = false}) {
     final c = block.callout!;
-    final pad = _reading ? 14.0 : 10.0;
+    final pad = (_reading ? 14.0 : 10.0) + (prominent ? 3 : 0);
     return Container(
+      key: prominent ? const Key('objective-callout') : null,
       width: double.infinity,
       margin: EdgeInsets.symmetric(vertical: _reading ? 14 : 6),
       padding: EdgeInsets.fromLTRB(pad, pad * 0.8, pad, pad * 0.8),
       decoration: BoxDecoration(
-        color: c.background,
-        border: Border(left: BorderSide(color: c.colour, width: 3)),
+        // BI26101804: the objective is the most prominent callout: a stronger fill and a thicker strip.
+        color: prominent ? Color.alphaBlend(c.colour.withValues(alpha: 0.12), c.background) : c.background,
+        border: Border(left: BorderSide(color: c.colour, width: prominent ? 5 : 3)),
         borderRadius: const BorderRadius.only(
           topRight: Radius.circular(Sz.rMd),
           bottomRight: Radius.circular(Sz.rMd),
@@ -345,9 +390,9 @@ class Markdown extends StatelessWidget {
                 .join('  '),
             key: const Key('callout-label'),
             style: T.mono.copyWith(
-              fontSize: 9.5,
+              fontSize: prominent ? 11 : 9.5,
               letterSpacing: 1.1,
-              fontWeight: FontWeight.w600,
+              fontWeight: prominent ? FontWeight.w700 : FontWeight.w600,
               color: c.colour,
             ),
           ),
@@ -356,7 +401,7 @@ class Markdown extends StatelessWidget {
             block.text,
             style.copyWith(
               color: C.text,
-              fontSize: _reading ? 15 : 13,
+              fontSize: (_reading ? 15 : 13) + (prominent ? 1.5 : 0),
               height: 1.62 + (_reading ? ReaderPrefs.instance.lineBoost : 0),
               fontStyle: c.kind == 'quote' ? FontStyle.italic : null,
             ),
@@ -1055,6 +1100,47 @@ class _JargonCopyButtonState extends State<_JargonCopyButton> {
 /// `toggleQuizReveal()` (a `.quiz-body.hidden` class toggle). Header is a
 /// checkmark-in-circle + title + a Reveal/Hide toggle; the body only renders
 /// once revealed.
+/// BI26101804: the answer to a probe, behind a Reveal answer button styled like the notes Write button. It expands in
+/// place and folds again on a second tap.
+class _RevealAnswer extends StatefulWidget {
+  const _RevealAnswer({this.probe, required this.answer});
+  final Widget? probe;
+  final Widget answer;
+
+  @override
+  State<_RevealAnswer> createState() => _RevealAnswerState();
+}
+
+class _RevealAnswerState extends State<_RevealAnswer> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.probe != null) widget.probe!,
+        InkWell(
+          key: const Key('reveal-answer'),
+          borderRadius: BorderRadius.circular(Sz.rSm),
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_open ? 'Hide answer' : 'Reveal answer', style: T.tiny.copyWith(color: C.green)),
+                Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 16, color: C.green),
+              ],
+            ),
+          ),
+        ),
+        if (_open) widget.answer,
+      ],
+    );
+  }
+}
+
 class _QuizReveal extends StatefulWidget {
   const _QuizReveal(
       {required this.title, required this.reading, required this.children});
@@ -1284,6 +1370,9 @@ final _callouts = <_Callout>[
   // BI26100537: the line and rung elements of 4.x (prior, place, point, link, now, week, ...) share
   // a quiet neutral callout. Its pattern never matches: only the `{id}` form claims a line for it.
   _Callout('note', 'Note', C.text3, C.bgRaised, RegExp(r'(?!)')),
+  // BI26101804: section 0's objective, the most prominent callout of the module, and the answer to a probe.
+  _Callout('objective', 'Objective', C.callLearn, C.callLearnBg, RegExp(r'(?!)')),
+  _Callout('answer', 'Answer', C.callQuiz, C.callQuizBg, RegExp(r'^\*\*Answer:?\*\*\s*', caseSensitive: false)),
 ];
 
 _Callout? _matchCallout(String line) {
@@ -1300,7 +1389,12 @@ const _elementKinds = <String, String>{
   'research': 'research',
   'fact': 'fact',
   'probe': 'probe',
-  'modelanswer': 'probe',
+  'modelanswer': 'answer',
+  // BI26101804 / CI26101803: the tags the content retag uses for section 0 and for probe answers.
+  'answer': 'answer',
+  'objective': 'objective',
+  'prerequisite': 'note',
+  'aside': 'note',
   'failure': 'watch',
   'book': 'book',
   'jargon': 'jargon',
@@ -1349,6 +1443,52 @@ void _numberBlocks(List<_Block> blocks) {
   }
 }
 
+
+/// BI26101804: section 0 of every module, drawn the same way whatever the module's age. The prerequisite is a plain
+/// italic line, the objective is the prominent callout, and "Where this fits" is a small grey aside. Content that
+/// carries the new tags (`prerequisite`, `objective`, `aside`) is drawn this way as is; older modules are detected by
+/// their labels (`Prior:` / the note numbered 0.1, `You will be able to:` / `Outcome`, `Where this fits:`).
+void _tagSectionZero(List<_Block> blocks) {
+  final v4 = blocks.any((b) => b.kind == _Kind.heading && b.movementId.isNotEmpty);
+  var from = 0;
+  if (v4) {
+    from = blocks.indexWhere((b) => b.kind == _Kind.heading && b.movementId.isNotEmpty);
+    if (from < 0) return;
+  }
+  var to = blocks.length;
+  for (var i = from + 1; i < blocks.length; i++) {
+    if (blocks[i].kind == _Kind.heading && blocks[i].level == 2) {
+      to = i;
+      break;
+    }
+  }
+  final label = RegExp(r'^\*\*[^*]{1,40}?\*\*\s*');
+  for (var i = from; i < to; i++) {
+    final b = blocks[i];
+    if (b.kind == _Kind.callout) {
+      final id = b.elementId;
+      final kind = b.callout?.kind ?? '';
+      if (id == 'prior' || id == 'prerequisite' || (kind == 'note' && b.number == '0.1')) {
+        b.zeroRole = 'prerequisite';
+      } else if (id == 'place' || id == 'aside') {
+        b.zeroRole = 'aside';
+      } else if (kind == 'learn' || kind == 'objective' || id == 'outcome' || id == 'objective') {
+        b.zeroRole = 'objective';
+        b.callout = _callouts.firstWhere((c) => c.kind == 'objective');
+      }
+    } else if (b.kind == _Kind.paragraph) {
+      final t = b.text.trimLeft();
+      if (RegExp(r'^\*\*(?:Prior|Prerequisites?|Before this):?\*\*', caseSensitive: false).hasMatch(t)) {
+        b.zeroRole = 'prerequisite';
+        b.text = t.replaceFirst(label, '');
+      } else if (RegExp(r'^(?:\*\*)?Where this fits:?(?:\*\*)?', caseSensitive: false).hasMatch(t)) {
+        b.zeroRole = 'aside';
+        b.text = t.replaceFirst(RegExp(r'^(?:\*\*)?Where this fits:?(?:\*\*)?:?\s*', caseSensitive: false), '');
+      }
+    }
+  }
+}
+
 /// BI26101106: one callout per section. Within each movement (between H2s) the element marked
 /// `{id!}` is the callout (every marked one, if the author marked several); with none marked, the
 /// first callout-kind element is. Every other callout becomes a prose paragraph, so the 935
@@ -1359,11 +1499,17 @@ void _oneCalloutPerSection(List<_Block> blocks) {
   void settle(int end) {
     final inSection = <_Block>[
       for (var i = start; i < end; i++)
-        if (blocks[i].kind == _Kind.callout && blocks[i].elementId != 'modelanswer') blocks[i],
+        if (blocks[i].kind == _Kind.callout &&
+            blocks[i].callout?.kind != 'answer' &&
+            blocks[i].zeroRole != 'prerequisite' &&
+            blocks[i].zeroRole != 'aside')
+          blocks[i],
     ];
     if (inSection.isEmpty) return;
     final marked = inSection.where((b) => b.marked).toList();
-    final keep = marked.isNotEmpty ? marked.toSet() : {inSection.first};
+    // BI26101804: section 0's objective is its callout.
+    final objective = inSection.where((b) => b.zeroRole == 'objective').toList();
+    final keep = marked.isNotEmpty || objective.isNotEmpty ? {...marked, ...objective} : {inSection.first};
     for (final b in inSection) {
       if (!keep.contains(b)) b.demoted = true;
     }
@@ -1528,7 +1674,7 @@ class _Block {
       this.index = 0,
       this.rows = const []});
   final _Kind kind;
-  final String text;
+  String text;
   final int level;
   final bool ordered;
   final int index;
@@ -1548,6 +1694,10 @@ class _Block {
   /// section rule turned into a prose paragraph.
   bool marked = false;
   bool demoted = false;
+
+  /// BI26101804: how section 0 draws this block: `prerequisite` (an italic line), `objective` (the prominent
+  /// callout) or `aside` (a small grey note). Empty everywhere else.
+  String zeroRole = '';
   String number = '';
   String anchor = '';
 
@@ -1924,6 +2074,7 @@ List<_Block> _parseBlocks(String source) {
   }
   flushPara();
   _numberBlocks(blocks);
+  _tagSectionZero(blocks);
   _oneCalloutPerSection(blocks);
   return blocks;
 }
