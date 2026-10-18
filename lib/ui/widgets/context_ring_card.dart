@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../../app_scope.dart';
+import '../../console/console_lines.dart';
 import '../../console/console_mode.dart';
 import '../../console/console_services.dart';
 import '../../theme.dart';
@@ -111,6 +112,17 @@ class _ContextRingCardState extends State<ContextRingCard>
                 : 'personal')
             : '';
 
+        // BI26101806: the two lines under the ring (the current block and time left; the next block and its start).
+        final pulse = pulseLines(
+          currentName: curBlock?.name,
+          leftMins: curBlock?.leftMins,
+          nextName: nextBlock?.name,
+          nextStart: nextBlock?.startClock,
+          before: dayNow.before,
+          after: dayNow.after,
+          load: cornerLoad,
+        );
+
         final centerBig = curBlock != null
             ? _formatMinutes(curBlock.leftMins)
             : (nextBlock != null
@@ -169,7 +181,7 @@ class _ContextRingCardState extends State<ContextRingCard>
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
-                                    _mode.pillSuffix == null ? 'Console' : 'Console · ${_mode.pillSuffix}',
+                                    'Console · ${_mode.pillSuffix}',
                                     key: const ValueKey('console-pill'),
                                     style: T.monoSmall.copyWith(
                                       fontSize: 10,
@@ -201,65 +213,49 @@ class _ContextRingCardState extends State<ContextRingCard>
                       child: KeyedSubtree(
                         key: ValueKey(_mode),
                         child: switch (_mode) {
-                          ConsoleMode.progress => Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                    Center(
-                      child: SizedBox(
-                        width: 170,
-                        height: 170,
-                        child: CustomPaint(
-                          painter: _RingPainter(
-                            fraction: blockLeftFrac,
-                            urgency: urgency,
-                          ),
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  centerBig,
-                                  style: T.headline.copyWith(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w700,
-                                    color: urgency.primary,
+                          ConsoleMode.progress => ConsoleFaceLayout(
+                              ring: CustomPaint(
+                                painter: _RingPainter(fraction: blockLeftFrac, urgency: urgency),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        centerBig,
+                                        style: T.headline.copyWith(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w700,
+                                          color: urgency.primary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        centerLabel,
+                                        style: T.tiny.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.5,
+                                          color: C.text,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        centerSub,
+                                        style: T.tiny.copyWith(fontSize: 10, color: C.text3),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  centerLabel,
-                                  style: T.tiny.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.5,
-                                    color: C.text,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  centerSub,
-                                  style: T.tiny.copyWith(fontSize: 10, color: C.text3),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (cornerLoad.isNotEmpty)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Badge2(
-                            cornerLoad,
-                            color: C.surface,
-                            textColor: C.text2,
-                          ),
-                        ],
-                      ),
-                              ],
+                              ),
+                              line1: consoleLine1(pulse.line1, key: const ValueKey('console-pulse-line1')),
+                              line2: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                                Flexible(child: consoleLine2(pulse.line2, key: const ValueKey('console-pulse-line2'))),
+                                if (pulse.chip.isNotEmpty) ...[
+                                  const SizedBox(width: 8),
+                                  Badge2(pulse.chip, color: C.surface, textColor: C.text2),
+                                ],
+                              ]),
                             ),
                           ConsoleMode.player => PlayerFace(player: _console!.player, services: _console!),
                           ConsoleMode.recorder => RecorderFace(recorder: _console!.recorder, services: _console!),

@@ -11,6 +11,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
+import '../../console/console_lines.dart';
 import '../../console/console_mode.dart';
 import '../../console/console_player.dart';
 import '../../console/console_recorder.dart';
@@ -94,6 +95,55 @@ class ConsoleRingPainter extends CustomPainter {
       old.fraction != fraction || old.color != color || old.level != level || old.laps != laps || old.fill != fill;
 }
 
+// ---- Shared layout (BI26101806) ----
+
+/// Every face is the ring, a 10 px gap, then two lines: line 1 (13 px, w600, one line) and line 2 (11 px, one line).
+/// The lines sit in fixed-height slots, so the card keeps the same height when you double-tap between faces.
+class ConsoleFaceLayout extends StatelessWidget {
+  const ConsoleFaceLayout({super.key, required this.ring, required this.line1, required this.line2, this.extra = const []});
+  final Widget ring;
+  final Widget line1;
+  final Widget line2;
+
+  /// Only for a face that needs more than two lines for a moment (the recorder's review step).
+  final List<Widget> extra;
+
+  static const double line1Height = 20;
+  static const double line2Height = 26;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Center(child: SizedBox(width: kConsoleRingSize, height: kConsoleRingSize, child: ring)),
+      const SizedBox(height: 10),
+      SizedBox(height: line1Height, child: Center(child: line1)),
+      const SizedBox(height: 4),
+      SizedBox(height: line2Height, child: Center(child: line2)),
+      ...extra,
+    ]);
+  }
+}
+
+/// Line 1 of any face: 13 px, w600, one line, ellipsised.
+Widget consoleLine1(String text, {Key? key, Color? color}) => Text(
+      text,
+      key: key,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+      style: T.body.copyWith(fontWeight: FontWeight.w600, fontSize: 13, color: color),
+    );
+
+/// Line 2 of any face: 11 px, C.text2, one line.
+Widget consoleLine2(String text, {Key? key}) => Text(
+      text,
+      key: key,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+      style: T.monoSmall.copyWith(fontSize: 11, color: C.text2),
+    );
+
 // ---- Player ----
 
 class PlayerFace extends StatelessWidget {
@@ -107,32 +157,17 @@ class PlayerFace extends StatelessWidget {
       listenable: player,
       builder: (context, _) {
         final track = player.current;
-        return Column(mainAxisSize: MainAxisSize.min, children: [
-          Center(
-            child: SizedBox(
-              width: kConsoleRingSize,
-              height: kConsoleRingSize,
-              child: _ScrubRing(
-                enabled: player.duration > Duration.zero,
-                onFraction: player.seekFraction,
-                child: CustomPaint(
-                  painter: ConsoleRingPainter(
-                      fraction: player.fraction, color: C.greenBright, dim: C.greenDim, fill: C.greenBg),
-                  child: Center(child: _PlayerControls(player: player)),
-                ),
-              ),
+        return ConsoleFaceLayout(
+          ring: _ScrubRing(
+            enabled: player.duration > Duration.zero,
+            onFraction: player.seekFraction,
+            child: CustomPaint(
+              painter: ConsoleRingPainter(fraction: player.fraction, color: C.greenBright, dim: C.greenDim, fill: C.greenBg),
+              child: Center(child: _PlayerControls(player: player)),
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            track?.title ?? 'Nothing queued',
-            key: const ValueKey('console-player-title'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: T.body.copyWith(fontWeight: FontWeight.w600, fontSize: 13),
-          ),
-          const SizedBox(height: 4),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          line1: consoleLine1(track?.title ?? 'Nothing queued', key: const ValueKey('console-player-title')),
+          line2: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
             Text('${clock(player.position)} / ${clock(player.duration)}',
                 key: const ValueKey('console-player-time'), style: T.monoSmall.copyWith(fontSize: 11, color: C.text2)),
             const SizedBox(width: 10),
@@ -149,12 +184,14 @@ class PlayerFace extends StatelessWidget {
               onTap: () => showQueueSheet(context, services),
             ),
           ]),
-          if (player.error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(player.error!, style: T.tiny.copyWith(color: C.red)),
-            ),
-        ]);
+          extra: [
+            if (player.error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(player.error!, style: T.tiny.copyWith(color: C.red)),
+              ),
+          ],
+        );
       },
     );
   }
@@ -271,6 +308,30 @@ class _RecorderFaceState extends State<RecorderFace> {
   final _title = TextEditingController();
   String? _seededFor;
 
+  // BI26101806: line 2 names the last recording; read it when the face opens and after each state change.
+  int? _lastAtMs;
+  Duration? _savedFor;
+  Duration _takeLength = Duration.zero;
+  RecorderState? _seenState;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshLast();
+  }
+
+  Future<void> _refreshLast() async {
+    try {
+      final all = await widget.recorder.recordings();
+      if (!mounted) return;
+      setState(() {
+        _lastAtMs = all.isEmpty ? null : all.first.createdAt;
+      });
+    } catch (_) {
+      // No list to read: line 2 says "none yet".
+    }
+  }
+
   static const _explainedKey = 'console.mic_explained';
 
   @override
@@ -323,104 +384,104 @@ class _RecorderFaceState extends State<RecorderFace> {
         }
         if (r.state != RecorderState.review) _seededFor = null;
         final live = r.state == RecorderState.recording || r.state == RecorderState.paused;
-        return Column(mainAxisSize: MainAxisSize.min, children: [
-          Center(
-            child: SizedBox(
-              width: kConsoleRingSize,
-              height: kConsoleRingSize,
-              child: CustomPaint(
-                painter: ConsoleRingPainter(
-                  fraction: r.state == RecorderState.review ? 1 : r.lap,
-                  color: C.red,
-                  dim: const Color(0xFF8B1E17),
-                  fill: C.redBg,
-                  level: r.state == RecorderState.recording ? r.level : 0,
-                  laps: r.laps,
-                ),
-                child: Center(
-                  child: GestureDetector(
-                    key: const ValueKey('console-record'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: r.state == RecorderState.review ? null : _record,
-                    onLongPress: live ? r.togglePause : null,
-                    child: Semantics(
-                      button: true,
-                      label: live ? 'Stop recording' : 'Record',
-                      child: Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: C.red, width: 2),
-                          color: r.state == RecorderState.paused ? C.redBg : null,
-                        ),
-                        alignment: Alignment.center,
-                        child: live
-                            ? Container(
-                                key: const ValueKey('console-stop-glyph'),
-                                width: 22,
-                                height: 22,
-                                decoration: BoxDecoration(color: C.red, borderRadius: BorderRadius.circular(4)))
-                            : Container(
-                                key: const ValueKey('console-record-glyph'),
-                                width: 34,
-                                height: 34,
-                                decoration: const BoxDecoration(color: C.red, shape: BoxShape.circle)),
-                      ),
+        // A kept take reads "Saved 02:13" until the next recording starts; the list behind line 2 refreshes on each change.
+        if (r.state == RecorderState.review) _takeLength = r.elapsed;
+        if (_seenState != r.state) {
+          if (_seenState == RecorderState.review && r.state == RecorderState.idle) _savedFor = _takeLength;
+          if (r.state == RecorderState.recording) _savedFor = null;
+          _seenState = r.state;
+          WidgetsBinding.instance.addPostFrameCallback((_) => _refreshLast());
+        }
+        final lines = recorderLines(
+          state: switch (r.state) {
+            RecorderState.recording => RecState.recording,
+            RecorderState.paused => RecState.paused,
+            RecorderState.review => RecState.review,
+            _ => RecState.idle,
+          },
+          elapsed: r.elapsed,
+          savedFor: _savedFor,
+          lastAtMs: _lastAtMs,
+        );
+        return ConsoleFaceLayout(
+          ring: CustomPaint(
+            painter: ConsoleRingPainter(
+              fraction: r.state == RecorderState.review ? 1 : r.lap,
+              color: C.red,
+              dim: const Color(0xFF8B1E17),
+              fill: C.redBg,
+              level: r.state == RecorderState.recording ? r.level : 0,
+              laps: r.laps,
+            ),
+            child: Center(
+              child: GestureDetector(
+                key: const ValueKey('console-record'),
+                behavior: HitTestBehavior.opaque,
+                onTap: r.state == RecorderState.review ? null : _record,
+                onLongPress: live ? r.togglePause : null,
+                child: Semantics(
+                  button: true,
+                  label: live ? 'Stop recording' : 'Record',
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: C.red, width: 2),
+                      color: r.state == RecorderState.paused ? C.redBg : null,
                     ),
+                    alignment: Alignment.center,
+                    child: live
+                        ? Container(
+                            key: const ValueKey('console-stop-glyph'),
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(color: C.red, borderRadius: BorderRadius.circular(4)))
+                        : Container(
+                            key: const ValueKey('console-record-glyph'),
+                            width: 34,
+                            height: 34,
+                            decoration: const BoxDecoration(color: C.red, shape: BoxShape.circle)),
                   ),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(
-              r.state == RecorderState.paused ? 'PAUSED ${clock(r.elapsed)}' : (live ? 'REC ${clock(r.elapsed)}' : (r.state == RecorderState.review ? 'TAKE ${clock(r.elapsed)}' : 'READY')),
-              key: const ValueKey('console-rec-clock'),
-              style: T.monoSmall.copyWith(fontSize: 12, color: live ? C.red : C.text2, fontWeight: FontWeight.w600),
-            ),
-            if (r.laps > 0) ...[
-              const SizedBox(width: 8),
-              Text('lap ${r.laps + 1}', style: T.tiny),
+          line1: consoleLine1(lines.line1, key: const ValueKey('console-rec-clock'), color: live ? C.red : null),
+          line2: consoleLine2(r.status != null && r.state == RecorderState.idle ? r.status! : lines.line2, key: const ValueKey('console-rec-status')),
+          extra: [
+            if (r.state == RecorderState.review) ...[
+              const SizedBox(height: 8),
+              TextField(
+                key: const ValueKey('console-rec-title'),
+                controller: _title,
+                style: T.body.copyWith(fontSize: 13),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: r.suggestedTitle ?? 'Title (optional)',
+                  hintStyle: T.body2.copyWith(color: C.text3),
+                  enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: C.border)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                TextButton(key: const ValueKey('console-rec-discard'), onPressed: r.discard, child: const Text('Discard')),
+                const SizedBox(width: 8),
+                FilledButton(
+                  key: const ValueKey('console-rec-keep'),
+                  style: FilledButton.styleFrom(backgroundColor: C.red),
+                  onPressed: () => r.keep(_title.text),
+                  child: const Text('Keep'),
+                ),
+              ]),
             ],
-          ]),
-          if (r.state == RecorderState.review) ...[
-            const SizedBox(height: 8),
-            TextField(
-              key: const ValueKey('console-rec-title'),
-              controller: _title,
-              style: T.body.copyWith(fontSize: 13),
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: r.suggestedTitle ?? 'Title (optional)',
-                hintStyle: T.body2.copyWith(color: C.text3),
-                enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: C.border)),
+            if (r.error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(r.error!, key: const ValueKey('console-rec-error'), style: T.tiny.copyWith(color: C.red), textAlign: TextAlign.center),
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              TextButton(key: const ValueKey('console-rec-discard'), onPressed: r.discard, child: const Text('Discard')),
-              const SizedBox(width: 8),
-              FilledButton(
-                key: const ValueKey('console-rec-keep'),
-                style: FilledButton.styleFrom(backgroundColor: C.red),
-                onPressed: () => r.keep(_title.text),
-                child: const Text('Keep'),
-              ),
-            ]),
           ],
-          if (r.status != null && r.state == RecorderState.idle)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(r.status!, key: const ValueKey('console-rec-status'), style: T.tiny.copyWith(color: C.text2)),
-            ),
-          if (r.error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(r.error!, key: const ValueKey('console-rec-error'), style: T.tiny.copyWith(color: C.red), textAlign: TextAlign.center),
-            ),
-        ]);
+        );
       },
     );
   }

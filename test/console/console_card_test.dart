@@ -27,7 +27,7 @@ void main() {
       await tester.pump();
 
       Text pill() => tester.widget<Text>(find.byKey(const ValueKey('console-pill')));
-      expect(pill().data, 'Console');
+      expect(pill().data, 'Console · pulse');
       for (final m in ConsoleMode.values) {
         expect(find.byKey(ValueKey('console-dot-${m.name}')), findsOneWidget);
       }
@@ -45,14 +45,14 @@ void main() {
       expect(find.text('Nothing queued'), findsOneWidget);
       await doubleTap();
       expect(pill().data, 'Console · Recorder');
-      expect(find.text('READY'), findsOneWidget);
+      expect(find.text('Ready to record'), findsOneWidget);
       await doubleTap();
-      expect(pill().data, 'Console');
+      expect(pill().data, 'Console · pulse');
 
       // One tap is not enough.
       await tester.tap(find.byKey(const ValueKey('console-pill')));
       await tester.pump(const Duration(milliseconds: 600));
-      expect(pill().data, 'Console');
+      expect(pill().data, 'Console · pulse');
 
       // Remembered: a new card on the same app opens on the last mode.
       await doubleTap();
@@ -202,7 +202,7 @@ void main() {
 
     testWidgets('record shows a stop square, REC and the clock; stop shows Keep and Discard', (tester) async {
       await pumpRecorder(tester);
-      expect(find.text('READY'), findsOneWidget);
+      expect(find.text('Ready to record'), findsOneWidget);
       expect(find.byKey(const ValueKey('console-record-glyph')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('console-record')));
       await tester.pump();
@@ -212,13 +212,13 @@ void main() {
       clock.advance(const Duration(seconds: 192));
       recorder.tick();
       await tester.pump();
-      expect(find.text('REC 03:12'), findsOneWidget);
+      expect(find.text('Recording 03:12'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('console-record')));
       await tester.pump();
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       await tester.pump();
-      expect(find.text('TAKE 03:12'), findsOneWidget);
+      expect(find.text('Take 03:12 · keep or discard'), findsOneWidget);
       expect(find.byKey(const ValueKey('console-rec-keep')), findsOneWidget);
       expect(find.byKey(const ValueKey('console-rec-discard')), findsOneWidget);
       expect(uploads, isEmpty);
@@ -241,7 +241,7 @@ void main() {
       expect(uploads, hasLength(1), reason: 'offline recording queues an upload');
       expect(uploads.single.body['title'], 'Site visit');
       expect(find.byKey(const ValueKey('console-rec-status')), findsOneWidget);
-      expect(find.text('READY'), findsOneWidget);
+      expect(tester.widget<Text>(find.byKey(const ValueKey('console-rec-clock'))).data, startsWith('Saved '), reason: 'line 1 reads the length of the take just kept');
     });
 
     testWidgets('long-press pauses and resumes', (tester) async {
@@ -254,7 +254,7 @@ void main() {
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       await tester.pump();
       expect(recorder.state, RecorderState.paused);
-      expect(find.textContaining('PAUSED'), findsOneWidget);
+      expect(find.textContaining('Paused'), findsOneWidget);
       await tester.longPress(find.byKey(const ValueKey('console-record')));
       await tester.pump();
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));

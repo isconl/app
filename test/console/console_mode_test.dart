@@ -8,7 +8,7 @@ void main() {
     expect(ConsoleMode.progress.next, ConsoleMode.player);
     expect(ConsoleMode.player.next, ConsoleMode.recorder);
     expect(ConsoleMode.recorder.next, ConsoleMode.progress);
-    expect(ConsoleMode.progress.pillSuffix, isNull);
+    expect(ConsoleMode.progress.pillSuffix, 'pulse');
     expect(ConsoleMode.player.pillSuffix, 'Player');
     expect(ConsoleMode.recorder.pillSuffix, 'Recorder');
   });

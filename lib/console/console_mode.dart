@@ -8,9 +8,9 @@ enum ConsoleMode {
 
   ConsoleMode get next => ConsoleMode.values[(index + 1) % ConsoleMode.values.length];
 
-  /// The word after "Console" in the pill; none for Progress, which is the card as it was.
+  /// The word after "Console" in the pill. BI26101806: Progress reads "Console · pulse".
   String? get pillSuffix => switch (this) {
-        ConsoleMode.progress => null,
+        ConsoleMode.progress => 'pulse',
         ConsoleMode.player => 'Player',
         ConsoleMode.recorder => 'Recorder',
       };
