@@ -653,11 +653,21 @@ class CircleFab extends StatelessWidget {
 /// green Assistant button (the one primary on every tab). Views place it with no positioning of
 /// their own; put it as a Stack child.
 class ViewFab extends StatelessWidget {
-  const ViewFab({super.key, required this.icon, required this.tooltip, required this.onPressed});
+  const ViewFab({super.key, required this.icon, required this.tooltip, required this.onPressed, this.slot = 0, this.busy = false, this.fabKey});
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onPressed;
+
+  /// BI26101810: 0 is the first button above the Assistant; each higher slot stacks one button further up.
+  final int slot;
+
+  /// Shows a small spinner in place of the icon (an import or export running).
+  final bool busy;
+  final Key? fabKey;
+
+  /// A small button is 40 dp; slots are 10 dp apart.
+  static const double slotStep = 50;
 
   /// Clears the shell's 56dp Assistant button (16dp margin) with a 10dp gap, centred over it.
   static const double right = 24;
@@ -667,16 +677,18 @@ class ViewFab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Positioned(
       right: right,
-      bottom: bottom,
+      bottom: bottom + slot * slotStep,
       child: FloatingActionButton.small(
-        key: const Key('view-fab'),
+        key: fabKey ?? (slot == 0 ? const Key('view-fab') : Key('view-fab-$slot')),
         heroTag: 'view-fab-$tooltip',
         tooltip: tooltip,
         backgroundColor: NavTint.bg,
         foregroundColor: NavTint.fg,
         shape: const CircleBorder(),
-        onPressed: onPressed,
-        child: Icon(icon, size: 20),
+        onPressed: busy ? null : onPressed,
+        child: busy
+            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: NavTint.fg))
+            : Icon(icon, size: 20),
       ),
     );
   }

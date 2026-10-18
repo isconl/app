@@ -322,6 +322,14 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
           },
         ),
         ViewFab(
+          key: const Key('calendar-import-export'),
+          tooltip: 'Import or export',
+          icon: Icons.import_export_rounded,
+          slot: 1,
+          busy: _busy,
+          onPressed: _importExportMenu,
+        ),
+        ViewFab(
           tooltip: 'Add an event',
           icon: Icons.add_rounded,
           onPressed: () => _addEventSheet(context),
@@ -330,41 +338,45 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
     );
   }
 
+  /// BI26101810: the tab bar holds the three tabs and nothing else. Import and export live in the secondary FAB.
   Widget _modeAndActionsRow() {
-    return Row(
-      children: [
-        // BI26101519: the shared sub-page tab style (the Codex underline), Equicycle first and the default.
-        Expanded(
-          child: SubTabsBar(
-            keyPrefix: 'calendar',
-            labels: [for (final m in _calModes) _calModeLabel(m)],
-            index: _calModes.indexOf(_mode),
-            onSelect: (i) {
-              setState(() => _mode = _calModes[i]);
-              writeTabIndex(AppScope.of(context).db, 'calendar', i);
-            },
-          ),
-        ),
-        const SizedBox(width: 4),
-        if (_busy)
-          const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2))
-        else ...[
-          IconButton(
-            tooltip: 'Import .ics',
-            icon: const Icon(Icons.file_upload_outlined, color: C.text2),
-            onPressed: _importIcs,
-          ),
-          IconButton(
-            tooltip: 'Export .ics',
-            icon: const Icon(Icons.file_download_outlined, color: C.text2),
-            onPressed: _exportIcs,
-          ),
-        ],
-      ],
+    return SubTabsBar(
+      keyPrefix: 'calendar',
+      labels: [for (final m in _calModes) _calModeLabel(m)],
+      index: _calModes.indexOf(_mode),
+      onSelect: (i) {
+        setState(() => _mode = _calModes[i]);
+        writeTabIndex(AppScope.of(context).db, 'calendar', i);
+      },
     );
+  }
+
+  /// One secondary FAB above Add: a small menu with Import and Export.
+  Future<void> _importExportMenu() async {
+    final pick = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: C.panel,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            key: const Key('calendar-import'),
+            leading: const Icon(Icons.file_upload_outlined, color: NavTint.fg),
+            title: const Text('Import .ics'),
+            subtitle: const Text('Add the events in a calendar file'),
+            onTap: () => Navigator.pop(ctx, 'import'),
+          ),
+          ListTile(
+            key: const Key('calendar-export'),
+            leading: const Icon(Icons.file_download_outlined, color: NavTint.fg),
+            title: const Text('Export .ics'),
+            subtitle: const Text('Save every event as a calendar file'),
+            onTap: () => Navigator.pop(ctx, 'export'),
+          ),
+        ]),
+      ),
+    );
+    if (pick == 'import') await _importIcs();
+    if (pick == 'export') await _exportIcs();
   }
 
   Widget _equicycleGrid(Map<String, List<Map<String, dynamic>>> byDay) {
@@ -775,18 +787,41 @@ class _KeyDates extends StatelessWidget {
 
   final VoidCallback onAdd;
 
-  // Ported from the web's kindColor map (app.js ~1767).
+  /// Ported from the web's kindColor map (app.js renderDatesPanel).
   static const Map<String, Color> _kindColors = {
     'birthday': C.violet,
     'anniversary': C.green,
     'graduation': C.green,
     'first graduation': C.green,
-    'first job': C.cyan,
-    'first': C.cyan,
+    'first job': C.blue,
+    'first': C.blue,
     'deadline': C.amber,
   };
 
-  Color _kindColor(String kind) => _kindColors[kind.toLowerCase()] ?? C.text3;
+  /// An explicit `#rrggbb` COLOR wins; otherwise the kind chooses one.
+  static Color colorFor(Map<String, dynamic> d) {
+    final explicit = fmt.s(d['COLOR']);
+    if (RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(explicit)) return Color(int.parse('FF${explicit.substring(1)}', radix: 16));
+    return _kindColors[fmt.s(d['KIND']).toLowerCase()] ?? C.text3;
+  }
+
+  /// The label shown for a kind (storage keeps the original word).
+  static String kindLabel(Map<String, dynamic> d) {
+    final k = fmt.s(d['KIND']);
+    return k.toLowerCase() == 'first graduation' ? 'Bachelors Graduation' : k;
+  }
+
+  static String bigNumber(Map<String, dynamic> d) {
+    final since = d['daysSince'] != null;
+    final n = fmt.i(since ? d['daysSince'] : d['daysUntil']);
+    final s = n.abs().toString();
+    final out = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) out.write(',');
+      out.write(s[i]);
+    }
+    return '${n < 0 ? '-' : ''}$out';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -797,9 +832,6 @@ class _KeyDates extends StatelessWidget {
         final value = fmt.m(services.store.dates.value);
         final upcoming = fmt.lm(value['upcoming']);
         final dates = fmt.lm(value['dates']);
-        final kindById = {
-          for (final d in dates) fmt.s(d['ID']): fmt.s(d['KIND']),
-        };
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -813,7 +845,27 @@ class _KeyDates extends StatelessWidget {
                 ),
               ],
             ),
-            if (upcoming.isEmpty)
+            // The soonest three, hot (amber, a real heads-up) inside a week.
+            if (upcoming.isNotEmpty)
+              Padding(
+                key: const Key('key-dates-soon'),
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Wrap(spacing: 6, runSpacing: 6, children: [
+                  for (final u in upcoming.take(3))
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: fmt.i(u['days'], 99) <= 7 ? C.amber.withValues(alpha: 0.5) : C.border),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        '${fmt.s(u['title'])} · ${fmt.s(u['label'])} ${_daysBadge(fmt.i(u['days'], -1))}',
+                        style: T.tiny.copyWith(color: fmt.i(u['days'], 99) <= 7 ? C.amber : C.text2),
+                      ),
+                    ),
+                ]),
+              ),
+            if (dates.isEmpty)
               const Panel(
                 child: Text(
                   'Nothing counted yet. Add the dates a life gets measured '
@@ -822,71 +874,83 @@ class _KeyDates extends StatelessWidget {
                 ),
               )
             else
-              Panel(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    for (var idx = 0;
-                        idx < upcoming.length && idx < 8;
-                        idx++) ...[
-                      if (idx > 0) const Divider(),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: Sz.pad, vertical: 10),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 3,
-                              height: 30,
-                              decoration: BoxDecoration(
-                                color: _kindColor(
-                                    kindById[fmt.s(upcoming[idx]['id'])] ?? ''),
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              width: 44,
-                              child: Text(
-                                _daysBadge(fmt.i(upcoming[idx]['days'], -1)),
-                                style: T.mono.copyWith(
-                                  color: fmt.i(upcoming[idx]['days'], 99) <= 1
-                                      ? C.amber
-                                      : C.green,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                fmt.s(upcoming[idx]['label']).isEmpty
-                                    ? fmt.s(upcoming[idx]['title'])
-                                    : fmt.s(upcoming[idx]['label']),
-                                style: T.body2,
-                              ),
-                            ),
-                            Text(fmt.shortDate(upcoming[idx]['date']), style: T.monoSmall),
-                            IconButton(
-                              key: Key('delete-date-${fmt.s(upcoming[idx]['id'])}'),
-                              tooltip: 'Stop counting this date',
-                              visualDensity: VisualDensity.compact,
-                              icon: const Icon(Icons.close_rounded, size: 16),
-                              onPressed: () async {
-                                final ok = await confirmDeleteDate(context, fmt.s(upcoming[idx]['id']),
-                                    fmt.s(upcoming[idx]['label']).isEmpty ? fmt.s(upcoming[idx]['title']) : fmt.s(upcoming[idx]['label']));
-                                if (ok) services.store.dates.refresh();
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+              LayoutBuilder(builder: (context, box) {
+                const gap = 8.0;
+                final w = (box.maxWidth - gap) / 2;
+                return Wrap(spacing: gap, runSpacing: gap, children: [
+                  for (final d in dates) SizedBox(width: w, child: _card(context, d, services)),
+                ]);
+              }),
           ],
         );
       },
+    );
+  }
+
+  /// One counter, as on the web console: tinted by its colour, the kind, the big number, "days since or until", the
+  /// title, the date, and the next milestone under a thin rule.
+  Widget _card(BuildContext context, Map<String, dynamic> d, AppServices services) {
+    final c = colorFor(d);
+    final since = d['daysSince'] != null;
+    final ms = fmt.lm(d['milestones']);
+    final next = ms.isEmpty ? null : ms.first;
+    final turns = fmt.i(d['yearsTurning']);
+    final id = fmt.s(d['ID']);
+    final title = fmt.s(d['TITLE']);
+    return Container(
+      key: Key('key-date-card-$id'),
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 10),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.08),
+        border: Border.all(color: c.withValues(alpha: 0.33)),
+        borderRadius: BorderRadius.circular(Sz.rMd),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text(kindLabel(d).toUpperCase(),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: T.label.copyWith(color: c, fontSize: 9.5)),
+            ),
+            InkWell(
+              key: Key('delete-date-$id'),
+              borderRadius: BorderRadius.circular(12),
+              onTap: () async {
+                final ok = await confirmDeleteDate(context, id, title);
+                if (ok) services.store.dates.refresh();
+              },
+              child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close_rounded, size: 14, color: C.text3)),
+            ),
+          ]),
+          Text(bigNumber(d), key: Key('key-date-number-$id'), style: T.headline.copyWith(fontSize: 26, fontWeight: FontWeight.w700, color: C.text)),
+          Text('days ${since ? 'since' : 'until'}', style: T.tiny.copyWith(color: C.text3)),
+          const SizedBox(height: 6),
+          Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: T.w600(T.small)),
+          const SizedBox(height: 2),
+          Text.rich(TextSpan(children: [
+            TextSpan(text: fmt.s(d['DATE']), style: T.monoSmall.copyWith(color: C.text3)),
+            if (turns > 0)
+              TextSpan(text: ' · turns $turns in ${fmt.i(d['daysToNext'])}d', style: T.monoSmall.copyWith(color: c)),
+          ])),
+          if (next != null) ...[
+            const SizedBox(height: 6),
+            Container(height: 1, color: c.withValues(alpha: 0.27)),
+            const SizedBox(height: 5),
+            Text.rich(
+              TextSpan(children: [
+                TextSpan(text: fmt.s(next['label']), style: T.tiny.copyWith(color: c)),
+                TextSpan(
+                  text: ' · ${fmt.i(next['days']) == 0 ? 'today' : '${fmt.i(next['days'])}d'} · ${fmt.s(next['date'])}',
+                  style: T.tiny.copyWith(color: C.text3),
+                ),
+              ]),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
     );
   }
 

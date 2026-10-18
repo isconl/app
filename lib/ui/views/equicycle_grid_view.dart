@@ -114,7 +114,25 @@ class _EquicycleGridViewState extends State<EquicycleGridView> {
     );
   }
 
+  /// BI26101810: the Cycle, Year, Moon and Rains chips are selected in the nav's subtle green (NavTint), not the
+  /// stronger chip green, so the strip matches the bottom navigation.
   Widget _controls(EqGrid grid, int page) {
+    final base = Theme.of(context);
+    return Theme(
+      data: base.copyWith(
+        chipTheme: base.chipTheme.copyWith(
+          selectedColor: NavTint.bg,
+          checkmarkColor: NavTint.fg,
+          labelStyle: base.chipTheme.labelStyle,
+          side: WidgetStateBorderSide.resolveWith(
+              (states) => BorderSide(color: states.contains(WidgetState.selected) ? NavTint.border : C.border)),
+        ),
+      ),
+      child: _controlsWrap(grid, page),
+    );
+  }
+
+  Widget _controlsWrap(EqGrid grid, int page) {
     return Wrap(
       spacing: 6,
       runSpacing: 4,
@@ -159,7 +177,8 @@ class _EquicycleGridViewState extends State<EquicycleGridView> {
 
   Color _seasonTint(String season) => switch (season) {
         '1' => C.greenBg,
-        '2' => C.amberBg,
+        // BI26101810: no yellow in the strip; the second season wears the nav's subtle green like the first.
+        '2' => NavTint.bg,
         '3' => const Color(0x22BC8CFF),
         '4' => const Color(0x2258A6FF),
         _ => C.surface,
