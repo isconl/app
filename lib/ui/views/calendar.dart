@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/day_blocks.dart';
+import '../../util/cycle_theme_bus.dart';
 import '../../util/equicycle.dart';
 import 'equicycle_grid_view.dart';
 import '../../util/fmt.dart' as fmt;
@@ -68,7 +69,7 @@ class CalendarView extends StatefulWidget {
   State<CalendarView> createState() => _CalendarViewState();
 }
 
-class _CalendarViewState extends State<CalendarView> {
+class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver {
   late DateTime _month;
   DateTime? _selected;
   _CalMode _mode = _CalMode.equicycle;
@@ -81,8 +82,8 @@ class _CalendarViewState extends State<CalendarView> {
   String? _serverThemeKey;
   String? _serverTheme;
 
-  void _maybeLoadServerTheme(String cycleKey) {
-    if (_serverThemeKey == cycleKey) return;
+  void _maybeLoadServerTheme(String cycleKey, {bool force = false}) {
+    if (!force && _serverThemeKey == cycleKey) return;
     _serverThemeKey = cycleKey;
     final services = AppScope.of(context);
     services.api.getJson('/api/cycle-theme?cycleKey=$cycleKey').then((res) {
@@ -101,6 +102,8 @@ class _CalendarViewState extends State<CalendarView> {
     _month = DateTime(now.year, now.month);
     _selected = DateTime(now.year, now.month, now.day);
     EquicycleYears.instance.addListener(_onYears);
+    CycleThemeBus.instance.addListener(_onThemeChanged);
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final services = AppScope.of(context);
       services.sync.touch(services.store.dates);
@@ -116,9 +119,22 @@ class _CalendarViewState extends State<CalendarView> {
     if (mounted) setState(() {});
   }
 
+  /// BI26101811: compass saved a theme, or the app came back to the foreground: read the theme again.
+  void _onThemeChanged() {
+    final k = _serverThemeKey;
+    if (mounted && k != null) _maybeLoadServerTheme(k, force: true);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _onThemeChanged();
+  }
+
   @override
   void dispose() {
     EquicycleYears.instance.removeListener(_onYears);
+    CycleThemeBus.instance.removeListener(_onThemeChanged);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 

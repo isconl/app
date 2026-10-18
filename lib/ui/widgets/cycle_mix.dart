@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../util/cycle_theme_bus.dart';
+
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/cycle_theme.dart';
@@ -130,6 +132,7 @@ class _CycleMixCardState extends State<CycleMixCard> {
       final res = await AppScope.of(context).api.postJson('/api/cycle-theme', {'cycleKey': key, ...body});
       if (!mounted) return;
       setState(() => _mixes[key] = _Mix.from(res));
+      CycleThemeBus.instance.changed();
     } catch (e) {
       if (mounted) toast(context, e.toString(), error: true);
     }

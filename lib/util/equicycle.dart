@@ -137,6 +137,17 @@ class EquicycleYears extends ChangeNotifier {
     }
   }
 
+  /// Tests seed the shared instance with year tables so a screen can compute today's cycle without a fetch.
+  @visibleForTesting
+  void seedForTest(Iterable<EqYear> years) {
+    _years.clear();
+    for (final y in years) {
+      _years[y.year] = y;
+    }
+    _loaded = true;
+    notifyListeners();
+  }
+
   static const _snapshotKey = 'eq2.years.v1';
   final _years = <int, EqYear>{};
   bool _loading = false;

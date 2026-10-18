@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../util/cycle_theme_bus.dart';
+
 import '../../api/client.dart' show ApiException;
 import '../../app_scope.dart';
 import '../../theme.dart';
@@ -138,6 +140,7 @@ class _CompassFocusState extends State<CompassFocus> {
       });
       if (fmt.m(r)['ok'] == false) throw Exception(fmt.s(fmt.m(r)['error']));
       if (mounted) toast(context, hold ? 'The primary focus stays one more cycle' : 'Queued');
+      CycleThemeBus.instance.changed();
       await _load();
     } on ApiException catch (e) {
       if (!mounted) return;
