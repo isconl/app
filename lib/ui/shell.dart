@@ -819,6 +819,18 @@ class OfflineBanner extends StatelessWidget {
   }
 }
 
+/// BI26101809: the five bottom tabs. Channels, Projects, Personal and Systems wear Sconl's own icons (single-path SVGs
+/// traced from his PNGs, under assets/icons/nav/), tinted by the nav: dim at rest, the nav green when selected. Command
+/// keeps its glyph.
+@visibleForTesting
+List<PillNavItem> bottomNavItems({Widget? alerts}) => [
+      const PillNavItem(icon: Icons.bolt_rounded, label: 'Command'),
+      const PillNavItem(icon: Icons.share_rounded, label: 'Channels', svgAsset: 'assets/icons/nav/channels.svg'),
+      const PillNavItem(icon: Icons.folder_rounded, label: 'Projects', svgAsset: 'assets/icons/nav/projects.svg'),
+      const PillNavItem(icon: Icons.person_rounded, label: 'Personal', svgAsset: 'assets/icons/nav/personal.svg'),
+      PillNavItem(icon: Icons.settings_rounded, label: 'Systems', svgAsset: 'assets/icons/nav/systems.svg', badge: alerts),
+    ];
+
 /// Command · Channels · Projects · Personal · Settings — 5 true tabs.
 /// The floating chat FAB replaces the old Ask slot.
 /// The hamburger is now in the app bar; this bar is purely navigational.
@@ -842,17 +854,7 @@ class _BottomBar extends StatelessWidget {
         return PillNavBar(
           index: tab,
           onSelect: onTab,
-          items: [
-            const PillNavItem(icon: Icons.bolt_rounded,         label: 'Command'),
-            const PillNavItem(icon: Icons.dynamic_feed_rounded, label: 'Channels'),
-            const PillNavItem(icon: Icons.folder_rounded, label: 'Projects', svgAsset: 'assets/icons/nav_projects.svg'),
-            const PillNavItem(icon: Icons.person_rounded, label: 'Personal', svgAsset: 'assets/icons/nav_personal.svg'),
-            PillNavItem(
-              icon: Icons.settings_rounded,
-              label: 'Systems',
-              badge: n > 0 ? _AlertCount(n) : null,
-            ),
-          ],
+          items: bottomNavItems(alerts: n > 0 ? _AlertCount(n) : null),
         );
       },
     );

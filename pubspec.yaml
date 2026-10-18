@@ -123,4 +123,5 @@ flutter:
 
   assets:
     - assets/icons/
+    - assets/icons/nav/
     - assets/whats_new.json
