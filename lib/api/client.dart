@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../util/server_clock.dart';
+
 /// Thin HTTP client for the iSconl agent.
 ///
 /// Server behaviours this client encodes (see server.js):
@@ -123,10 +125,14 @@ class ApiClient {
     if (extraHeaders != null) req.headers.addAll(extraHeaders);
     if (body != null) req.body = jsonEncode(body);
     try {
+      final sent = DateTime.now();
       final streamed = await _http
           .send(req)
           .timeout(cold ? _coldTimeout : _shortTimeout);
-      return await http.Response.fromStream(streamed);
+      final res = await http.Response.fromStream(streamed);
+      // BI26101801: the Date header on a regular response tells the Hub clock whether the phone has drifted.
+      ServerClock.instance.observe(sent, DateTime.now(), res.headers['date']);
+      return res;
     } on TimeoutException {
       throw ApiException(0, 'Request timed out');
     } on http.ClientException catch (e) {

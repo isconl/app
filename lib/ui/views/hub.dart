@@ -18,6 +18,7 @@ import '../widgets/checkpoint_card.dart';
 import '../widgets/common.dart';
 import '../widgets/parity3b_widgets.dart';
 import '../widgets/context_ring_card.dart';
+import '../widgets/hub_clock.dart';
 import '../widgets/offsite_backup_line.dart';
 import '../widgets/debrief_card.dart';
 import '../widgets/october_ring_card.dart';
@@ -32,7 +33,10 @@ import 'tasks.dart' show showAddTaskSheet, TaskRowTile;
 /// first child, and a child that shares its parent's name reads as though the
 /// group were a single screen.
 class HubView extends StatefulWidget {
-  const HubView({super.key});
+  const HubView({super.key, this.clock});
+
+  /// BI26101801: the time source for the date and the clock (tests pass a fixed one).
+  final DateTime Function()? clock;
 
   @override
   State<HubView> createState() => _HubViewState();
@@ -95,7 +99,7 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
         final state = fmt.m(data);
         final eq = fmt.m(state['time']);
         final tasks = fmt.lm(state['tasks']);
-        final now = DateTime.now();
+        final now = (widget.clock ?? DateTime.now)();
 
         final todays = tasks.where((t) {
           final st = fmt.s(t['STATUS']).toLowerCase();
@@ -159,7 +163,6 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
                     newAlerts,
                     review.length,
                   ),
-                  AsOfLine(snapshot: services.store.signals, snapshotKey: 'signals'),
                 ],
               ),
             ),
@@ -242,9 +245,10 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
     );
   }
 
-  /// `Monday · 5 Oct 2026`: bold weekday, a middle dot, then the date in regular weight.
+  /// `Sunday · October 18, 2026`: bold weekday, a middle dot, then the date in regular weight with the month in full
+  /// (BI26101801), and the live clock to its right. The row wraps the clock under the date only when the width is too narrow.
   Widget _buildDate(DateTime now) {
-    return Text.rich(
+    final date = Text.rich(
       TextSpan(
         style: T.headline,
         children: [
@@ -253,11 +257,19 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           TextSpan(
-            text: ' · ${now.day} ${fmt.monthsFull[now.month - 1].substring(0, 3)} ${now.year}',
+            text: ' · ${fmt.monthsFull[now.month - 1]} ${now.day}, ${now.year}',
             style: const TextStyle(fontWeight: FontWeight.w400),
           ),
         ],
       ),
+    );
+    return Wrap(
+      key: const Key('hub-date-row'),
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 4,
+      children: [date, HubClock(clock: widget.clock)],
     );
   }
 
@@ -269,6 +281,13 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
         'info' => C.text3,
         _ => C.text3,
       };
+
+  /// True when the signals snapshot is past its freshness budget (the amber tint replaces the old "as of" line).
+  bool _signalsStale(AppServices services) {
+    final at = services.store.signals.fetchedAt;
+    if (at == null) return false;
+    return DateTime.now().difference(at) > freshnessBudgetFor('signals');
+  }
 
   Widget _buildSignalsStripOrFallback(
     BuildContext context,
@@ -290,14 +309,21 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
               .toList();
 
           if (validSignals.isNotEmpty) {
+            // BI26101801: always three spots. Pulse's strip has at most one signal per area, so a quiet day shows
+            // fewer than three; the rest are muted placeholders, tinted amber when the signals are past their budget.
+            final stale = _signalsStale(services);
             return Wrap(
+              key: const Key('hub-signal-strip'),
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                for (var idx = 0; idx < validSignals.length; idx++) ...[
-                  if (idx > 0)
-                    Text('  ·  ',
-                        style: T.small.copyWith(color: C.text3)),
-                  _signalChip(context, validSignals[idx]),
+                for (var idx = 0; idx < 3; idx++) ...[
+                  if (idx > 0) Text('  ·  ', style: T.small.copyWith(color: C.text3)),
+                  if (idx < validSignals.length)
+                    _signalChip(context, validSignals[idx])
+                  else
+                    Text('All clear',
+                        key: Key('hub-signal-clear-$idx'),
+                        style: T.small.copyWith(color: stale ? C.amber : C.text3)),
                 ],
               ],
             );
@@ -379,6 +405,9 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
 
     add('alerts', alerts, C.amber);
     add('in review', review, C.cyan);
+    // BI26101801: three spots here too; the third is a placeholder.
+    parts.add(TextSpan(text: '  ·  ', style: T.small.copyWith(color: C.text3)));
+    parts.add(TextSpan(text: 'All clear', style: T.small.copyWith(color: C.text3)));
     return Text.rich(TextSpan(children: parts));
   }
 }

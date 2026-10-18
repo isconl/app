@@ -205,11 +205,11 @@ void main() {
 
       expect(dateFinder, findsOneWidget);
 
-      // BI26100541: `Monday · 5 Oct 2026`, with no comma.
+      // BI26101801: `Sunday · October 18, 2026`, the month in full with a comma after the day.
       final now = DateTime.now();
       const wd = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-      const mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      expect(find.text('${wd[now.weekday - 1]} · ${now.day} ${mo[now.month - 1]} ${now.year}', findRichText: true),
+      const mo = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      expect(find.text('${wd[now.weekday - 1]} · ${mo[now.month - 1]} ${now.day}, ${now.year}', findRichText: true),
           findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
