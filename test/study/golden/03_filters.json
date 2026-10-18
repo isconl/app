@@ -1,0 +1,83 @@
+{
+ "name": "03_filters",
+ "inputs": {
+  "now": "2026-10-19T14:20:00",
+  "minutesUntilNextBlock": 40,
+  "cards": [
+   {
+    "id": "archived",
+    "track": "t",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 20,
+    "difficulty": 3,
+    "archived": true
+   },
+   {
+    "id": "needs-prereq",
+    "track": "t",
+    "subjects": [],
+    "prerequisites": [
+     "base"
+    ],
+    "minutes": 20,
+    "difficulty": 3,
+    "archived": false
+   },
+   {
+    "id": "done",
+    "track": "t",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 20,
+    "difficulty": 3,
+    "archived": false
+   },
+   {
+    "id": "base",
+    "track": "t",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 30,
+    "difficulty": 3,
+    "archived": false
+   },
+   {
+    "id": "ok",
+    "track": "t",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 35,
+    "difficulty": 3,
+    "archived": false
+   }
+  ],
+  "progress": {
+   "done": {
+    "fraction": 1,
+    "read": true
+   }
+  },
+  "tracks": {
+   "t": {
+    "unreadMinutes": 300,
+    "targetDate": "2027-04-19T00:00:00",
+    "minutesReadThisCycle": 0,
+    "cyclesBehind": 0,
+    "pickedThisCycle": true
+   }
+  }
+ },
+ "expect": {
+  "top": {
+   "id": "ok",
+   "reason": "fits the 40 minutes you have; t is behind this cycle's pace"
+  },
+  "lighter": {
+   "id": "base",
+   "reason": "fits the 40 minutes you have; t is behind this cycle's pace"
+  },
+  "deeper": null,
+  "candidates": 2
+ }
+}

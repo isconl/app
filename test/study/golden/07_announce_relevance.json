@@ -1,0 +1,77 @@
+{
+ "name": "07_announce_relevance",
+ "inputs": {
+  "now": "2026-10-19T14:20:00",
+  "minutesUntilNextBlock": 45,
+  "cards": [
+   {
+    "id": "plain",
+    "track": "t",
+    "subjects": [
+     "x"
+    ],
+    "prerequisites": [],
+    "minutes": 40,
+    "difficulty": 2,
+    "archived": false
+   },
+   {
+    "id": "news",
+    "track": "t",
+    "subjects": [
+     "x"
+    ],
+    "prerequisites": [],
+    "minutes": 40,
+    "difficulty": 2,
+    "archived": false
+   },
+   {
+    "id": "themed",
+    "track": "t",
+    "subjects": [
+     "law"
+    ],
+    "prerequisites": [],
+    "minutes": 40,
+    "difficulty": 2,
+    "archived": false
+   }
+  ],
+  "announced": [
+   "news"
+  ],
+  "events": [
+   {
+    "subjects": [
+     "law"
+    ]
+   }
+  ],
+  "cycle": {
+   "lengthDays": 7,
+   "dayOfCycle": 2,
+   "themeSubjects": [
+    "law"
+   ]
+  },
+  "tracks": {
+   "t": {
+    "unreadMinutes": 300,
+    "targetDate": "2027-04-19T00:00:00",
+    "minutesReadThisCycle": 0,
+    "cyclesBehind": 0,
+    "pickedThisCycle": true
+   }
+  }
+ },
+ "expect": {
+  "top": {
+   "id": "news",
+   "reason": "fits the 45 minutes you have; t is behind this cycle's pace"
+  },
+  "lighter": null,
+  "deeper": null,
+  "candidates": 3
+ }
+}
