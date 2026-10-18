@@ -1,0 +1,59 @@
+{
+ "name": "06_track_guarantee",
+ "inputs": {
+  "now": "2026-10-19T14:20:00",
+  "minutesUntilNextBlock": 30,
+  "cycle": {
+   "lengthDays": 7,
+   "dayOfCycle": 6
+  },
+  "cards": [
+   {
+    "id": "a1",
+    "track": "a",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 28,
+    "difficulty": 2,
+    "archived": false
+   },
+   {
+    "id": "b1",
+    "track": "b",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 15,
+    "difficulty": 2,
+    "archived": false
+   }
+  ],
+  "tracks": {
+   "a": {
+    "unreadMinutes": 300,
+    "targetDate": "2027-04-19T00:00:00",
+    "minutesReadThisCycle": 0,
+    "cyclesBehind": 0,
+    "pickedThisCycle": true
+   },
+   "b": {
+    "unreadMinutes": 300,
+    "targetDate": "2027-04-19T00:00:00",
+    "minutesReadThisCycle": 0,
+    "cyclesBehind": 0,
+    "pickedThisCycle": false
+   }
+  }
+ },
+ "expect": {
+  "top": {
+   "id": "b1",
+   "reason": "fits the 30 minutes you have; b is behind this cycle's pace"
+  },
+  "lighter": null,
+  "deeper": {
+   "id": "a1",
+   "reason": "fits the 30 minutes you have; a is behind this cycle's pace"
+  },
+  "candidates": 2
+ }
+}

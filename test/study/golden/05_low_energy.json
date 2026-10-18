@@ -1,0 +1,49 @@
+{
+ "name": "05_low_energy",
+ "inputs": {
+  "now": "2026-10-19T14:20:00",
+  "minutesUntilNextBlock": 60,
+  "energy": 2,
+  "cards": [
+   {
+    "id": "easy",
+    "track": "t",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 30,
+    "difficulty": 1,
+    "archived": false
+   },
+   {
+    "id": "hard",
+    "track": "t",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 30,
+    "difficulty": 4,
+    "archived": false
+   }
+  ],
+  "tracks": {
+   "t": {
+    "unreadMinutes": 300,
+    "targetDate": "2027-04-19T00:00:00",
+    "minutesReadThisCycle": 0,
+    "cyclesBehind": 0,
+    "pickedThisCycle": true
+   }
+  }
+ },
+ "expect": {
+  "top": {
+   "id": "easy",
+   "reason": "fits the 60 minutes you have; t is behind this cycle's pace"
+  },
+  "lighter": null,
+  "deeper": {
+   "id": "hard",
+   "reason": "t is behind this cycle's pace; fits the 60 minutes you have"
+  },
+  "candidates": 2
+ }
+}
