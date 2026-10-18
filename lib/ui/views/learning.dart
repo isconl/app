@@ -29,6 +29,7 @@ import '../widgets/common.dart';
 import '../widgets/course_controls.dart';
 import '../widgets/listen_bar.dart';
 import '../widgets/study_extras.dart';
+import '../widgets/study_pick_card.dart';
 import '../../services/study_extras.dart';
 import '../widgets/module_lifecycle.dart';
 import '../widgets/reader.dart';
@@ -180,6 +181,30 @@ class _LearningViewState extends State<LearningView> {
               if (tab == 0)
                 ContributionsCard(title: 'Study activity', loader: (_) => HubStudyExtrasApi(services.api).studyContributions()),
               // Campus tab: what to read right now.
+              // BI26101604: the on-phone pick, offline, with its reason.
+              if (tab == 1) StudyPickCard(
+                data: fmt.m(data),
+                onOpen: (courseId, lesson) {
+                  final course = courses.firstWhere(
+                      (c) => (fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID'])) == courseId,
+                      orElse: () => const <String, dynamic>{});
+                  final lessons = fmt.lm(course['lessons']);
+                  final l = lessons.firstWhere((x) => fmt.s(x['file']) == lesson, orElse: () => const <String, dynamic>{});
+                  final rawTitle = fmt.s(l['title']).isEmpty ? lesson : fmt.s(l['title']);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => LessonScreen(
+                        course: courseId,
+                        file: lesson,
+                        title: safeModuleTitle(stripEmoji(rawTitle), lesson),
+                        status: fmt.s(l['status']).isEmpty ? 'new' : fmt.s(l['status']),
+                        allLessons: lessons,
+                      ),
+                    ),
+                  );
+                },
+              ),
               // BI26101109: spaced recall. Shows only when a question is due.
               if (tab == 1) RecallCard(onReopen: (t) {
                 final course = courses.firstWhere(
