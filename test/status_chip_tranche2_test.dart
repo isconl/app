@@ -89,7 +89,7 @@ void main() {
         chip!.onTap(c);
         return const SizedBox();
       })));
-      expect(titles, ['Ops']);
+      expect(titles, ['OpSec']);
     });
   });
 }

@@ -108,7 +108,7 @@ class OpsChipSource implements StatusChipSource {
   StatusChip? current(BuildContext context) {
     final text = opsChipText(services.store.opsStatus.value);
     if (text == null) return null;
-    return StatusChip(text, (c) => open(c, 'Ops', const OpsView()));
+    return StatusChip(text, (c) => open(c, 'OpSec', const OpsView()));
   }
 }
 

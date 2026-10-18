@@ -119,7 +119,7 @@ List<_SubTab> _projectsSubsFor(void Function(int) openSub) => [
 List<_SubTab> _settingsSubsFor(void Function(int) openSub) => [
   _SubTab('Settings', SettingsView(onOpenSub: openSub)),
   const _SubTab('Hold',     FilesView()),
-  const _SubTab('Ops',      OpsView()),
+  const _SubTab('OpSec',    OpsView()),
 ];
 
 class _ShellState extends State<Shell> {
@@ -1039,8 +1039,8 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Systems'),
           // BG26091020: Ops + Security merged into one "Opsec" entry --
           // Security's stub content now renders as a section inside OpsView.
-          _item(ctx, Icons.dns_rounded, 'Ops',
-              () => go(const OpsView(), 'Ops')),
+          _item(ctx, Icons.dns_rounded, 'OpSec',
+              () => go(const OpsView(), 'OpSec')),
           _item(ctx, Icons.apps_rounded, 'Services',
               () => go(const HostedServicesView(), 'Services')),
           _item(ctx, Icons.folder_rounded, 'Hold',
@@ -1213,7 +1213,7 @@ class SecondaryScreen extends StatelessWidget {
     'professional' => (const CircleView(ring: 'professional'), 'Professional'),
     'social_circle' => (const CircleView(ring: 'social'), 'Social'),
     'spaces' => (const SpacesView(), 'Spaces'),
-    'ops' => (const OpsView(), 'Ops'),
+    'ops' => (const OpsView(), 'OpSec'),
     'services' || 'hosted' => (const HostedServicesView(), 'Services'),
     'files' || 'hold' => (const FilesView(), 'Hold'),
     'media' => (const MediaView(), 'Media'),

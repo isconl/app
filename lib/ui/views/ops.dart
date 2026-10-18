@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
@@ -5,8 +7,9 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/incident_cards.dart';
+import 'ops_model.dart';
 
-/// Opsec: the live control surface for the fleet + the OCI VM (BI26090502),
+/// OpSec: the live control surface for the fleet + the OCI VM (BI26090502),
 /// mobile port of the web's renderOps()/loadOpsStatus(). Status/VM-stats/
 /// deploy-status are read-only polls; restart/stop/start/logs hit the ops
 /// engine through hub's existing `/api/ops/*` proxy -- no backend work
@@ -48,7 +51,11 @@ class _OpsViewState extends State<OpsView> {
   bool _discoveryOk = true;
   String? _discoveryError;
   List<Map<String, dynamic>> _deploy = [];
-  Map<String, dynamic>? _vmStats;
+  OpsVm? _vm;
+  // Which of the three polls failed on the last refresh, by name, so the headline can say so (BI26101812).
+  final List<String> _failed = [];
+  final Map<String, String> _failMsg = {};
+  Timer? _timer;
   bool _loading = true;
   String? _error;
   String? _logsFor;
@@ -61,39 +68,58 @@ class _OpsViewState extends State<OpsView> {
   void initState() {
     super.initState();
     _load();
+    // Live stats: refreshed every 15 s while the view is open (BI26101812).
+    _timer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted && _busy.isEmpty) _load(quiet: true);
+    });
   }
 
-  Future<void> _load() async {
-    final api = AppScope.of(context).api;
-    setState(() {
-      _loading = !_hasAnyService;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  /// One poll, tolerant of a single call failing: the other two still render, and the failing call is named.
+  Future<Map<String, dynamic>?> _try(String name, String path) async {
     try {
-      final results = await Future.wait([
-        api.getJson('/api/ops/status'),
-        api.getJson('/api/ops/vm-stats'),
-        api.getJson('/api/ops/deploy-status'),
-      ]);
-      if (!mounted) return;
-      final status = fmt.m(results[0]);
-      final rawGroups = fmt.m(status['groups']);
+      return fmt.m(await AppScope.of(context).api.getJson(path));
+    } catch (e) {
+      _failed.add(name);
+      _failMsg[name] = e.toString().replaceAll(RegExp(r'\s+'), ' ');
+      return null;
+    }
+  }
+
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
       setState(() {
+        _loading = !_hasAnyService;
+        _error = null;
+      });
+    }
+    _failed.clear();
+    _failMsg.clear();
+    final results = await Future.wait([
+      _try('status', '/api/ops/status'),
+      _try('vm-stats', '/api/ops/vm-stats'),
+      _try('deploy-status', '/api/ops/deploy-status'),
+    ]);
+    if (!mounted) return;
+    final status = results[0];
+    setState(() {
+      if (status != null) {
+        final rawGroups = fmt.m(status['groups']);
         _groups = {for (final e in rawGroups.entries) e.key: fmt.lm(e.value)};
         _ungrouped = fmt.lm(status['ungrouped']);
         _discoveryOk = status['discoveryOk'] != false;
         _discoveryError = fmt.s(status['discoveryError']).isEmpty ? null : fmt.s(status['discoveryError']);
-        _vmStats = fmt.m(results[1]);
-        _deploy = fmt.lm(fmt.m(results[2])['services']);
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = e.toString();
-      });
-    }
+      }
+      if (results[1] != null) _vm = OpsVm.fromJson(results[1]!);
+      if (results[2] != null) _deploy = fmt.lm(results[2]!['services']);
+      _loading = false;
+      _error = _failed.isEmpty ? null : _failed.map((n) => '$n: ${_failMsg[n]}').join('\n');
+    });
   }
 
   Future<void> _act(String name, String action) async {
@@ -178,27 +204,6 @@ class _OpsViewState extends State<OpsView> {
     }
   }
 
-  String _fmtBytes(num? n) {
-    if (n == null || n == 0) return '0 B';
-    var v = n.toDouble();
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    var i = 0;
-    while (v >= 1024 && i < units.length - 1) {
-      v /= 1024;
-      i++;
-    }
-    return '${v.toStringAsFixed(1)} ${units[i]}';
-  }
-
-  String _fmtUptime(num? s) {
-    if (s == null || s == 0) return '-';
-    final total = s.toInt();
-    final d = total ~/ 86400, h = (total % 86400) ~/ 3600, m = (total % 3600) ~/ 60;
-    if (d > 0) return '${d}d ${h}h';
-    if (h > 0) return '${h}h ${m}m';
-    return '${m}m';
-  }
-
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
@@ -215,6 +220,7 @@ class _OpsViewState extends State<OpsView> {
               child: Center(child: MiniSpinner(size: 22)),
             )
           else ...[
+            _headlineBanner(),
             if (_error != null) ErrorRetry(_error!, onRetry: _load),
             const IncidentCards(),
             _vmCard(),
@@ -263,23 +269,105 @@ class _OpsViewState extends State<OpsView> {
     );
   }
 
+  Color _levelColor(OpsLevel l) => switch (l) { OpsLevel.red => C.red, OpsLevel.amber => C.amber, OpsLevel.ok => C.green };
+
+  /// The one line at the top: the server's headline, or amber naming the failed call when there is none.
+  OpsHeadline? get _headline => _failed.isNotEmpty && _vm?.headline == null ? OpsHeadline.failed(_failed) : _vm?.headline;
+
+  Widget _headlineBanner() {
+    final h = _headline;
+    if (h == null) return const SizedBox.shrink();
+    final color = _levelColor(h.level);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        // Tap opens the failing item: a service opens its logs, anything else scrolls nowhere and just stays visible.
+        onTap: h.target != null && _isService(h.target!) ? () => _showLogs(h.target!) : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            border: Border.all(color: color.withValues(alpha: 0.5)),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(children: [
+            StatusDot(color, glow: h.level != OpsLevel.ok, size: 8),
+            const SizedBox(width: 10),
+            Expanded(child: Text(h.text, style: T.w500(T.small))),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  bool _isService(String name) =>
+      _groups.values.any((l) => l.any((s) => fmt.s(s['service']) == name)) || _ungrouped.any((s) => fmt.s(s['service']) == name);
+
+  Widget _bar(double pct, {Color? color}) {
+    final c = color ?? (pct >= 90 ? C.red : (pct >= 75 ? C.amber : C.green));
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3),
+      child: LinearProgressIndicator(value: (pct / 100).clamp(0.0, 1.0), minHeight: 6, backgroundColor: C.border, valueColor: AlwaysStoppedAnimation(c)),
+    );
+  }
+
+  Widget _meter(String label, double pct, String trailing) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(label, style: T.small.copyWith(color: C.text2))),
+          Text(trailing, style: T.tiny.copyWith(color: C.text3)),
+        ]),
+        const SizedBox(height: 3),
+        _bar(pct),
+      ]),
+    );
+  }
+
   Widget _vmCard() {
-    final s = _vmStats;
+    final s = _vm;
+    if (s == null) {
+      return Panel(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('VM', style: T.title),
+          const SizedBox(height: 6),
+          Text(_failed.contains('vm-stats') ? 'VM stats unavailable (${_failMsg['vm-stats']})' : 'Loading VM stats…',
+              style: T.small.copyWith(color: C.text2)),
+        ]),
+      );
+    }
+    final memUsed = s.memTotal * s.memUsedPct / 100;
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('VM', style: T.title),
-          const SizedBox(height: 6),
-          Text(
-            s == null
-                ? 'Loading VM stats…'
-                : '${fmt.s(s['cpuCount'])} CPU · load ${(s['loadAvg1'] is num) ? (s['loadAvg1'] as num).toStringAsFixed(2) : '-'} · '
-                    'mem ${_fmtBytes((s['memTotalBytes'] as num?)?.toDouble().let((t) => t - ((s['memFreeBytes'] as num?)?.toDouble() ?? 0)))} / ${_fmtBytes(s['memTotalBytes'] as num?)} '
-                    '(${fmt.s(s['memUsedPct'])}%) · '
-                    'up ${_fmtUptime(s['uptimeSeconds'] as num?)}',
-            style: T.small.copyWith(color: C.text2),
-          ),
+          Text('VM · engines', style: T.title),
+          const SizedBox(height: 4),
+          Text('${s.cpuCount} CPU · load ${s.load1.toStringAsFixed(2)} ${s.load5.toStringAsFixed(2)} ${s.load15.toStringAsFixed(2)} · up ${opsUptime(s.uptimeSeconds)}',
+              style: T.small.copyWith(color: C.text2)),
+          const SizedBox(height: 10),
+          if (s.cpuPct != null) _meter('CPU', s.cpuPct!, '${s.cpuPct!.toStringAsFixed(1)}%'),
+          if (s.perCore.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(children: [
+                for (var i = 0; i < s.perCore.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 6),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('core $i · ${s.perCore[i].toStringAsFixed(0)}%', style: T.tiny.copyWith(color: C.text3)),
+                    const SizedBox(height: 2),
+                    _bar(s.perCore[i]),
+                  ])),
+                ],
+              ]),
+            ),
+          _meter('Memory', s.memUsedPct, '${opsBytes(memUsed)} / ${opsBytes(s.memTotal)} · ${s.memUsedPct.toStringAsFixed(1)}%'),
+          if (s.swapTotal > 0) _meter('Swap', s.swapUsedPct, '${s.swapUsedPct.toStringAsFixed(1)}% of ${opsBytes(s.swapTotal)}'),
+          for (final d in s.disks)
+            _meter('Disk ${d.mount}', d.usedPct.toDouble(), '${opsBytes(d.usedBytes)} / ${opsBytes(d.totalBytes)} · ${d.usedPct}%'),
+          Text('Network since container start: in ${opsBytes(s.netRx)} · out ${opsBytes(s.netTx)}', style: T.tiny.copyWith(color: C.text3)),
         ],
       ),
     );
@@ -325,15 +413,13 @@ class _OpsViewState extends State<OpsView> {
         children: [
           Row(
             children: [
-              StatusDot(running ? C.green : C.red, glow: running, size: 7),
+              StatusDot(!exists ? C.text3 : _levelColor(opsServiceLevel(svc)), glow: running && opsServiceLevel(svc) == OpsLevel.ok, size: 7),
               const SizedBox(width: 8),
               Expanded(child: Text(name, style: T.w500(T.small))),
-              Text(
-                running ? 'running' : (exists ? 'stopped' : 'not deployed'),
-                style: T.tiny.copyWith(color: C.text3),
-              ),
+              Text(opsServiceState(svc), style: T.tiny.copyWith(color: C.text3)),
             ],
           ),
+          if (_vm?.containers[name] != null) _statsLine(_vm!.containers[name]!),
           if (dep != null && fmt.s(dep['commit']).isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(left: 15, top: 2),
@@ -362,6 +448,18 @@ class _OpsViewState extends State<OpsView> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _statsLine(OpsContainer c) {
+    final parts = <String>[
+      if (c.cpuPct != null) 'cpu ${c.cpuPct!.toStringAsFixed(1)}%',
+      if (c.memBytes != null) 'mem ${opsBytes(c.memBytes)}${c.memLimitBytes != null && c.memLimitBytes! > 0 ? ' / ${opsBytes(c.memLimitBytes)}' : ''}',
+      '${c.restartCount} restarts',
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(left: 15, top: 2),
+      child: Text(parts.join(' · '), style: T.tiny.copyWith(color: C.text3)),
     );
   }
 
@@ -411,8 +509,4 @@ class _OpsViewState extends State<OpsView> {
       ),
     );
   }
-}
-
-extension _Let<T> on T {
-  R let<R>(R Function(T) f) => f(this);
 }
