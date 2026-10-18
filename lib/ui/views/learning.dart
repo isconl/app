@@ -25,6 +25,7 @@ import '../../util/reader_prefs.dart';
 import '../../util/spaced_review.dart';
 import 'study_search_view.dart';
 import '../shell.dart' show ShellAppBar, SyncIndicator, openMenu;
+export '../widgets/reader_comfort.dart' show showReaderComfortSheet;
 import '../widgets/common.dart';
 import '../widgets/course_controls.dart';
 import '../widgets/listen_bar.dart';
@@ -1989,7 +1990,9 @@ class _LessonScreenState extends State<LessonScreen> {
             opacity: barShown ? 1 : 0,
             // One primary, bottom-right: scroll to top (it appears once you have scrolled a screen).
             // Notes is secondary: small and grey, above it. Same pattern as the holdings view.
-            child: FabStack(
+            child: ListenableBuilder(
+              listenable: _tutor,
+              builder: (context, _) => FabStack(
               primary: _showScrollTop
                   ? FabAction(
                       heroTag: 'fab_lesson_scroll_top',
@@ -2006,7 +2009,16 @@ class _LessonScreenState extends State<LessonScreen> {
                       },
                     )
                   : null,
+              // BI26101804: Ask the tutor sits directly above notes (secondaries draw top to bottom), and shows a
+              // selected state while ask mode is on.
               secondary: [
+                FabAction(
+                  heroTag: 'fab_lesson_tutor',
+                  tooltip: 'Ask the tutor',
+                  icon: Icons.school_outlined,
+                  selected: _tutor.mode,
+                  onPressed: () => _tutor.toggleMode(),
+                ),
                 FabAction(
                   heroTag: 'fab_lesson_notes',
                   tooltip: 'Notes',
@@ -2014,6 +2026,7 @@ class _LessonScreenState extends State<LessonScreen> {
                   onPressed: () => _openNotesSheet(context),
                 ),
               ],
+            ),
             ),
           ),
         ),
@@ -2026,20 +2039,10 @@ class _LessonScreenState extends State<LessonScreen> {
           child: ShellAppBar(
             title: heading,
             showBrand: false,
+            // BI26101804: the download button is the only action. Its icon carries the offline state (a pin when the
+            // module is saved on this device), so the bar shows one sync cloud and no second one.
             actions: [
-              IconButton(
-                key: const Key('reader-aa'),
-                tooltip: 'Text size and spacing',
-                icon: Text('Aa', style: T.w600(T.body2).copyWith(color: C.text)),
-                onPressed: () => showReaderComfortSheet(context),
-              ),
-              IconButton(
-                key: const Key('reader-tutor'),
-                tooltip: 'Ask the tutor about a paragraph',
-                icon: const Icon(Icons.school_outlined, size: 20),
-                onPressed: () => _tutor.toggleMode(),
-              ),
-              _ExportPdfButton(course: widget.course, file: widget.file),
+              _ExportPdfButton(course: widget.course, file: widget.file, savedOffline: snap.value != null),
             ],
           ),
         ),
@@ -2230,82 +2233,6 @@ class _LessonScreenState extends State<LessonScreen> {
   }
 }
 
-/// BI26100141: text size, line spacing and focus mode. Changes apply live and are remembered.
-Future<void> showReaderComfortSheet(BuildContext context) {
-  final db = AppScope.of(context).db;
-  return showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: C.panel,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
-      side: BorderSide(color: C.border),
-    ),
-    builder: (ctx) => SafeArea(
-      child: ListenableBuilder(
-        listenable: ReaderPrefs.instance,
-        builder: (ctx, _) {
-          final p = ReaderPrefs.instance;
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('TEXT SIZE', style: T.label),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    for (var i = 0; i < ReaderPrefs.sizeLabels.length; i++)
-                      ChoiceChip(
-                        key: Key('size-${ReaderPrefs.sizeLabels[i]}'),
-                        label: Text(ReaderPrefs.sizeLabels[i]),
-                        selected: p.sizeStep == i,
-                        onSelected: (_) => p.update(size: i, db: db),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Text('LINE SPACING', style: T.label),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    ChoiceChip(
-                      key: const Key('spacing-normal'),
-                      label: const Text('Normal'),
-                      selected: !p.relaxed,
-                      onSelected: (_) => p.update(relaxed: false, db: db),
-                    ),
-                    ChoiceChip(
-                      key: const Key('spacing-relaxed'),
-                      label: const Text('Relaxed'),
-                      selected: p.relaxed,
-                      onSelected: (_) => p.update(relaxed: true, db: db),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                SwitchListTile(
-                  key: const Key('focus-switch'),
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('Focus mode', style: T.body2),
-                  subtitle: Text(
-                    'Hide the bar and buttons while you scroll down',
-                    style: T.tiny,
-                  ),
-                  value: p.focus,
-                  onChanged: (v) => p.update(focus: v, db: db),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    ),
-  );
-}
-
 /// Margin notes on a lesson.
 ///
 /// Two other readers besides him: the tutor loads them as context, and the
@@ -2320,9 +2247,11 @@ Future<void> showReaderComfortSheet(BuildContext context) {
 /// makes "export from the mobile app" a small feature rather than a second
 /// implementation of the whole document.
 class _ExportPdfButton extends StatefulWidget {
-  const _ExportPdfButton({required this.course, required this.file});
+  const _ExportPdfButton({required this.course, required this.file, this.savedOffline = false});
   final String course;
   final String file;
+  /// The module is saved on this device: the icon is the offline pin instead of the plain download arrow.
+  final bool savedOffline;
 
   @override
   State<_ExportPdfButton> createState() => _ExportPdfButtonState();
@@ -2366,13 +2295,13 @@ class _ExportPdfButtonState extends State<_ExportPdfButton> {
   Widget build(BuildContext context) {
     return IconButton(
       onPressed: _busy ? null : _run,
-      tooltip: 'Export this module as a PDF',
+      tooltip: widget.savedOffline ? 'Export this module as a PDF (saved on this device)' : 'Export this module as a PDF',
       icon: _busy
           ? const SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.download_rounded, size: 20),
+          : Icon(widget.savedOffline ? Icons.offline_pin_rounded : Icons.download_rounded, size: 20, key: Key(widget.savedOffline ? 'export-saved' : 'export-plain')),
     );
   }
 }

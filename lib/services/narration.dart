@@ -502,8 +502,15 @@ class Narrator extends ChangeNotifier {
     }
   }
 
+  /// BI26101804: three narration speeds only.
+  static const speeds = [1.0, 1.25, 1.5];
+
+  /// The nearest allowed speed, so a speed saved or sent from before the change lands on one of the three.
+  static double snapSpeed(double v) =>
+      speeds.reduce((a, b) => (v - a).abs() <= (v - b).abs() ? a : b);
+
   Future<void> setSpeed(double v) async {
-    speed = double.parse(v.clamp(0.7, 2.0).toStringAsFixed(2));
+    speed = snapSpeed(v);
     if (tier == NarrationTier.agent) {
       await _player?.setSpeed(speed);
     } else if (state == NarrationState.playing) {

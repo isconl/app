@@ -506,16 +506,16 @@ class SubTabBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 // BN26090606: rounded-rectangle matching small-button radius
-                color: selected ? C.greenBg : Colors.transparent,
+                color: selected ? NavTint.bg : Colors.transparent,
                 borderRadius: BorderRadius.circular(Sz.rSm),
-                border: selected ? Border.all(color: C.greenDim) : null,
+                border: selected ? Border.all(color: NavTint.border) : null,
               ),
               child: Center(
                 child: Text(
                   subs[i].label,
                   style: (selected
                           ? T.body2.copyWith(
-                              color: C.greenBright,
+                              color: NavTint.fg,
                               fontWeight: FontWeight.w600)
                           : T.body2)
                       .copyWith(fontSize: 12),

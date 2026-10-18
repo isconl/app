@@ -5,6 +5,16 @@ import 'theme_tokens.dart';
 /// The app's colour, type and size names. The values come from theme_tokens.dart, which is generated
 /// from limelight's tokens.json (BL26100903); change a value there, not here. The names stay the same
 /// so no call site changes. Lesson callouts follow the web values (decision 9 Oct 2026).
+/// BI26101804: the active-tab tint of the bottom navigation, named once so everything that wears "the app's subtle nav
+/// green" (every secondary FAB, the calendar chips, the active sub-tab) reads the same three colours and cannot drift.
+class NavTint {
+  static const bg = C.greenBg;
+  static const fg = C.greenBright;
+  static const border = C.greenDim;
+  /// A control that is switched on (the tutor FAB while ask mode is on).
+  static const bgOn = C.greenBg2;
+}
+
 class C {
   static const bg = TokenColors.bg;
   static const bgRaised = TokenColors.bgRaised;

@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:isconl/theme.dart';
 import 'package:isconl/ui/widgets/common.dart';
 
-/// BI26100405: one primary (green, bottom-right), any number of secondaries (small, grey, above it).
+/// BI26100405: one primary (green, bottom-right), any number of secondaries (small, nav-green, above it).
 void main() {
   Widget host(FabStack stack) => MaterialApp(
         theme: buildTheme(),
@@ -16,7 +16,7 @@ void main() {
         ),
       );
 
-  testWidgets('one green primary at bottom-right with grey secondaries stacked above it', (t) async {
+  testWidgets('one green primary at bottom-right with nav-tint secondaries stacked above it', (t) async {
     await t.pumpWidget(host(FabStack(
       primary: FabAction(icon: Icons.vertical_align_top_rounded, tooltip: 'Scroll to top', onPressed: () {}),
       secondary: [
@@ -29,7 +29,7 @@ void main() {
     final green = fabs.where((f) => f.backgroundColor == C.green).toList();
     expect(green.length, 1, reason: 'exactly one primary green FAB');
     expect(fabs.where((f) => f.mini).length, 2, reason: 'secondaries are small');
-    expect(fabs.where((f) => f.mini).every((f) => f.backgroundColor == C.surface), isTrue, reason: 'and grey');
+    expect(fabs.where((f) => f.mini).every((f) => f.backgroundColor == NavTint.bg), isTrue, reason: 'and the nav tint');
 
     final primary = find.byKey(const Key('fab-primary'));
     final s0 = find.byKey(const Key('fab-secondary-0'));

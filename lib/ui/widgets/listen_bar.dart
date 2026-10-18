@@ -7,6 +7,7 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import 'common.dart';
 import 'offline_narration.dart';
+import 'reader_comfort.dart';
 
 /// The listen control on a reading page.
 ///
@@ -180,18 +181,26 @@ class _ListenBarState extends State<ListenBar> {
                   rev: fmt.s(audio?['rev']),
                 ),
               const SizedBox(height: 10),
+              // BI26101804: speed and text size are two buttons under Listen that open one centred dialog.
               Row(
                 children: [
-                  Text('SPEED', style: T.label.copyWith(fontSize: 9.5)),
+                  _ComfortButton(
+                    key: const Key('listen-speed'),
+                    tooltip: 'Narration speed',
+                    onTap: () => showReaderComfortSheet(context),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.speed_rounded, size: 15, color: C.text2),
+                      const SizedBox(width: 5),
+                      Text(speedLabel(Narrator.snapSpeed(n.speed)), style: T.monoSmall.copyWith(color: C.text2)),
+                    ]),
+                  ),
                   const SizedBox(width: 8),
-                  for (final s in [0.9, 1.0, 1.15, 1.3, 1.5]) ...[
-                    _SpeedChip(
-                      value: s,
-                      selected: (n.speed - s).abs() < 0.01,
-                      onTap: () => n.setSpeed(s),
-                    ),
-                    const SizedBox(width: 5),
-                  ],
+                  _ComfortButton(
+                    key: const Key('reader-aa'),
+                    tooltip: 'Text size and spacing',
+                    onTap: () => showReaderComfortSheet(context),
+                    child: Text('Aa', style: T.w600(T.body2).copyWith(color: C.text2)),
+                  ),
                 ],
               ),
 
@@ -249,8 +258,8 @@ class _PrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FilledButton.icon(
-      style: FilledButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Sz.rSm))),
+      // BI26101804: a fully rounded pill.
+      style: FilledButton.styleFrom(shape: const StadiumBorder()),
       onPressed: loading ? null : onTap,
       icon: loading ? const MiniSpinner() : Icon(icon, size: 16),
       label: Text(label),
@@ -258,31 +267,29 @@ class _PrimaryButton extends StatelessWidget {
   }
 }
 
-class _SpeedChip extends StatelessWidget {
-  const _SpeedChip({required this.value, required this.selected, required this.onTap});
-  final double value;
-  final bool selected;
+class _ComfortButton extends StatelessWidget {
+  const _ComfortButton({super.key, required this.tooltip, required this.onTap, required this.child});
+  final String tooltip;
   final VoidCallback onTap;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () { HapticFeedback.selectionClick(); onTap(); },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: selected ? C.greenBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: selected ? C.green : C.border),
-        ),
-        child: Text(
-          // 1.0 reads as "1x", not "1.0x".
-          value == value.roundToDouble() ? '${value.toInt()}x' : '${value}x',
-          style: T.monoSmall.copyWith(
-            color: selected ? C.greenBright : C.text3,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            border: Border.all(color: C.border),
+            borderRadius: BorderRadius.circular(20),
           ),
+          child: child,
         ),
       ),
     );

@@ -672,8 +672,8 @@ class ViewFab extends StatelessWidget {
         key: const Key('view-fab'),
         heroTag: 'view-fab-$tooltip',
         tooltip: tooltip,
-        backgroundColor: C.surface,
-        foregroundColor: C.text2,
+        backgroundColor: NavTint.bg,
+        foregroundColor: NavTint.fg,
         shape: const CircleBorder(),
         onPressed: onPressed,
         child: Icon(icon, size: 20),
@@ -684,11 +684,13 @@ class ViewFab extends StatelessWidget {
 
 /// One floating action (BI26100405).
 class FabAction {
-  const FabAction({required this.icon, required this.tooltip, required this.onPressed, this.heroTag});
+  const FabAction({required this.icon, required this.tooltip, required this.onPressed, this.heroTag, this.selected = false});
   final IconData icon;
   final String tooltip;
   final VoidCallback onPressed;
   final Object? heroTag;
+  /// A switch that is on (the tutor FAB while ask mode is on): a stronger tint and a ring.
+  final bool selected;
 }
 
 /// The one floating-button pattern: at most ONE primary (green, bottom-right) and any number of
@@ -711,9 +713,9 @@ class FabStack extends StatelessWidget {
             key: Key('fab-secondary-$i'),
             heroTag: secondary[i].heroTag ?? 'fab-secondary-${secondary[i].tooltip}',
             tooltip: secondary[i].tooltip,
-            backgroundColor: C.surface,
-            foregroundColor: C.text2,
-            shape: const CircleBorder(),
+            backgroundColor: secondary[i].selected ? NavTint.bgOn : NavTint.bg,
+            foregroundColor: NavTint.fg,
+            shape: CircleBorder(side: secondary[i].selected ? const BorderSide(color: NavTint.border) : BorderSide.none),
             onPressed: secondary[i].onPressed,
             child: Icon(secondary[i].icon, size: 18),
           ),
