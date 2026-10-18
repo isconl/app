@@ -478,15 +478,15 @@ void main() {
       expect(find.text('02'), findsOneWidget);
       expect(find.text('03'), findsOneWidget);
 
-      // BI26100538 (Sconl, 6 Oct): a module row shows only its bold title.
+      // BI26100538 (Sconl, 6 Oct): a module row shows its bold title; BI26101803 (Sconl, 18 Oct) adds the subtitle under it.
       expect(find.text('B-Tree Indexing Structure'), findsOneWidget);
       expect(find.text('Write-Ahead Log Protocol'), findsOneWidget);
       expect(find.text('Multi-Version Concurrency Control'), findsOneWidget);
 
-      // No subtitle line and no read-time / updated meta line in the rows.
-      expect(find.text('Balanced node split algorithm'), findsNothing);
-      expect(find.text('Crash recovery and ARIES'), findsNothing);
-      expect(find.text('Snapshot isolation and vacuuming'), findsNothing);
+      // The subtitle line shows under each heading; there is still no read-time / updated meta line in the rows.
+      expect(find.text('Balanced node split algorithm'), findsOneWidget);
+      expect(find.text('Crash recovery and ARIES'), findsOneWidget);
+      expect(find.text('Snapshot isolation and vacuuming'), findsOneWidget);
       expect(find.text('8 min read · updated 20 Sep'), findsNothing);
       expect(find.text('12 min read · updated 22 Sep'), findsNothing);
       expect(find.text('10 min read · updated 23 Sep'), findsNothing);
@@ -600,9 +600,9 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('module-title')), findsNWidgets(4));
-      // Sconl, 6 Oct: the module list carries the title alone, even when the module has a subtitle.
-      expect(find.byKey(const Key('module-subtitle')), findsNothing);
-      expect(find.text('Where this module begins and why'), findsNothing);      final chips = tester.widgetList<ModuleStatusChip>(find.byType(ModuleStatusChip)).toList();
+      // Sconl, 18 Oct (reversing 6 Oct): a module that has a subtitle shows it under the title.
+      expect(find.byKey(const Key('module-subtitle')), findsNWidgets(2));
+      expect(find.text('Where this module begins and why'), findsOneWidget);      final chips = tester.widgetList<ModuleStatusChip>(find.byType(ModuleStatusChip)).toList();
       expect(chips.map((c) => c.status), ['opened', 'learning', 'done'], reason: 'a not-yet-opened module has no chip');
       expect(statusChipColor('learning', track), C.amber);
       expect(statusChipColor('done', track), C.green);

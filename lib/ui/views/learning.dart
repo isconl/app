@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart' show HapticFeedback;
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app_scope.dart';
 import '../../services/audio_downloads.dart' show prettyBytes;
@@ -30,6 +29,7 @@ import '../widgets/common.dart';
 import '../widgets/course_controls.dart';
 import '../widgets/listen_bar.dart';
 import '../widgets/study_extras.dart';
+import '../widgets/track_grid.dart';
 import '../widgets/study_pick_card.dart';
 import '../../services/study_extras.dart';
 import '../widgets/module_lifecycle.dart';
@@ -277,21 +277,7 @@ class _LearningViewState extends State<LearningView> {
               // A square card takes one cell at about 1:1; a wide card spans both
               // columns at about 2:1. If tile is missing, square is used.
               if (tab == 2)
-                StaggeredGrid.count(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  children: [
-                    for (final group in tracks)
-                      StaggeredGridTile.fit(
-                        crossAxisCellCount: group.isWide ? 2 : 1,
-                        child: TrackCard(
-                          group: group,
-                          courses: coursesForTrack[group.id] ?? const [],
-                        ),
-                      ),
-                  ],
-                ),
+                TrackGrid(groups: tracks, coursesFor: (g) => coursesForTrack[g.id] ?? const []),
 
               // BI26100538: when the library was last synced from the vault. Amber past 24 hours, so a
               // stalled sync is seen the same day.
@@ -530,10 +516,15 @@ class TrackCard extends StatelessWidget {
     super.key,
     required this.group,
     required this.courses,
+    this.wide,
   });
 
   final LearningGroup group;
   final List<Map<String, dynamic>> courses;
+
+  /// BI26101803: the grid decides the shape (wide or square) by position; null falls back to the track's own tile.
+  final bool? wide;
+  bool get _wide => wide ?? group.isWide;
 
   @override
   Widget build(BuildContext context) {
@@ -578,7 +569,7 @@ class TrackCard extends StatelessWidget {
                       child: Text(
                         stripEmoji(group.label),
                         style: T.title.copyWith(color: C.text),
-                        maxLines: group.isWide ? 1 : 2,
+                        maxLines: _wide ? 1 : 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -590,7 +581,7 @@ class TrackCard extends StatelessWidget {
                   Text(
                     stripEmoji(group.description),
                     style: T.small.copyWith(color: C.text3),
-                    maxLines: group.isWide ? 2 : 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
@@ -1256,6 +1247,18 @@ String moduleStatusWords(String status) => switch (status.toLowerCase()) {
     };
 
 @visibleForTesting
+/// BI26101803: the line under a module's heading in the list. The module's own `subtitle`; until the content has one
+/// (CI26101803), the first sentence of its objective, cut to 80 characters.
+String moduleSubtitle(Map<String, dynamic> lesson) {
+  final own = stripEmoji(fmt.s(lesson['subtitle'] ?? lesson['SUBTITLE']));
+  if (own.isNotEmpty) return own;
+  final objective = stripEmoji(fmt.s(lesson['objective'] ?? lesson['OBJECTIVE'] ?? lesson['summary'] ?? lesson['SUMMARY']));
+  if (objective.isEmpty) return '';
+  final first = objective.split(RegExp(r'(?<=[.!?])\s+')).first.trim();
+  if (first.length <= 80) return first;
+  return '${first.substring(0, 79).trimRight()}…';
+}
+
 class LessonRow extends StatelessWidget {
   const LessonRow({
     super.key,
@@ -1297,6 +1300,7 @@ class LessonRow extends StatelessWidget {
     final pos = lesson['position'] ?? lesson['SEQ'] ?? lesson['seq'] ?? lesson['order'];
     final numVal = pos != null ? fmt.i(pos) : index + 1;
     final numStr = numVal.toString().padLeft(2, '0');
+    final subtitle = moduleSubtitle(lesson);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -1355,7 +1359,6 @@ class LessonRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // BI26100538 (Sconl, 6 Oct): the module list shows only the bold three-word title.
                     Text(
                       title,
                       key: const Key('module-title'),
@@ -1363,6 +1366,18 @@ class LessonRow extends StatelessWidget {
                         color: status == 'done' ? C.text3 : C.text,
                       ),
                     ),
+                    // BI26101803 (Sconl, 18 Oct, reversing 6 Oct): a subtitle under the heading, as tracks and courses have.
+                    if (subtitle.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          subtitle,
+                          key: const Key('module-subtitle'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: T.small.copyWith(color: C.text3),
+                        ),
+                      ),
                     // BI26100325: how far through an unfinished module.
                     if (status != 'done' && status != 'new')
                       ReadingBar(course: courseId, file: file, color: trackColor),
