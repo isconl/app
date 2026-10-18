@@ -28,14 +28,13 @@ export '../widgets/reader_comfort.dart' show showReaderComfortSheet;
 import '../widgets/common.dart';
 import '../widgets/course_controls.dart';
 import '../widgets/listen_bar.dart';
+import '../widgets/space_header.dart';
 import '../widgets/study_extras.dart';
 import '../widgets/track_grid.dart';
 import '../widgets/study_pick_card.dart';
 import '../../services/study_extras.dart';
 import '../widgets/module_lifecycle.dart';
 import '../widgets/reader.dart';
-import '../widgets/sub_tabs.dart';
-import '../../util/tab_memory.dart';
 import '../widgets/standard_tag.dart';
 import '../../services/course_standard.dart';
 import '../../util/module_standard.dart';
@@ -73,27 +72,9 @@ class _LearningViewState extends State<LearningView> {
 
   /// BI26101519: Study has three tabs, Map, Campus and Tracks, opening on Campus (what to read now). The
   /// last one chosen is remembered on the device. Each tab scrolls on its own under the fixed tab bar.
+  /// BI26101802: the header is the shared SpaceView, the pattern every sub-tab space now wears.
   static const _tabLabels = ['Map', 'Campus', 'Tracks'];
   static const _defaultTab = 1;
-  int _tab = _defaultTab;
-  int _restored = 0; // part of the tab bar's key, bumped only when a saved choice is applied
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_tabRead) return;
-    _tabRead = true;
-    readTabIndex(AppScope.of(context).db, 'study', _tabLabels.length).then((saved) {
-      if (mounted && saved != null && saved != _tab) {
-        setState(() {
-          _tab = saved;
-          _restored++;
-        });
-      }
-    });
-  }
-
-  bool _tabRead = false;
 
   @override
   Widget build(BuildContext context) {
@@ -105,24 +86,13 @@ class _LearningViewState extends State<LearningView> {
             builder: (context, data) => _body(context, data, t),
           ),
         );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Padding(padding: EdgeInsets.fromLTRB(14, 10, 14, 6), child: StudySearchEntry()),
-        Expanded(
-          child: SubTabs(
-            key: ValueKey('study-view-$_restored'),
-            keyPrefix: 'study',
-            labels: _tabLabels,
-            initialIndex: _tab,
-            onChanged: (i) {
-              _tab = i;
-              writeTabIndex(services.db, 'study', i);
-            },
-            children: [tab(0), tab(1), tab(2)],
-          ),
-        ),
-      ],
+    return SpaceView(
+      space: 'study',
+      searchHint: 'Search modules, terms and text',
+      searchKey: const Key('study-search-entry'),
+      initialTab: _defaultTab,
+      onSearch: (ctx) => Navigator.push<void>(ctx, MaterialPageRoute(builder: (_) => const StudySearchScreen())),
+      tabs: [for (var i = 0; i < _tabLabels.length; i++) SpaceTab(_tabLabels[i], tab(i))],
     );
   }
 

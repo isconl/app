@@ -4,7 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
-import '../widgets/sub_tabs.dart';
+import '../widgets/space_header.dart';
 import 'ideas.dart';
 import 'journal.dart';
 
@@ -17,16 +17,38 @@ class CodexView extends StatelessWidget {
 
   static const tabs = ['Journals', 'Ideas', 'Scans'];
 
+  /// BI26101802: the search finds a journal entry or an idea and sends Codex to the tab that holds it.
+  static List<SpaceHit> hitsFor(BuildContext context) {
+    final store = AppScope.of(context).store;
+    return [
+      for (final e in fmt.lm(fmt.m(store.journal.value)['entries']))
+        SpaceHit(
+          title: fmt.s(e['BODY']).split('\n').first,
+          subtitle: [fmt.s(e['DATE']), fmt.s(e['AI_NOTE'])].where((x) => x.isNotEmpty).join(' · '),
+          tab: 0,
+        ),
+      for (final i in fmt.lm(fmt.m(store.ideas.value)['ideas']))
+        SpaceHit(
+          title: fmt.s(i['TITLE']),
+          subtitle: [fmt.s(i['BODY']), fmt.s(i['NOTE']), fmt.s(i['TAGS'])].where((x) => x.isNotEmpty).join(' · '),
+          tab: 1,
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SubTabs(
-      keyPrefix: 'codex',
-      labels: tabs,
-      header: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-        child: Text('what you thought, and what you did about it', key: const ValueKey('codex-subtitle'), style: T.small.copyWith(color: C.text3)),
-      ),
-      children: const [JournalView(), IdeasView(), CodexScansView()],
+    return SpaceView(
+      space: 'codex',
+      searchHint: 'Search journals and ideas',
+      subtitle: 'what you thought, and what you did about it',
+      subtitleKey: const ValueKey('codex-subtitle'),
+      hits: hitsFor,
+      tabs: const [
+        SpaceTab('Journals', JournalView()),
+        SpaceTab('Ideas', IdeasView()),
+        SpaceTab('Scans', CodexScansView()),
+      ],
     );
   }
 }

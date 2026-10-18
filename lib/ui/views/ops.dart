@@ -8,6 +8,7 @@ import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/incident_cards.dart';
 import 'ops_model.dart';
+import '../widgets/space_header.dart';
 
 /// OpSec: the live control surface for the fleet + the OCI VM (BI26090502),
 /// mobile port of the web's renderOps()/loadOpsStatus(). Status/VM-stats/
@@ -77,6 +78,7 @@ class _OpsViewState extends State<OpsView> {
   @override
   void dispose() {
     _timer?.cancel();
+    _tabs.dispose();
     super.dispose();
   }
 
@@ -192,6 +194,7 @@ class _OpsViewState extends State<OpsView> {
       _logsFor = name;
       _logsText = 'Loading…';
     });
+    _tabs.select(2);
     final api = AppScope.of(context).api;
     try {
       final r = await api.getJson('/api/ops/logs?service=${Uri.encodeQueryComponent(name)}&lines=200');
@@ -204,47 +207,63 @@ class _OpsViewState extends State<OpsView> {
     }
   }
 
+  final _tabs = SpaceTabController();
+
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _load,
-      color: C.green,
-      backgroundColor: C.surface,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 96),
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.only(top: 120),
-              child: Center(child: MiniSpinner(size: 22)),
-            )
+    // BI26101802: OpSec wears the shared space header: the headline, a search over services and incidents, then three
+    // tabs. Health: incidents and the VM. Services: every service with its actions. Logs: the log tail and security.
+    Widget scroll(List<Widget> children) => RefreshIndicator(
+          onRefresh: _load,
+          color: C.green,
+          backgroundColor: C.surface,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 96),
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: _loading
+                ? const [Padding(padding: EdgeInsets.only(top: 120), child: Center(child: MiniSpinner(size: 22)))]
+                : children,
+          ),
+        );
+    return SpaceView(
+      space: 'opsec',
+      searchHint: 'Search services and incidents',
+      controller: _tabs,
+      top: _headlineBanner(),
+      hits: (_) => [
+        for (final g in _groups.values)
+          for (final svc in g)
+            SpaceHit(title: fmt.s(svc['service']), subtitle: '${fmt.s(svc['group'])} · ${opsServiceState(svc)}', tab: 1),
+        for (final svc in _ungrouped) SpaceHit(title: fmt.s(svc['service']), subtitle: opsServiceState(svc), tab: 1),
+      ],
+      tabs: [
+        SpaceTab('Health', scroll([
+          if (_error != null) ErrorRetry(_error!, onRetry: _load),
+          const IncidentCards(),
+          _vmCard(),
+        ])),
+        SpaceTab('Services', scroll([
+          if (!_discoveryOk)
+            _discoveryErrorCard()
+          else if (!_hasAnyService)
+            const Panel(child: EmptyState('Loading…', 'Pull down to refresh.'))
           else ...[
-            _headlineBanner(),
-            if (_error != null) ErrorRetry(_error!, onRetry: _load),
-            const IncidentCards(),
-            _vmCard(),
-            const SizedBox(height: 10),
-            if (!_discoveryOk)
-              _discoveryErrorCard()
-            else if (!_hasAnyService)
-              const Panel(child: EmptyState('Loading…', 'Pull down to refresh.'))
-            else ...[
-              for (final key in (_groups.keys.toList()..sort())) ...[
-                _servicesCard(key, _groups[key]!),
-                const SizedBox(height: 10),
-              ],
-              if (_ungrouped.isNotEmpty) _servicesCard('Ungrouped', _ungrouped),
-            ],
-            if (_logsFor != null) ...[
+            for (final key in (_groups.keys.toList()..sort())) ...[
+              _servicesCard(key, _groups[key]!),
               const SizedBox(height: 10),
-              _logsCard(),
             ],
-            const SizedBox(height: 10),
-            _securityCard(),
+            if (_ungrouped.isNotEmpty) _servicesCard('Ungrouped', _ungrouped),
           ],
-        ],
-      ),
+        ])),
+        SpaceTab('Logs', scroll([
+          if (_logsFor != null)
+            _logsCard()
+          else
+            const Panel(child: EmptyState('No logs open', 'Choose Logs on a service to read its last 200 lines here.', icon: Icons.article_outlined)),
+          const SizedBox(height: 10),
+          _securityCard(),
+        ])),
+      ],
     );
   }
 
