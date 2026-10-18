@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
@@ -6,6 +7,7 @@ import '../../app_scope.dart';
 import '../../console/console_mode.dart';
 import '../../console/console_services.dart';
 import '../../theme.dart';
+import '../../util/current_block.dart' show nairobiClock;
 import '../../util/day_blocks.dart';
 import '../../util/fmt.dart' as fmt;
 import 'common.dart';
@@ -15,7 +17,10 @@ import 'console_faces.dart';
 /// block, 3 corner readouts, urgency-based color theming, and the particle-network
 /// background. Ported from web console's context-ring and ctxField implementations.
 class ContextRingCard extends StatefulWidget {
-  const ContextRingCard({super.key});
+  const ContextRingCard({super.key, this.clock});
+
+  /// BI26101805: the time source (tests pass a fixed one). Defaults to the real clock.
+  final DateTime Function()? clock;
 
   @override
   State<ContextRingCard> createState() => _ContextRingCardState();
@@ -30,9 +35,16 @@ class _ContextRingCardState extends State<ContextRingCard>
   ConsoleMode _mode = ConsoleMode.progress;
   final _taps = DoubleTapDetector();
 
+  /// BI26101805: the ring follows the live clock. Without this it only recalculated when the day snapshot
+  /// or the state changed, so the ring, the time left and the next block froze between fetches.
+  Timer? _tick;
+
   @override
   void initState() {
     super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
     _anim = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 40),
@@ -63,6 +75,7 @@ class _ContextRingCardState extends State<ContextRingCard>
 
   @override
   void dispose() {
+    _tick?.cancel();
     _console?.mode.removeListener(_onMode);
     _anim.dispose();
     super.dispose();
@@ -274,7 +287,8 @@ class _ContextRingCardState extends State<ContextRingCard>
   }
 
   _DayCalc _calculateDayNow(List<Map<String, dynamic>> rawBlocks) {
-    final now = DateTime.now();
+    // Africa/Nairobi wall clock, the same one the block card uses, wherever the phone is set.
+    final now = nairobiClock((widget.clock ?? DateTime.now)());
     final mins = now.hour * 60.0 + now.minute + now.second / 60.0;
 
     final blockList = rawBlocks.isNotEmpty ? rawBlocks : kDefaultDayBlocks;

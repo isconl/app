@@ -1,10 +1,12 @@
 import 'fmt.dart' as fmt;
 
-/// BI26101517: which of the day's blocks is current, read the way pulse sends it.
+/// BI26101517, BI26101805: which of the day's blocks is current.
 ///
-/// Order: `now.current.id`, then the first block flagged `current`, then the clock
-/// (Africa/Nairobi, UTC+3, wherever the phone is). Null when none matches, or when the
-/// plan is from another day, so the card never falls back to the first block.
+/// The live clock decides (Africa/Nairobi, UTC+3, wherever the phone is): the server's `now.current`
+/// and the `current` flags were worked out when the snapshot was fetched, so trusting them first froze
+/// the card on the block that was current at fetch time. They are used only when the blocks carry no
+/// usable times. Null when no block contains the time, or when the plan is from another day, so the
+/// card never falls back to the first block.
 
 const _nairobiOffset = Duration(hours: 3);
 
@@ -50,15 +52,23 @@ bool _inBlock(Map b, int n) {
 String? currentBlockId(Map<String, dynamic> dayData, DateTime now) {
   if (dayIsStale(dayData, now)) return null;
   final blocks = fmt.l(dayData['blocks']).map((b) => fmt.m(b)).toList();
+  final timed = blocks.where((b) {
+    final s = _startOf(b), e = _endOf(b);
+    return s != null && e != null && s != e;
+  }).toList();
+  if (timed.isNotEmpty) {
+    final c = nairobiClock(now);
+    final n = c.hour * 60 + c.minute;
+    for (final b in timed) {
+      if (_inBlock(b, n) && fmt.s(b['id']).isNotEmpty) return fmt.s(b['id']);
+    }
+    return null;
+  }
+  // No block has a usable start and end: the server's own pick is all there is.
   final id = fmt.s(fmt.m(fmt.m(dayData['now'])['current'])['id']);
   if (id.isNotEmpty && blocks.any((b) => fmt.s(b['id']) == id)) return id;
   for (final b in blocks) {
     if (b['current'] == true && fmt.s(b['id']).isNotEmpty) return fmt.s(b['id']);
-  }
-  final c = nairobiClock(now);
-  final n = c.hour * 60 + c.minute;
-  for (final b in blocks) {
-    if (_inBlock(b, n) && fmt.s(b['id']).isNotEmpty) return fmt.s(b['id']);
   }
   return null;
 }
