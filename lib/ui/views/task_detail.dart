@@ -5,7 +5,9 @@ import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../../util/markdown.dart';
 import '../shell.dart' show ShellAppBar;
+import '../../services/quill_extras.dart' show mentionsHeroImages;
 import '../widgets/common.dart';
+import '../widgets/quill_extras_widgets.dart';
 import '../widgets/study_extras.dart';
 import '../widgets/task_delivery_section.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -46,6 +48,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // BI26101508: the hero-image job shows its sourcing progress and a way to take what is ready.
+              if (mentionsHeroImages(detail)) const ImageProgressCard(),
               Panel(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

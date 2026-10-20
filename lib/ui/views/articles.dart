@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/quill_extras_widgets.dart';
 
 /// Articles Studio, from the phone: what is written, and how far along it is.
 ///
@@ -97,7 +98,12 @@ class _ArticleTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = fmt.s(article['status']);
     final color = ArticlesView._statusColor(status);
+    final file = fmt.s(article['file']);
     return Panel(
+      key: ValueKey('article-${fmt.s(article['file'])}'),
+      onTap: file.isEmpty
+          ? null
+          : () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => ArticleAiScreen(title: fmt.s(article['title']), file: file))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

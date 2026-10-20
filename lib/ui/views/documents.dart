@@ -4,6 +4,7 @@ import '../widgets/sub_tabs.dart';
 
 import '../../services/documents.dart';
 import '../widgets/documents_widgets.dart';
+import '../widgets/quill_extras_widgets.dart';
 
 /// BI26100508: the console's documents and quill writer, split as the row asks:
 /// the library first, then the studio that makes a new one.
@@ -16,7 +17,7 @@ class DocumentsScreen extends StatefulWidget {
 }
 
 class _DocumentsScreenState extends State<DocumentsScreen> with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 2, vsync: this);
+  late final TabController _tabs = TabController(length: 3, vsync: this);
   GeneratedDoc? _reopen;
   int _library = 0;
 
@@ -29,7 +30,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-      subTabBar(keyPrefix: 'documents', controller: _tabs, labels: const ['Documents', 'New']),
+      subTabBar(keyPrefix: 'documents', controller: _tabs, labels: const ['Documents', 'New', 'Binder']),
       Expanded(
         child: TabBarView(controller: _tabs, children: [
           DocumentsLibrary(
@@ -46,6 +47,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> with SingleTickerProv
             reopen: _reopen,
             onGenerated: () => setState(() => _library++),
           ),
+          const BinderTab(),
         ]),
       ),
     ]);
