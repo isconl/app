@@ -188,7 +188,7 @@ void main() {
     expect(find.byKey(const Key('mix-fill-tenth')), findsOneWidget);
   });
 
-  testWidgets('the Planning home has the three parts and opens on Focus', (tester) async {
+  testWidgets('the Planning home is Now, Next and Later, opens on Now, and keeps the focus, review and goals reachable', (tester) async {
     await pump(tester, const PlanningView(), scroll: false, {
       '/api/calendar/eq': eq(),
       '/api/cycle-theme': cycle(),
@@ -200,9 +200,14 @@ void main() {
         ],
       },
     });
-    for (final part in compassParts) {
+    expect(find.text('Search goals and plans'), findsOneWidget);
+    for (final part in compassTabs) {
       expect(find.text(part), findsWidgets);
     }
+    expect(find.text('Ship the app'), findsOneWidget, reason: 'a sprint goal sits on Now');
+    expect(find.text('Year goal'), findsNothing, reason: 'a year goal sits on Next');
+    expect(compassTabOf('year'), 1);
+    expect(compassTabOf('decade'), 2);
     expect(find.text('Year 26 · Season 2 · Cycle 5 · Sprint 9'), findsOneWidget);
   });
 }

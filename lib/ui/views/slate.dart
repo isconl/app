@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../widgets/sub_tabs.dart';
+import '../widgets/space_header.dart';
 import 'package:slate_ui/slate_ui.dart';
 
 import '../../app_scope.dart';
+import '../../util/fmt.dart' as fmt;
 import '../../services/slate_hub_client.dart';
 import 'backlog.dart';
 import 'tasks.dart';
@@ -15,57 +16,57 @@ import 'tasks.dart';
 /// (the web console remembers it per browser).
 enum SlateTab { slate, tasks, register }
 
-class SlateView extends StatefulWidget {
+class SlateView extends StatelessWidget {
   const SlateView({super.key});
 
   /// The tab last shown, kept across rebuilds and navigation for the life of the app.
   static SlateTab remembered = SlateTab.slate;
 
-  @override
-  State<SlateView> createState() => _SlateViewState();
-}
-
-class _SlateViewState extends State<SlateView> {
-  late SlateTab _tab = SlateView.remembered;
-
-  String _label(SlateTab t) => switch (t) {
+  static String label(SlateTab t) => switch (t) {
         SlateTab.slate => 'Command',
         SlateTab.tasks => 'Tasks',
         SlateTab.register => 'Register',
       };
 
-  SlateClient _client(BuildContext context) => HubSlateClient(AppScope.of(context).api);
+  /// BI26101814: the search finds a task or a register row and sends Slate to the tab that holds it.
+  static List<SpaceHit> hitsFor(BuildContext context) {
+    final store = AppScope.of(context).store;
+    return [
+      for (final t in fmt.lm(fmt.m(store.state.value)['tasks']))
+        if (fmt.s(t['TITLE']).isNotEmpty)
+          SpaceHit(
+            title: fmt.s(t['TITLE']),
+            subtitle: [fmt.s(t['ID']), fmt.s(t['TAG'])].where((x) => x.isNotEmpty).join(' · '),
+            tab: SlateTab.tasks.index,
+          ),
+      for (final p in fmt.lm(fmt.m(store.backlog.value)['projects']))
+        for (final r in fmt.lm(p['rows']))
+          SpaceHit(
+            title: fmt.s(r['title']),
+            subtitle: [fmt.s(r['id']), fmt.s(p['project']), fmt.s(r['status'])].where((x) => x.isNotEmpty).join(' · '),
+            tab: SlateTab.register.index,
+          ),
+    ];
+  }
 
-  /// slate_ui's widgets scroll themselves, so they need a bounded height inside this Column.
-  Widget _bounded(BuildContext context, Widget child) =>
-      SizedBox(height: (MediaQuery.of(context).size.height - 260).clamp(360.0, 4000.0), child: child);
+  SlateClient _client(BuildContext context) => HubSlateClient(AppScope.of(context).api);
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SubTabsBar(
-          keyPrefix: 'slate',
-          labels: [for (final t in SlateTab.values) _label(t)],
-          index: SlateTab.values.indexOf(_tab),
-          onSelect: (i) => setState(() {
-            _tab = SlateTab.values[i];
-            SlateView.remembered = _tab;
-          }),
-        ),
-        const SizedBox(height: 12),
-        switch (_tab) {
-          SlateTab.slate => _bounded(
-              context,
-              SlateHome(
-                client: _client(context),
-                commandStepUp: passkeyStepUp(AppScope.of(context).api, AppScope.of(context).session.passkeys),
-                writeStepUp: passkeyWriteStepUp(AppScope.of(context).api, AppScope.of(context).session.passkeys),
-              )),
-          SlateTab.tasks => const TasksView(),
-          SlateTab.register => const BacklogView(),
-        },
+    final app = AppScope.of(context);
+    return SpaceView(
+      space: 'slate',
+      searchHint: 'Search tasks and register rows',
+      initialTab: remembered.index,
+      hits: hitsFor,
+      tabs: [
+        SpaceTab(label(SlateTab.slate), SlateHome(
+          client: _client(context),
+          commandStepUp: passkeyStepUp(app.api, app.session.passkeys),
+          writeStepUp: passkeyWriteStepUp(app.api, app.session.passkeys),
+        )),
+        SpaceTab(label(SlateTab.tasks), const TasksView()),
+        SpaceTab(label(SlateTab.register), const BacklogView()),
       ],
     );
   }

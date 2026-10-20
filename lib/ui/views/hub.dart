@@ -16,6 +16,7 @@ import '../widgets/as_of_line.dart';
 import '../widgets/block_card.dart';
 import '../widgets/checkpoint_card.dart';
 import '../widgets/common.dart';
+import '../widgets/space_header.dart';
 import '../widgets/parity3b_widgets.dart';
 import '../widgets/context_ring_card.dart';
 import '../widgets/hub_clock.dart';
@@ -41,6 +42,10 @@ class HubView extends StatefulWidget {
   @override
   State<HubView> createState() => _HubViewState();
 }
+
+/// The Hub's tab names and search hits, for the shared header and its tests.
+const hubTabLabels = _HubViewState.tabLabels;
+List<SpaceHit> hubHits(BuildContext context) => _HubViewState.hitsFor(context);
 
 class _HubViewState extends State<HubView> with WidgetsBindingObserver {
   Timer? _minute;
@@ -90,8 +95,27 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
+  /// BI26101814: the Hub is Now (the date, signals, checkpoint and the console ring), Today (the day's blocks or
+  /// today's tasks, the review strip and vitals) and Services. Every card the single page showed is in one of them.
+  static const tabLabels = ['Now', 'Today', 'Services'];
+
+  /// The search finds a signal, a day block, a task due today or a service, and opens the tab that holds it.
+  static List<SpaceHit> hitsFor(BuildContext context) {
+    final store = AppScope.of(context).store;
+    final state = fmt.m(store.state.value);
+    return [
+      for (final s in fmt.lm(fmt.m(store.signals.value)['signals']))
+        if (fmt.s(s['label']).isNotEmpty) SpaceHit(title: fmt.s(s['label']), subtitle: 'signal', tab: 0),
+      for (final b in fmt.l(fmt.m(store.day.value)['blocks']))
+        if (fmt.s(fmt.m(b)['title']).isNotEmpty) SpaceHit(title: fmt.s(fmt.m(b)['title']), subtitle: 'day block', tab: 1),
+      for (final t in fmt.lm(state['tasks']))
+        if (fmt.s(t['STATUS']).toLowerCase() == 'today' && fmt.s(t['TITLE']).isNotEmpty) SpaceHit(title: fmt.s(t['TITLE']), subtitle: 'today', tab: 1),
+      for (final e in fmt.m(state['services']).entries)
+        SpaceHit(title: e.key, subtitle: 'service', tab: 2),
+    ];
+  }
+
+  Widget _part(int part) {
     final services = AppScope.of(context);
     return SnapshotView(
       snapshot: services.store.state,
@@ -113,6 +137,7 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (part == 0) ...[
             ListenableBuilder(
               listenable: DayClosePrefs.instance,
               builder: (context, _) => DayClosePrefs.instance.closedToday(now)
@@ -176,6 +201,8 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
             const ContextRingCard(),
             // ---- orientation ----
             const _OrientationStrip(),
+            ],
+            if (part == 1) ...[
             // ---- block card / today's tasks (BI26092625 + BI26092628) ----
             ListenableBuilder(
               listenable: services.store.day,
@@ -236,12 +263,25 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
             const VitalsCard(),
             const OffsiteBackupLine(),
             const RefresherCards(),
+            ],
+            if (part == 2) ...[
             // ---- services ----
             const SectionLabel('Services'),
             _ServicesCard(services: fmt.m(state['services'])),
+            ],
           ],
         );
       },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SpaceView(
+      space: 'hub',
+      searchHint: 'Search today, signals and services',
+      hits: hitsFor,
+      tabs: [for (var i = 0; i < tabLabels.length; i++) SpaceTab(tabLabels[i], _part(i))],
     );
   }
 

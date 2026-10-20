@@ -123,6 +123,11 @@ void main() {
       await tester.pump();
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 120)));
       await tester.pump();
+      // BI26101814: the day's cards sit on the Hub's Today tab.
+      await tester.tap(find.text('Today'));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 120)));
+      await tester.pump(const Duration(milliseconds: 400));
       return services;
     }
 

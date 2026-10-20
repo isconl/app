@@ -89,6 +89,8 @@ void main() {
       await tester.tap(find.byKey(const Key('vitals-score')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 120)));
+      await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const Key('vitals-fix-a')), findsOneWidget);
     });
 
@@ -108,6 +110,9 @@ void main() {
 
   group('BI26092630: the Hub', () {
     testWidgets('Latest captures is gone and the Vitals card is on the Hub', (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       final api = ScriptedApi({'/api/vitals': vitals(88, [])});
       final services = (await tester.runAsync(() => buildTestServices(api)))!;
       services.store.vitals.value = vitals(88, []);
@@ -123,6 +128,11 @@ void main() {
       await tester.pump();
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 120)));
       await tester.pump();
+      // BI26101814: the day's cards sit on the Hub's Today tab.
+      await tester.tap(find.text('Today'));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 300)));
+      await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('LATEST CAPTURES'), findsNothing);
       expect(find.text('A capture'), findsNothing);
       expect(find.byKey(const Key('vitals-score')), findsOneWidget);
