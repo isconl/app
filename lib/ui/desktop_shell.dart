@@ -11,6 +11,9 @@ import 'widgets/chat_rail.dart';
 import 'widgets/command_palette.dart';
 import 'widgets/sidebar_rail.dart';
 import 'widgets/vault_sync_banner.dart';
+import '../app_nav.dart';
+import 'app_route.dart';
+import 'views/learning.dart' show LessonScreen;
 import 'view_history.dart';
 
 /// Desktop/wide-web chrome: sidebar | content | chat rail, matching
@@ -29,7 +32,8 @@ class _DesktopShellState extends State<DesktopShell> {
   // BI26100157: on web a deep link (`#/inbox`) opens that view; anything else starts at the hub.
   static String _startView() {
     if (!kIsWeb) return 'hub';
-    final id = viewFromFragment(Uri.base.fragment);
+    final routed = AppRouteState.instance.active ? AppRouteState.instance.value.view : null;
+    final id = routed ?? viewFromFragment(Uri.base.fragment);
     return id != null && tryNavItem(id) != null ? id : 'hub';
   }
 
@@ -39,9 +43,46 @@ class _DesktopShellState extends State<DesktopShell> {
   // Ctrl/Cmd+. hides the sidebar and the chat rail, as the console's focus mode does.
   bool _focusMode = false;
 
+  /// BI26101513: the browser's back and forward buttons (and a pasted address) move the route; the shell follows.
+  void _onRoute() {
+    if (!mounted) return;
+    final r = AppRouteState.instance.value;
+    final item = tryNavItem(r.view);
+    if (item != null && r.view != _selected) {
+      _history.open(item.id);
+      setState(() {
+        _selected = item.id;
+        _current = item.builder();
+      });
+    }
+    _openModuleFor(r);
+  }
+
+  String _openedModule = '';
+  void _openModuleFor(AppRoute r) {
+    if (!r.isModule || _openedModule == '${r.course}/${r.file}') return;
+    _openedModule = '${r.course}/${r.file}';
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final nav = rootNavigatorKey.currentState;
+      if (!mounted || nav == null) return;
+      nav.push<void>(MaterialPageRoute(
+          builder: (_) => LessonScreen(course: r.course, file: r.file, title: r.file.split('/').last.replaceAll(RegExp(r'\.(md|markdown)$'), ''), status: '')));
+    });
+  }
+
+  @override
+  void dispose() {
+    if (AppRouteState.instance.active) AppRouteState.instance.removeListener(_onRoute);
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    if (kIsWeb && AppRouteState.instance.active) {
+      AppRouteState.instance.addListener(_onRoute);
+      _openModuleFor(AppRouteState.instance.value);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final services = AppScope.of(context);
       services.sync.onNewAlerts =
@@ -65,7 +106,11 @@ class _DesktopShellState extends State<DesktopShell> {
     });
     // On web the address bar follows the view, so it can be bookmarked or shared as `#/<view>`.
     if (kIsWeb) {
-      SystemNavigator.routeInformationUpdated(uri: Uri(path: Uri.base.path, fragment: '/${item.id}'));
+      if (AppRouteState.instance.active) {
+        AppRouteState.instance.navigate(AppRoute(view: item.id));
+      } else {
+        SystemNavigator.routeInformationUpdated(uri: Uri(path: Uri.base.path, fragment: '/${item.id}'));
+      }
     }
   }
 

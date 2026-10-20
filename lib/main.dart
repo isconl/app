@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:sqflite/sqflite.dart' show databaseFactory;
@@ -26,6 +27,7 @@ import 'theme.dart';
 import 'ui/widgets/brand.dart' as brand;
 import 'ui/widgets/brand.dart' show BrandMotion;
 import 'ui/adaptive_shell.dart';
+import 'ui/app_route.dart';
 import 'ui/shell.dart' show openNavRoute;
 import 'ui/login.dart';
 import 'ui/views/day_close.dart';
@@ -40,6 +42,8 @@ Future<void> main() async {
   // see data/db.dart's kIsWeb branch for the other half of this.
   if (kIsWeb) {
     databaseFactory = databaseFactoryFfiWeb;
+    // BI26101513: real paths (/inbox, /study/<course>/<module>) instead of #/view.
+    usePathUrlStrategy();
   }
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -55,21 +59,53 @@ Future<void> main() async {
   runApp(IsconlApp(services: services));
 }
 
-class IsconlApp extends StatelessWidget {
-  const IsconlApp({super.key, required this.services});
+class IsconlApp extends StatefulWidget {
+  const IsconlApp({super.key, required this.services, bool? useRouter}) : _useRouter = useRouter;
   final AppServices services;
+
+  /// BI26101513: on web a Router carries the address (paths, browser back and forward); on a phone the app keeps its
+  /// single Navigator. Tests pass it explicitly.
+  final bool? _useRouter;
+
+  @override
+  State<IsconlApp> createState() => _IsconlAppState();
+}
+
+class _IsconlAppState extends State<IsconlApp> {
+  late final bool _router = widget._useRouter ?? kIsWeb;
+  late final AppRouterDelegate _delegate = AppRouterDelegate(home: const RootGate());
+
+  @override
+  void initState() {
+    super.initState();
+    AppRouteState.instance.active = _router;
+  }
+
+  @override
+  void dispose() {
+    _delegate.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return AppScope(
-      services: services,
-      child: MaterialApp(
-        title: 'iSconl',
-        navigatorKey: rootNavigatorKey,
-        debugShowCheckedModeBanner: false,
-        theme: buildTheme(),
-        home: const RootGate(),
-      ),
+      services: widget.services,
+      child: _router
+          ? MaterialApp.router(
+              title: 'iSconl',
+              debugShowCheckedModeBanner: false,
+              theme: buildTheme(),
+              routerDelegate: _delegate,
+              routeInformationParser: const AppRouteParser(),
+            )
+          : MaterialApp(
+              title: 'iSconl',
+              navigatorKey: rootNavigatorKey,
+              debugShowCheckedModeBanner: false,
+              theme: buildTheme(),
+              home: const RootGate(),
+            ),
     );
   }
 }

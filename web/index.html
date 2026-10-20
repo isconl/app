@@ -43,6 +43,13 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <script>
+    // BI26101513: the passkeys package registers itself when the app starts and calls into corbado's Passkeys Web SDK,
+    // which this build does not bundle. Without a stand-in the registration throws and the page closes itself, so the
+    // web app never started. Passkeys are not offered on web (PlatformPasskeyClient.available is false there), so a
+    // no-op init is all the registration needs.
+    if (!window.PasskeyAuthenticator) window.PasskeyAuthenticator = { init: function () {} };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

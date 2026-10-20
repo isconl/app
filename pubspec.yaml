@@ -13,13 +13,15 @@ publish_to: 'none'
 # stale venture-category filter), masonry track grid + icon-standard fix.
 # Build number advanced past both branches' prior values (main's own stale
 # CI bump to +9, dev's independent +9) to stay unambiguous.
-version: 0.3.150+160
+version: 0.3.151+161
 
 environment:
   sdk: ^3.12.0
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_web_plugins:
     sdk: flutter
   http: ^1.5.0
   slate_ui:
