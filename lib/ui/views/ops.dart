@@ -8,6 +8,7 @@ import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/incident_cards.dart';
 import 'ops_model.dart';
+import '../../services/ops_machines.dart';
 import '../widgets/space_header.dart';
 
 /// OpSec: the live control surface for the fleet + the OCI VM (BI26090502),
@@ -58,6 +59,13 @@ class _OpsViewState extends State<OpsView> {
   final Map<String, String> _failMsg = {};
   Timer? _timer;
   bool _loading = true;
+
+  // BI26101514: the machines ops knows, and the one on screen (null is the hub's default machine).
+  OpsMachinesApi? _opsApi;
+  List<OpsMachine> _machines = const [];
+  String? _machine;
+  OpsMachinesApi get _ops => _opsApi ??= HubOpsMachinesApi(AppScope.of(context).api);
+  String get _machineName => _machine == null ? 'this machine' : (_machines.where((m) => m.id == _machine).firstOrNull?.name ?? _machine!);
   String? _error;
   String? _logsFor;
   String _logsText = '';
@@ -102,10 +110,19 @@ class _OpsViewState extends State<OpsView> {
     }
     _failed.clear();
     _failMsg.clear();
+    if (_machines.isEmpty) {
+      try {
+        final ms = await _ops.machines();
+        if (mounted) _machines = ms;
+      } catch (_) {
+        // A hub without the machines route still shows its default machine.
+      }
+    }
     final results = await Future.wait([
-      _try('status', '/api/ops/status'),
-      _try('vm-stats', '/api/ops/vm-stats'),
-      _try('deploy-status', '/api/ops/deploy-status'),
+      _try('status', opsPath(_machine, 'status')),
+      // The VM numbers are the default machine's; another machine shows its own status and deploys only.
+      _machine == null ? _try('vm-stats', '/api/ops/vm-stats') : Future<Map<String, dynamic>?>.value(null),
+      _try('deploy-status', opsPath(_machine, 'deploy-status')),
     ]);
     if (!mounted) return;
     final status = results[0];
@@ -128,19 +145,17 @@ class _OpsViewState extends State<OpsView> {
     if (action == 'destroy') {
       final typed = await _typeToConfirm(name);
       if (typed != name) return;
+    } else {
+      // BI26101514: restart, start and stop ask first, naming the machine and the service.
+      final sure = await confirmDialog(context, opsConfirmText(action: action, service: name, machineName: _machineName),
+          action == 'stop' ? 'The service stops until it is started again.' : 'Nothing else on $_machineName is touched.',
+          action: action == 'restart' ? 'Restart' : action == 'start' ? 'Start' : 'Stop');
+      if (!sure) return;
     }
     if (!mounted) return;
-    final api = AppScope.of(context).api;
     setState(() => _busy.add(name));
     try {
-      final r = await api.postJson(
-        '/api/ops/service/$action?service=${Uri.encodeQueryComponent(name)}',
-        action == 'destroy' ? {'confirm': name} : {},
-      );
-      final data = fmt.m(r);
-      if (data['ok'] == false && mounted) {
-        toast(context, '$action $name failed: ${fmt.s(data['error']).isEmpty ? 'unknown error' : fmt.s(data['error'])}', error: true);
-      }
+      await _ops.serviceAction(_machine, name, action, confirm: name);
     } catch (e) {
       if (mounted) toast(context, '$action $name failed: $e', error: true);
     }
@@ -195,11 +210,9 @@ class _OpsViewState extends State<OpsView> {
       _logsText = 'Loading…';
     });
     _tabs.select(2);
-    final api = AppScope.of(context).api;
     try {
-      final r = await api.getJson('/api/ops/logs?service=${Uri.encodeQueryComponent(name)}&lines=200');
+      final log = await _ops.logs(_machine, name);
       if (!mounted) return;
-      final log = fmt.s(fmt.m(r)['log']);
       setState(() => _logsText = log.isEmpty ? '(empty)' : log);
     } catch (e) {
       if (!mounted) return;
@@ -229,7 +242,7 @@ class _OpsViewState extends State<OpsView> {
       space: 'opsec',
       searchHint: 'Search services and incidents',
       controller: _tabs,
-      top: _headlineBanner(),
+      top: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_machinePicker(), _headlineBanner()]),
       hits: (_) => [
         for (final g in _groups.values)
           for (final svc in g)
@@ -292,6 +305,34 @@ class _OpsViewState extends State<OpsView> {
 
   /// The one line at the top: the server's headline, or amber naming the failed call when there is none.
   OpsHeadline? get _headline => _failed.isNotEmpty && _vm?.headline == null ? OpsHeadline.failed(_failed) : _vm?.headline;
+
+  /// The machines ops knows. Hidden when there is only the default one.
+  Widget _machinePicker() {
+    if (_machines.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DropdownButton<String?>(
+        key: const Key('ops-machine'),
+        isExpanded: true,
+        value: _machine,
+        items: [
+          const DropdownMenuItem<String?>(value: null, child: Text('This machine (default)')),
+          for (final m in _machines)
+            DropdownMenuItem<String?>(value: m.id, child: Text([m.name, if (!m.controllable) '(view only)', if (m.line.isNotEmpty) '· ${m.line}'].join(' '), overflow: TextOverflow.ellipsis)),
+        ],
+        onChanged: (v) {
+          setState(() {
+            _machine = v;
+            _groups = {};
+            _ungrouped = [];
+            _deploy = [];
+            _logsFor = null;
+          });
+          _load();
+        },
+      ),
+    );
+  }
 
   Widget _headlineBanner() {
     final h = _headline;
