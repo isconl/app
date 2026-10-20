@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../widgets/sub_tabs.dart';
 
 import '../../app_scope.dart';
 import '../../data/db.dart';
@@ -9,6 +8,7 @@ import '../../util/fmt.dart' as fmt;
 import '../nav_menu.dart' show parseNavGroups;
 import '../widgets/common.dart';
 import '../widgets/reader.dart';
+import '../widgets/space_header.dart';
 import 'github.dart';
 import 'jira.dart';
 import 'social.dart';
@@ -107,62 +107,43 @@ class ToolsPrefs extends ChangeNotifier {
   }
 }
 
-/// Tools: Kanban, Buffer and GitHub behind one switch, each view unchanged.
-class ToolsView extends StatefulWidget {
+/// Tools: Jira (Kanban), Social (Buffer) and GitHub as three tabs under the shared search, each view unchanged
+/// (BI26101816). The tool a tile asked for (ToolsPrefs) opens first.
+class ToolsView extends StatelessWidget {
   const ToolsView({super.key, this.views = toolViews, this.prefs});
   final List<String> views;
 
   /// Replaced in tests.
   final ToolsPrefs? prefs;
 
-  @override
-  State<ToolsView> createState() => _ToolsViewState();
-}
+  static const tabLabels = ['Jira', 'Social', 'GitHub'];
 
-class _ToolsViewState extends State<ToolsView> {
-  ToolsPrefs get _prefs => widget.prefs ?? ToolsPrefs.instance;
+  /// What the three tabs hold, for the search: each tool and the things it contains.
+  static const searchTable = <(String, String, int)>[
+    ('Jira', 'Kanban: issues and transitions', 0),
+    ('Kanban', 'Jira issues by status', 0),
+    ('Social', 'Buffer: queued posts and the desk', 1),
+    ('Buffer', 'scheduled posts', 1),
+    ('GitHub', 'contributions and repositories', 2),
+  ];
 
-  static const _labels = {'jira': 'Kanban', 'social': 'Buffer', 'github': 'GitHub'};
-
-  @override
-  void initState() {
-    super.initState();
-    _prefs.addListener(_changed);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && widget.prefs == null) _prefs.ensureLoaded(AppScope.of(context).db);
-    });
-  }
-
-  @override
-  void dispose() {
-    _prefs.removeListener(_changed);
-    super.dispose();
-  }
-
-  void _changed() {
-    if (mounted) setState(() {});
-  }
+  static List<SpaceHit> hitsFor(BuildContext context) => [for (final (t, sub, tab) in searchTable) SpaceHit(title: t, subtitle: sub, tab: tab)];
 
   @override
   Widget build(BuildContext context) {
-    final views = widget.views.isEmpty ? toolViews : widget.views;
-    final current = views.contains(_prefs.selected) ? _prefs.selected : views.first;
-    final db = widget.prefs == null ? AppScope.of(context).db : null;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SubTabsBar(
-        keyPrefix: 'tools',
-        labels: [for (final v in views) _labels[v] ?? v],
-        index: views.indexOf(current),
-        onSelect: (i) => _prefs.select(views[i], db: db),
-      ),
-      Expanded(
-        child: switch (current) {
-          'social' => const SocialView(),
-          'github' => const _GithubScroll(),
-          _ => const JiraView(),
-        },
-      ),
-    ]);
+    final p = prefs ?? ToolsPrefs.instance;
+    if (prefs == null) p.ensureLoaded(AppScope.of(context).db);
+    return SpaceView(
+      space: 'tools',
+      searchHint: 'Search Jira, Social and GitHub',
+      hits: hitsFor,
+      initialTab: toolViews.indexOf(p.selected).clamp(0, 2),
+      tabs: const [
+        SpaceTab('Jira', JiraView()),
+        SpaceTab('Social', SocialView()),
+        SpaceTab('GitHub', _GithubScroll()),
+      ],
+    );
   }
 }
 
@@ -210,25 +191,42 @@ class DeckStudio {
   }
 }
 
-/// Deck on the phone: the studio's boards and drafts, read-only for now.
+/// Deck on the phone, under the shared search: Boards, Drafts and Sent (the approved documents).
 class DeckChannelView extends StatelessWidget {
   const DeckChannelView({super.key});
 
-  @override
-  Widget build(BuildContext context) {
+  static const tabLabels = ['Boards', 'Drafts', 'Sent'];
+
+  static const _publishedPath = '/api/deck/published';
+
+  /// The search finds a board, a draft or a sent document and opens the tab that holds it.
+  static List<SpaceHit> hitsFor(BuildContext context) {
+    final store = AppScope.of(context).store;
+    final studio = DeckStudio.parse(store.deckStudio.value);
+    return [
+      for (final b in studio.boards) SpaceHit(title: b.title, subtitle: '${b.staged} staged', tab: 0),
+      for (final d in studio.drafts) SpaceHit(title: d.title, subtitle: 'draft', tab: 1),
+      for (final x in fmt.lm(fmt.m(store.detail('deckpublished', 'all', _publishedPath).value)['documents']))
+        if (fmt.s(x['title']).isNotEmpty) SpaceHit(title: fmt.s(x['title']), subtitle: [fmt.s(x['space']), fmt.s(x['version'])].where((e) => e.isNotEmpty).join(' · '), tab: 2),
+    ];
+  }
+
+  static const _empty = EmptyState('Deck is not connected yet', 'Boards and drafts appear here once the hub serves the studio.', icon: Icons.dashboard_customize_rounded);
+
+  Widget _studioTab(BuildContext context, {required bool boards}) {
     final services = AppScope.of(context);
     return SnapshotView(
       snapshot: services.store.deckStudio,
-      empty: const EmptyState('Deck is not connected yet', 'Boards and drafts appear here once the hub serves the studio.', icon: Icons.dashboard_customize_rounded),
+      empty: _empty,
       builder: (context, data) {
         final studio = DeckStudio.parse(data);
         if (studio.isEmpty) {
           return const EmptyState('Nothing in the studio', 'Boards and drafts appear here as they are made.', icon: Icons.dashboard_customize_rounded);
         }
         final now = DateTime.now();
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (studio.boards.isNotEmpty) ...[
-            const SectionLabel('Boards'),
+        if (boards) {
+          if (studio.boards.isEmpty) return const EmptyState('No boards', 'Live-editable boards appear here.', icon: Icons.dashboard_customize_rounded);
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (final b in studio.boards)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -241,24 +239,67 @@ class DeckChannelView extends StatelessWidget {
                   ]),
                 ),
               ),
-          ],
-          if (studio.drafts.isNotEmpty) ...[
-            const SectionLabel('Drafts'),
-            for (final d in studio.drafts)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Panel(
-                  key: ValueKey('draft-${d.id}'),
-                  onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => DeckDraftScreen(id: d.id, title: d.title))),
-                  child: Row(children: [
-                    Expanded(child: Text(d.title, style: T.body2.copyWith(color: C.text))),
-                    Text(d.updatedAt == null ? '' : 'updated ${_ago(d.updatedAt!, now)}', style: T.monoSmall),
-                  ]),
-                ),
+          ]);
+        }
+        if (studio.drafts.isEmpty) return const EmptyState('No drafts', 'Documents that are not yet approved appear here.', icon: Icons.edit_note_rounded);
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final d in studio.drafts)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Panel(
+                key: ValueKey('draft-${d.id}'),
+                onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => DeckDraftScreen(id: d.id, title: d.title))),
+                child: Row(children: [
+                  Expanded(child: Text(d.title, style: T.body2.copyWith(color: C.text))),
+                  Text(d.updatedAt == null ? '' : 'updated ${_ago(d.updatedAt!, now)}', style: T.monoSmall),
+                ]),
               ),
-          ],
+            ),
         ]);
       },
+    );
+  }
+
+  Widget _sentTab(BuildContext context) {
+    final snap = AppScope.of(context).store.detail('deckpublished', 'all', _publishedPath);
+    return SnapshotView(
+      snapshot: snap,
+      empty: const EmptyState('Nothing sent yet', 'Approved documents appear here.', icon: Icons.send_rounded),
+      builder: (context, data) {
+        final docs = fmt.lm(fmt.m(data)['documents']);
+        if (docs.isEmpty) return const EmptyState('Nothing sent yet', 'Approved documents appear here.', icon: Icons.send_rounded);
+        final now = DateTime.now();
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final x in docs)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Panel(
+                key: ValueKey('sent-${fmt.s(x['id'])}'),
+                child: Row(children: [
+                  Expanded(child: Text(fmt.s(x['title']), style: T.body2.copyWith(color: C.text))),
+                  Text(
+                    [fmt.s(x['version']), if (fmt.parseDate(x['updated']) != null) _ago(fmt.parseDate(x['updated'])!, now)].where((e) => e.isNotEmpty).join(' · '),
+                    style: T.monoSmall,
+                  ),
+                ]),
+              ),
+            ),
+        ]);
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SpaceView(
+      space: 'deck',
+      searchHint: 'Search boards, drafts and sent documents',
+      hits: hitsFor,
+      tabs: [
+        SpaceTab(tabLabels[0], _studioTab(context, boards: true)),
+        SpaceTab(tabLabels[1], _studioTab(context, boards: false)),
+        SpaceTab(tabLabels[2], _sentTab(context)),
+      ],
     );
   }
 }

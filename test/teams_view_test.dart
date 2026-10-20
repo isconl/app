@@ -34,6 +34,16 @@ Map<String, dynamic> team(String id, String title, String orgId, {String parent 
       ],
     };
 
+/// BI26101816: the shared space header remembers its tab in the local database, whose lock warning leaves a 10 s timer
+/// behind; every test ends by unmounting the tree and letting it run out.
+void tw(String name, Future<void> Function(WidgetTester) body) {
+  testWidgets(name, (tester) async {
+    await body(tester);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 11));
+  });
+}
+
 void main() {
   test('the board has five lanes in order, and a Draft lane only when there are drafts', () {
     final t = team('T', 'Studio', 'O1');
@@ -73,20 +83,23 @@ void main() {
     'teams': [team('T', 'Studio', 'O1'), team('V', 'Testing', 'O2')],
   };
 
-  testWidgets('a real own team renders its lanes and depth chips, with both pickers', (tester) async {
+  tw('a real own team renders its lanes and depth chips, with both pickers', (tester) async {
     await pump(tester, data);
     expect(find.byKey(const Key('teams-org')), findsOneWidget);
     expect(find.byKey(const Key('teams-team')), findsOneWidget);
+    // Health (the first tab) holds the depth chips; Work holds the lanes.
+    expect(find.text('Ann 3.5d'), findsOneWidget);
+    expect(find.text('Kid 0d'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('teams-tab-work')));
+    await tester.pumpAndSettle();
     for (final lane in ['Ready', 'Doing', 'Blocked', 'Awaiting sign-off', 'Done this sprint']) {
       expect(find.text(lane), findsWidgets, reason: lane);
     }
-    expect(find.text('Ann 3.5d'), findsOneWidget);
-    expect(find.text('Kid 0d'), findsOneWidget);
     expect(find.text('Queued item'), findsOneWidget);
     expect(find.text('Old signed'), findsNothing);
   });
 
-  testWidgets('People shows the Architect panel, forces and a leader at five with the span warning; folding hides the reports', (tester) async {
+  tw('People shows the Architect panel, forces and a leader at five with the span warning; folding hides the reports', (tester) async {
     await pump(tester, data);
     await tester.tap(find.byKey(const Key('teams-tab-people')));
     await tester.pumpAndSettle();
@@ -101,12 +114,13 @@ void main() {
     expect(find.text('Kid'), findsNothing);
   });
 
-  testWidgets('Talk is a placeholder; choosing the engagement org opens its team and says its board is Jira', (tester) async {
+  tw('Talk is a placeholder; choosing the engagement org opens its team and says its board is Jira', (tester) async {
     await pump(tester, data);
-    await tester.tap(find.byKey(const Key('teams-tab-talk')));
+    await tester.tap(find.byKey(const Key('teams-tab-people')));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Talk comes next'), 300, scrollable: find.byType(Scrollable).last);
     expect(find.text('Talk comes next'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('teams-tab-board')));
+    await tester.tap(find.byKey(const Key('teams-tab-health')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('teams-org')));
     await tester.pumpAndSettle();

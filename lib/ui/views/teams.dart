@@ -7,6 +7,7 @@ import 'team_actions.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/space_header.dart';
 
 /// Teams - the team operating system as a channel, on the phone (BI26092655).
 ///
@@ -100,10 +101,13 @@ class TeamsView extends StatefulWidget {
   State<TeamsView> createState() => _TeamsViewState();
 }
 
+/// Tab names and search hits, for the shared header and its tests.
+const teamsTabLabels = _TeamsViewState.tabLabels;
+List<SpaceHit> teamsHits(List<Map<String, dynamic>> teams) => _TeamsViewState.hitsFor(teams);
+
 class _TeamsViewState extends State<TeamsView> {
   Future<dynamic>? _future;
   String? _teamId;
-  int _tab = 0;
   final Set<String> _folded = {};
 
   void _load() {
@@ -129,7 +133,8 @@ class _TeamsViewState extends State<TeamsView> {
     return FutureBuilder<dynamic>(
       future: _future,
       builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
+        // A reload keeps the last board on screen (and the tab the person is on) instead of flashing a spinner.
+        if (snap.connectionState != ConnectionState.done && !snap.hasData) {
           return const Padding(padding: EdgeInsets.only(top: 48), child: Center(child: MiniSpinner()));
         }
         if (snap.hasError) {
@@ -156,52 +161,69 @@ class _TeamsViewState extends State<TeamsView> {
           teamId: fmt.s(team['id']),
           onChanged: _reload,
         );
-        return RefreshIndicator(
-          onRefresh: () async {
-            final f = AppScope.of(context).api.getJson('/api/teams');
-            setState(() => _future = f);
-            try {
-              await f;
-            } catch (_) {}
-          },
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 96),
-            children: [
-              _Switcher(
-                orgs: orgs,
-                orgId: orgId,
-                team: team,
-                teams: inOrg,
-                onOrg: (id) {
-                  final first = teamTreeOrder(teams.where((t) => fmt.s(t['orgId']) == id).toList());
-                  if (first.isNotEmpty) setState(() => _teamId = fmt.s(first.first.team['id']));
-                },
-                onTeam: (id) => setState(() => _teamId = id),
-              ),
-              const SizedBox(height: 8),
-              _Tabs(index: _tab, onTab: (i) => setState(() => _tab = i)),
-              const SizedBox(height: 10),
-              if (_tab == 0)
-                _Board(
-                    team: team,
-                    actions: actions,
-                    org: orgs.cast<Map<String, dynamic>?>().firstWhere((o) => fmt.s(o?['id']) == orgId, orElse: () => null))
-              else if (_tab == 1)
+        Future<void> refresh() async {
+          final f = AppScope.of(context).api.getJson('/api/teams');
+          setState(() => _future = f);
+          try {
+            await f;
+          } catch (_) {}
+        }
+
+        Widget tab(List<Widget> children) => RefreshIndicator(
+              onRefresh: refresh,
+              child: ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 96), children: children),
+            );
+        final org = orgs.cast<Map<String, dynamic>?>().firstWhere((o) => fmt.s(o?['id']) == orgId, orElse: () => null);
+        return SpaceView(
+          key: ValueKey('teams-${fmt.s(team['id'])}'),
+          space: 'teams',
+          searchHint: 'Search teams, people and work',
+          hits: (c) => hitsFor(teams),
+          top: _Switcher(
+            orgs: orgs,
+            orgId: orgId,
+            team: team,
+            teams: inOrg,
+            onOrg: (id) {
+              final first = teamTreeOrder(teams.where((t) => fmt.s(t['orgId']) == id).toList());
+              if (first.isNotEmpty) setState(() => _teamId = fmt.s(first.first.team['id']));
+            },
+            onTeam: (id) => setState(() => _teamId = id),
+          ),
+          tabs: [
+            SpaceTab(tabLabels[0], tab([_Health(team: team, org: org)])),
+            SpaceTab(
+              tabLabels[1],
+              tab([
                 _People(
                   team: team,
                   actions: actions,
                   spanLimit: spanLimit,
                   folded: _folded,
                   onFold: (id) => setState(() => _folded.contains(id) ? _folded.remove(id) : _folded.add(id)),
-                )
-              else
+                ),
                 const _Talk(),
-            ],
-          ),
+              ]),
+            ),
+            SpaceTab(tabLabels[2], tab([_Work(team: team, actions: actions)])),
+          ],
         );
       },
     );
   }
+
+  static const tabLabels = ['Health', 'People', 'Work'];
+
+  /// BI26101816: the search finds a team, a member or a work item (any team the hub returned) and opens the tab that holds it.
+  static List<SpaceHit> hitsFor(List<Map<String, dynamic>> teams) => [
+        for (final t in teams) ...[
+          SpaceHit(title: fmt.s(t['title']), subtitle: 'team', tab: 0),
+          for (final m in fmt.lm(t['members']))
+            if (fmt.s(m['name']).isNotEmpty) SpaceHit(title: fmt.s(m['name']), subtitle: 'member of ${fmt.s(t['title'])}', tab: 1),
+          for (final w in fmt.lm(t['work']))
+            if (fmt.s(w['title']).isNotEmpty) SpaceHit(title: fmt.s(w['title']), subtitle: 'work in ${fmt.s(t['title'])}', tab: 2),
+        ],
+      ];
 }
 
 class _Switcher extends StatelessWidget {
@@ -260,45 +282,19 @@ class _Switcher extends StatelessWidget {
   }
 }
 
-class _Tabs extends StatelessWidget {
-  const _Tabs({required this.index, required this.onTab});
-  final int index;
-  final ValueChanged<int> onTab;
-
-  @override
-  Widget build(BuildContext context) {
-    const labels = ['Board', 'People', 'Talk'];
-    return Row(
-      children: [
-        for (var i = 0; i < labels.length; i++) ...[
-          ChoiceChip(
-            key: Key('teams-tab-${labels[i].toLowerCase()}'),
-            label: Text(labels[i]),
-            selected: index == i,
-            onSelected: (_) => onTab(i),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ],
-    );
-  }
-}
-
 Color _levelFg(String level) => level == 'green' ? C.greenBright : level == 'amber' ? C.amber : C.red;
 Color _levelBg(String level) => level == 'green' ? C.greenBg : level == 'amber' ? C.amberBg : C.redBg;
 String _days(double d) => d == d.roundToDouble() ? d.toStringAsFixed(0) : d.toStringAsFixed(1);
 
-class _Board extends StatelessWidget {
-  const _Board({required this.team, required this.org, required this.actions});
+/// Health: the engagement note, each member's depth of ready work coloured by level, and how much is past due.
+class _Health extends StatelessWidget {
+  const _Health({required this.team, required this.org});
   final Map<String, dynamic> team;
-  final TeamActions actions;
   final Map<String, dynamic>? org;
 
   @override
   Widget build(BuildContext context) {
     final members = fmt.lm(team['members']).map(fmt.m).toList();
-    final names = {for (final m in members) fmt.s(m['id']): fmt.s(m['name'])};
-    final lanes = teamLanes(team);
     final counts = fmt.m(team['counts']);
     final slipped = fmt.d(counts['slipped']).toInt();
     final engagement = org != null && fmt.s(org!['kind']) == 'engagement';
@@ -326,7 +322,26 @@ class _Board extends StatelessWidget {
           const SizedBox(height: 8),
           Text('$slipped ${slipped == 1 ? 'item is' : 'items are'} past due', style: T.monoSmall.copyWith(color: C.red)),
         ],
-        const SizedBox(height: 10),
+        if (members.isEmpty && slipped == 0 && !engagement) Text('No members yet.', style: T.small.copyWith(color: C.text3)),
+      ],
+    );
+  }
+}
+
+/// Work: the board's lanes, each item with its moves.
+class _Work extends StatelessWidget {
+  const _Work({required this.team, required this.actions});
+  final Map<String, dynamic> team;
+  final TeamActions actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final members = fmt.lm(team['members']).map(fmt.m).toList();
+    final names = {for (final m in members) fmt.s(m['id']): fmt.s(m['name'])};
+    final lanes = teamLanes(team);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         for (final lane in lanes) _LaneCard(lane: lane, names: names, team: team, actions: actions),
       ],
     );

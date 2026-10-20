@@ -19,6 +19,7 @@ import '../widgets/passkeys_card.dart';
 import '../widgets/status_briefs_card.dart';
 import '../../services/day_close_planner.dart';
 import '../../util/day_close.dart';
+import '../widgets/space_header.dart';
 import 'systems_dashboard.dart';
 
 /// Connection, security, sync, update-on-cue, appearance, about.
@@ -40,6 +41,10 @@ class SettingsView extends StatefulWidget {
   State<SettingsView> createState() => _SettingsViewState();
 }
 
+/// Tab names and search hits, for the shared header and its tests.
+const settingsTabLabels = _SettingsViewState.tabLabels;
+List<SpaceHit> settingsHits(BuildContext context) => _SettingsViewState.hitsFor(context);
+
 class _SettingsViewState extends State<SettingsView> {
   @override
   void initState() {
@@ -50,8 +55,43 @@ class _SettingsViewState extends State<SettingsView> {
     });
   }
 
+  /// BI26101816: Settings is General (day close, automatic context, prefetch, appearance), Study and notes, and
+  /// Account and sync. Every section sits in exactly one tab, with its title unchanged.
+  static const tabLabels = ['General', 'Study and notes', 'Account and sync'];
+
+  /// Section titles and switch labels, with the tab that holds each, for the search.
+  static const searchTable = <(String, String, int)>[
+    ('Day close', 'the end-of-day review', 0),
+    ('Automatic context', 'M-Pesa messages from SMS', 0),
+    ('Prefetch', 'what the phone downloads ahead', 0),
+    ('General', 'appearance, local data and branding', 0),
+    ('Notifications', 'slate closes and alerts', 1),
+    ('Study', 'standard on list', 1),
+    ('Offline narration', 'downloaded course audio', 1),
+    ('Journal access', 'who may read the journal', 1),
+    ('News watch', 'topics followed', 1),
+    ('Status briefs', 'the morning and evening briefs', 1),
+    ('Account', 'server, sign out and biometric lock', 2),
+    ('Biometric lock', 'fingerprint to open the app', 2),
+    ('Passkeys', 'sign-in keys', 2),
+    ('Sync & updates', 'sync state, queued changes and app updates', 2),
+  ];
+
+  static List<SpaceHit> hitsFor(BuildContext context) => [
+        for (final (title, sub, tab) in searchTable) SpaceHit(title: title, subtitle: sub, tab: tab),
+      ];
+
   @override
   Widget build(BuildContext context) {
+    return SpaceView(
+      space: 'settings',
+      searchHint: 'Search settings',
+      hits: hitsFor,
+      tabs: [for (var i = 0; i < tabLabels.length; i++) SpaceTab(tabLabels[i], _part(context, i))],
+    );
+  }
+
+  Widget _part(BuildContext context, int part) {
     final services = AppScope.of(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 96),
@@ -65,6 +105,7 @@ class _SettingsViewState extends State<SettingsView> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (part == 0) ...[
               if (widget.onOpenSub != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 14),
@@ -79,6 +120,8 @@ class _SettingsViewState extends State<SettingsView> {
               const SectionLabel('Automatic context'),
               const SmsCard(),
 
+              ],
+              if (part == 2) ...[
               // ---- account: connection + security, regrouped from two
               // separate top-level sections into one - both are "who is
               // signed in and how is that guarded", not two different topics.
@@ -164,24 +207,36 @@ class _SettingsViewState extends State<SettingsView> {
                   ],
                 ),
               ),
+              ],
+              if (part == 1) ...[
               const SectionLabel('Notifications'),
               const SlateClosesCard(),
+              ],
+              if (part == 0) ...[
               const SectionLabel('Prefetch'),
               const PrefetchCard(),
               const SizedBox(height: 10),
               const WidgetSettingsCard(),
+              ],
+              if (part == 1) ...[
               const SectionLabel('Study'),
               const Panel(child: StandardOnListSwitch()),
               const SectionLabel('Offline narration'),
               const OfflineNarrationCard(),
               const SectionLabel('Journal access'),
               JournalAccessCard(client: HubCxGrantsClient(AppScope.of(context).api, AppScope.of(context).session.passkeys)),
+              ],
+              if (part == 2) ...[
               const SectionLabel('Passkeys'),
               const PasskeysCard(),
+              ],
+              if (part == 1) ...[
               const SectionLabel('News watch'),
               const NewsWatchCard(),
               const SectionLabel('Status briefs'),
               const StatusBriefsCard(),
+              ],
+              if (part == 2) ...[
               if (widget.showIntegrations) ...[
                 const IntegrationsSection(),
               ],
@@ -347,6 +402,8 @@ class _SettingsViewState extends State<SettingsView> {
                 ),
               ),
 
+              ],
+              if (part == 0) ...[
               // ---- general: appearance + local data, regrouped from two
               // separate sections into one - both are "how this device's
               // copy of the app looks and holds", the lightest-touch settings
@@ -431,6 +488,7 @@ class _SettingsViewState extends State<SettingsView> {
                   style: T.monoSmall,
                 ),
               ),
+              ],
             ],
           );
         },

@@ -144,11 +144,15 @@ void main() {
       };
       await tester.pumpWidget(AppScope(
         services: services,
-        child: const MaterialApp(home: Scaffold(body: SingleChildScrollView(child: InboxView()))),
+        child: const MaterialApp(home: Scaffold(body: InboxView())),
       ));
       await tester.pump();
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 80)));
       await tester.pump();
+      // BI26101816: both threads are read, so they sit on All, not Unread.
+      await tester.tap(find.byKey(const Key('inbox-tab-all')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(find.text('Ada Lovelace'), findsOneWidget);
       expect(find.text('UNKNOWN'), findsOneWidget);
       expect(find.byKey(const Key('tile-source')), findsNWidgets(2));

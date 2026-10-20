@@ -75,6 +75,16 @@ final data = {
   ],
 };
 
+/// BI26101816: the shared space header remembers its tab in the local database, whose lock warning leaves a 10 s timer
+/// behind; every test ends by unmounting the tree and letting it run out.
+void tw(String name, Future<void> Function(WidgetTester) body) {
+  testWidgets(name, (tester) async {
+    await body(tester);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 11));
+  });
+}
+
 void main() {
   test('the move buttons follow the work lifecycle', () {
     expect(workMoves('queued').map((m) => m.to), ['active', 'blocked']);
@@ -113,10 +123,13 @@ void main() {
       child: MaterialApp(theme: buildTheme(), home: Scaffold(body: TeamsView(client: fake))),
     ));
     await tester.pumpAndSettle();
+    // BI26101816: the board's work items are on the Work tab.
+    await tester.tap(find.byKey(const Key('teams-tab-work')));
+    await tester.pumpAndSettle();
     return fake;
   }
 
-  testWidgets('start, finish, unblock and sign move the work and say so', (tester) async {
+  tw('start, finish, unblock and sign move the work and say so', (tester) async {
     final c = await pump(tester);
     await tester.tap(find.byKey(const Key('work-active-1')));
     await tester.pumpAndSettle();
@@ -132,7 +145,7 @@ void main() {
     expect(find.textContaining('Signed by ARCHITECT'), findsOneWidget);
   });
 
-  testWidgets('blocking asks what it is blocked on and sends the note', (tester) async {
+  tw('blocking asks what it is blocked on and sends the note', (tester) async {
     final c = await pump(tester);
     await tester.tap(find.byKey(const Key('work-blocked-2')));
     await tester.pumpAndSettle();
@@ -142,7 +155,7 @@ void main() {
     expect(c.calls, ['move:2:blocked:waiting on legal']);
   });
 
-  testWidgets('cancelling the block note sends nothing', (tester) async {
+  tw('cancelling the block note sends nothing', (tester) async {
     final c = await pump(tester);
     await tester.tap(find.byKey(const Key('work-blocked-2')));
     await tester.pumpAndSettle();
@@ -151,7 +164,7 @@ void main() {
     expect(c.calls, isEmpty);
   });
 
-  testWidgets('Give to... moves the work to another person, keeping its other fields', (tester) async {
+  tw('Give to... moves the work to another person, keeping its other fields', (tester) async {
     final c = await pump(tester);
     await tester.tap(find.byKey(const Key('work-give-1')));
     await tester.pumpAndSettle();
@@ -167,7 +180,7 @@ void main() {
     expect(c.bodies.single['doneMeans'], 'it ships');
   });
 
-  testWidgets('a refusal from the agent is shown in its own words', (tester) async {
+  tw('a refusal from the agent is shown in its own words', (tester) async {
     final c = await pump(tester);
     c.refuse = 'That would put Kid over five reports';
     await tester.tap(find.byKey(const Key('work-active-1')));
@@ -176,7 +189,7 @@ void main() {
     expect(find.textContaining('over five reports'), findsOneWidget);
   });
 
-  testWidgets('marking a member as left asks first, with what is lost, and only then sends', (tester) async {
+  tw('marking a member as left asks first, with what is lost, and only then sends', (tester) async {
     final c = await pump(tester);
     await tester.tap(find.byKey(const Key('teams-tab-people')));
     await tester.pumpAndSettle();
@@ -198,7 +211,7 @@ void main() {
     expect(c.calls, ['remove:A']);
   });
 
-  testWidgets('editing a member saves the changed role and keeps the rest', (tester) async {
+  tw('editing a member saves the changed role and keeps the rest', (tester) async {
     final c = await pump(tester);
     await tester.tap(find.byKey(const Key('teams-tab-people')));
     await tester.pumpAndSettle();

@@ -54,7 +54,7 @@ void main() {
     });
   });
 
-  testWidgets('Tools switches between Kanban, Buffer and GitHub and remembers the choice', (t) async {
+  testWidgets('Tools is the shared search over Jira, Social and GitHub, and opens on the tool a tile asked for', (t) async {
     t.view.physicalSize = const Size(1100, 1600);
     t.view.devicePixelRatio = 1.0;
     addTearDown(t.view.reset);
@@ -63,28 +63,23 @@ void main() {
     services.store.buffer.value = {'channels': <dynamic>[], 'queue': <dynamic>[], 'sent': <dynamic>[]};
     services.store.github.value = {'repos': <dynamic>[]};
     final prefs = ToolsPrefs.forTesting();
+    await prefs.select('social');
     await t.pumpWidget(AppScope(services: services, child: MaterialApp(home: Scaffold(body: ToolsView(prefs: prefs)))));
     await t.pump();
-    expect(find.text('Kanban'), findsOneWidget);
-    expect(find.text('Buffer'), findsOneWidget);
-    expect(find.text('GitHub'), findsOneWidget);
-    expect(prefs.selected, 'jira');
-    await t.tap(find.text('Buffer'));
-    await t.pump();
-    expect(prefs.selected, 'social');
-    await t.tap(find.text('GitHub'));
-    await t.pump();
-    expect(prefs.selected, 'github');
-    await prefs.select('nonsense');
-    expect(prefs.selected, 'github');
-    final stored = ToolsPrefs.forTesting();
-    await t.runAsync(() => prefs.select('social', db: services.db));
-    await t.runAsync(() => stored.ensureLoaded(services.db));
-    expect(stored.selected, 'social');
-    for (var i = 0; i < 3; i++) {
-      await t.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
-      await t.pump(const Duration(seconds: 1));
+    expect(find.text('Search Jira, Social and GitHub'), findsOneWidget);
+    for (final l in ToolsView.tabLabels) {
+      expect(find.text(l), findsWidgets, reason: l);
     }
+    await t.tap(find.byKey(const Key('tools-tab-github')));
+    await t.pump(const Duration(milliseconds: 400));
+    await prefs.select('nonsense');
+    expect(prefs.selected, 'social', reason: 'an unknown tool is ignored');
+    final stored = ToolsPrefs.forTesting();
+    await t.runAsync(() => prefs.select('github', db: services.db));
+    await t.runAsync(() => stored.ensureLoaded(services.db));
+    expect(stored.selected, 'github');
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 11));
   });
 
   test('a studio payload parses into boards and drafts', () {
@@ -111,10 +106,15 @@ void main() {
     await t.pump();
     expect(find.text('Work review: Joel'), findsOneWidget);
     expect(find.text('4 staged'), findsOneWidget);
+    expect(find.text('Search boards, drafts and sent documents'), findsOneWidget);
+    await t.tap(find.byKey(const Key('deck-tab-drafts')));
+    await t.pump();
+    await t.pump(const Duration(seconds: 1));
     expect(find.text('Pricing note'), findsOneWidget);
     expect(find.text('updated 2h ago'), findsOneWidget);
     await t.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
-    await t.pump(const Duration(seconds: 1));
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 11));
   });
 
   testWidgets('BI26101813: a board opens to its cards under the five review headings, with a project filter', (t) async {

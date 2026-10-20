@@ -5,6 +5,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/space_header.dart';
 import 'channels_dash_model.dart';
 import 'channels_dashboard.dart';
 import 'circle.dart' show PersonScreen;
@@ -25,6 +26,10 @@ class InboxView extends StatefulWidget {
   @override
   State<InboxView> createState() => _InboxViewState();
 }
+
+/// Tab names and search hits, for the shared header and its tests.
+const inboxTabLabels = _InboxViewState.tabLabels;
+List<SpaceHit> inboxHits(BuildContext context) => _InboxViewState.hitsFor(context);
 
 class _InboxViewState extends State<InboxView> {
   final _scroll = ScrollController();
@@ -124,86 +129,134 @@ class _InboxViewState extends State<InboxView> {
         now: DateTime.now(),
       );
 
+  static const tabLabels = ['Unread', 'Waiting', 'All'];
+
+  /// BI26101816: the search finds a conversation by who it is with or what the newest message says, and opens the
+  /// tab that holds it (Unread when it has unread messages, otherwise All).
+  static List<SpaceHit> hitsFor(BuildContext context) {
+    final store = AppScope.of(context).store;
+    final feed = fmt.lm(fmt.m(store.state.value)['feed']);
+    final people = fmt.lm(fmt.m(store.circle.value)['people']);
+    final personById = {for (final p in people) fmt.s(p['ID']): p};
+    final g = groupThreads(feed);
+    return [
+      for (final t in [...g.people, ...g.unknown])
+        SpaceHit(
+          title: _nameOfThread(t, personById),
+          subtitle: fmt.truncate(fmt.s(t.latest['BODY']).replaceAll('\n', ' '), 90),
+          tab: t.unread > 0 ? 0 : 2,
+        ),
+    ];
+  }
+
+  static String _nameOfThread(InboxThread t, Map<String, Map<String, dynamic>> personById) {
+    final p = personById[t.key];
+    final n = p == null ? '' : fmt.s(p['NAME']);
+    if (n.isNotEmpty && n != '-') return n;
+    final sender = fmt.s(t.latest['SENDER']);
+    return sender.isNotEmpty && sender != '-' ? sender : sourceLabel(fmt.s(t.latest['CHANNEL']));
+  }
+
+  /// Unread is open threads with unread messages; Waiting is threads snoozed until later or waiting on a
+  /// reply (the newest message is one I sent); All is every thread that is not done, snoozed ones included.
+  Widget _part(BuildContext context, int part) {
+    final services = AppScope.of(context);
+    return SnapshotView(
+      snapshot: services.store.state,
+      controller: part == 0 ? _scroll : null,
+      builder: (context, data) {
+        final feed = fmt.lm(fmt.m(data)['feed']);
+        if (feed.isEmpty) {
+          return const EmptyState(
+            'Inbox zero',
+            'Share any text into iSconl from another app, or capture '
+                'a note below - it lands here and syncs to the vault.',
+            icon: Icons.inbox_rounded,
+          );
+        }
+        final people = fmt.lm(fmt.m(services.store.circle.value)['people']);
+        final personById = {for (final p in people) fmt.s(p['ID']): p};
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _migrateLocalSnoozes(services, feed);
+        });
+        final groups = groupThreads(feed);
+        final snoozeNow = DateTime.now();
+        bool open(InboxThread t) =>
+            !_hidden.contains(t.key) &&
+            !t.messages.where((m) => messageKind(m) != MessageKind.system).every((m) => fmt.s(m['STATUS']) == 'done');
+        bool snoozed(InboxThread t) => SnoozeStore.instance.isSnoozed(t.key, snoozeNow);
+        bool waiting(InboxThread t) => snoozed(t) || fmt.s(t.latest['DIRECTION']).toLowerCase() == 'out';
+        bool shown(InboxThread t) => open(t) &&
+            switch (part) {
+              0 => !snoozed(t) && t.unread > 0,
+              1 => waiting(t),
+              _ => true,
+            };
+        final now = DateTime.now();
+        String nameOf(InboxThread t) => _nameOfThread(t, personById);
+        final people2 = groups.people.where(shown).toList();
+        final unknown = groups.unknown.where(shown).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (part == 0)
+              ListenableBuilder(
+                listenable: Listenable.merge([services.store.jira, services.store.buffer]),
+                builder: (context, _) => Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: ChannelsDashboard(dash: _dash(services, feed), onOpenView: widget.onOpenView),
+                ),
+              ),
+            if (people2.isEmpty && unknown.isEmpty)
+              EmptyState(
+                  part == 0 ? 'Nothing unread' : 'Nothing waiting',
+                  part == 0 ? 'Conversations with new messages appear here.' : 'Snoozed conversations and ones waiting on a reply appear here.',
+                  icon: Icons.inbox_rounded),
+            for (final t in people2)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _swipe(context, services, t, ConversationTile(
+                  name: nameOf(t),
+                  latest: t.latest,
+                  unread: t.unread,
+                  now: now,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => InboxThreadView(
+                        title: nameOf(t),
+                        messages: t.messages,
+                        person: personById[t.key],
+                      ),
+                    ),
+                  ),
+                )),
+              ),
+            if (unknown.isNotEmpty) ...[
+              const SectionLabel('Unknown'),
+              for (final t in unknown)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _swipe(context, services, t, _UnknownTile(thread: t, name: nameOf(t), now: now, people: people)),
+                ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
     return Stack(
       children: [
-        SnapshotView(
-          snapshot: services.store.state,
-          controller: _scroll,
-          builder: (context, data) {
-            final feed = fmt.lm(fmt.m(data)['feed']);
-            if (feed.isEmpty) {
-              return const EmptyState(
-                'Inbox zero',
-                'Share any text into iSconl from another app, or capture '
-                    'a note below - it lands here and syncs to the vault.',
-                icon: Icons.inbox_rounded,
-              );
-            }
-            final people = fmt.lm(fmt.m(services.store.circle.value)['people']);
-            final personById = {for (final p in people) fmt.s(p['ID']): p};
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _migrateLocalSnoozes(services, feed);
-            });
-            final groups = groupThreads(feed);
-            final snoozeNow = DateTime.now();
-            bool shown(InboxThread t) =>
-                !_hidden.contains(t.key) &&
-                !SnoozeStore.instance.isSnoozed(t.key, snoozeNow) &&
-                !t.messages.where((m) => messageKind(m) != MessageKind.system).every((m) => fmt.s(m['STATUS']) == 'done');
-            final now = DateTime.now();
-
-            String nameOf(InboxThread t) {
-              final p = personById[t.key];
-              final n = p == null ? '' : fmt.s(p['NAME']);
-              if (n.isNotEmpty && n != '-') return n;
-              final sender = fmt.s(t.latest['SENDER']);
-              return sender.isNotEmpty && sender != '-' ? sender : sourceLabel(fmt.s(t.latest['CHANNEL']));
-            }
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ListenableBuilder(
-                  listenable: Listenable.merge([services.store.jira, services.store.buffer]),
-                  builder: (context, _) => Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: ChannelsDashboard(dash: _dash(services, feed), onOpenView: widget.onOpenView),
-                  ),
-                ),
-                for (final t in groups.people.where(shown))
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _swipe(context, services, t, ConversationTile(
-                      name: nameOf(t),
-                      latest: t.latest,
-                      unread: t.unread,
-                      now: now,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => InboxThreadView(
-                            title: nameOf(t),
-                            messages: t.messages,
-                            person: personById[t.key],
-                          ),
-                        ),
-                      ),
-                    )),
-                  ),
-                if (groups.unknown.where(shown).isNotEmpty) ...[
-                  const SectionLabel('Unknown'),
-                  for (final t in groups.unknown.where(shown))
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _swipe(context, services, t, _UnknownTile(thread: t, name: nameOf(t), now: now, people: people)),
-                    ),
-                ],
-              ],
-            );
-          },
+        SpaceView(
+          space: 'inbox',
+          searchHint: 'Search messages and people',
+          hits: hitsFor,
+          tabs: [for (var i = 0; i < tabLabels.length; i++) SpaceTab(tabLabels[i], _part(context, i))],
         ),
         Positioned(
           top: 0,

@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/space_header.dart';
 import 'personal_dash_model.dart';
 import 'personal_dashboard.dart';
 
@@ -21,8 +22,32 @@ class RhythmView extends StatelessWidget {
 
   static const _autoHabits = {'h-gh', 'h-learn', 'h-journal', 'h-tasks'};
 
-  @override
-  Widget build(BuildContext context) {
+  static const tabLabels = ['Today', 'Habits', 'Year'];
+
+  /// BI26101816: the search finds a habit by title, focus word, minimum version or anchor and opens the Habits tab.
+  static List<SpaceHit> hitsFor(BuildContext context) => [
+        for (final h in fmt.lm(fmt.m(AppScope.of(context).store.rhythm.value)['habits']))
+          if (fmt.s(h['title']).isNotEmpty)
+            SpaceHit(
+              title: fmt.s(h['title']),
+              subtitle: [fmt.s(h['focusWord']), fmt.s(h['minimumVersion']), fmt.s(h['anchor'])].where((x) => x.isNotEmpty).join(' · '),
+              tab: 1,
+            ),
+      ];
+
+  /// Consecutive days up to and including [today] (or ending yesterday when today is not yet ticked) that [habitId] is done.
+  static int habitStreak(Map<String, dynamic> logs, String habitId, DateTime today) {
+    var day = DateTime(today.year, today.month, today.day);
+    if (!fmt.b(fmt.m(logs[fmt.isoDate(day)])[habitId])) day = day.subtract(const Duration(days: 1));
+    var n = 0;
+    while (fmt.b(fmt.m(logs[fmt.isoDate(day)])[habitId])) {
+      n++;
+      day = day.subtract(const Duration(days: 1));
+    }
+    return n;
+  }
+
+  Widget _part(BuildContext context, int part) {
     final services = AppScope.of(context);
     return SnapshotView(
       snapshot: services.store.rhythm,
@@ -39,75 +64,99 @@ class RhythmView extends StatelessWidget {
 
         final now = DateTime.now();
         final fin = fmt.m(services.store.finance.value);
+        Widget tile(Map<String, dynamic> h, {bool streak = false}) {
+          final id = fmt.s(h['id']);
+          final auto = _autoHabits.contains(id);
+          final done = fmt.b(todayLog[id]);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _HabitTile(
+                habit: h,
+                done: done,
+                auto: auto,
+                onEdit: () => _editHabit(context, services, habits, h),
+                onToggle: auto
+                    ? null
+                    : () async {
+                        final res = await services.mutations.toggleHabit(date: today, habitId: id, done: !done);
+                        if (!context.mounted) return;
+                        if (!res.ok) {
+                          toast(context, res.error!, error: true);
+                        } else if (res.queued) {
+                          toast(context, 'Queued - will sync');
+                        }
+                      },
+              ),
+              if (streak)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 2, 0, 0),
+                  child: Text('streak ${habitStreak(logs, id, now)}d', key: Key('streak-$id'), style: T.monoSmall.copyWith(color: C.cyan)),
+                ),
+            ]),
+          );
+        }
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: PersonalDashboard(
-                blocks: blocksProgress(fmt.lm(fmt.m(services.store.dayBlock.value)['blocks']), now),
-                habits: topHabits(habits, logs, DateTime(now.year, now.month, now.day)),
-                netWorth: fmt.m(fin['netWorth'])['net'],
-                currency: fmt.s(fin['currency']).isEmpty ? 'KES' : fmt.s(fin['currency']),
-                onOpenSub: onOpenSub,
-              ),
-            ),
-            Row(
-              children: [
-                Expanded(
-                    child: _stat('TODAY', '$doneToday/${habits.length}',
-                        C.greenBright)),
-                const SizedBox(width: Sz.gap),
-                Expanded(
-                    child: _stat('STREAK', '${_streak(days)}d', C.cyan)),
-                const SizedBox(width: Sz.gap),
-                Expanded(
-                    child: _stat('YEAR', '${_activeDays(days)}d', C.violet)),
-              ],
-            ),
-            SectionLabel('Today',
-                trailing: TextButton.icon(
-                  onPressed: () => _editHabit(context, services, habits, null),
-                  icon: const Icon(Icons.add_rounded, size: 16),
-                  label: const Text('Habit'),
-                )),
-            ...habits.map((h) {
-              final id = fmt.s(h['id']);
-              final auto = _autoHabits.contains(id);
-              final done = fmt.b(todayLog[id]);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _HabitTile(
-                  habit: h,
-                  done: done,
-                  auto: auto,
-                  onEdit: () => _editHabit(context, services, habits, h),
-                  onToggle: auto
-                      ? null
-                      : () async {
-                          final res = await services.mutations.toggleHabit(
-                              date: today, habitId: id, done: !done);
-                          if (!context.mounted) return;
-                          if (!res.ok) {
-                            toast(context, res.error!, error: true);
-                          } else if (res.queued) {
-                            toast(context, 'Queued - will sync');
-                          }
-                        },
+            if (part == 0) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: PersonalDashboard(
+                  blocks: blocksProgress(fmt.lm(fmt.m(services.store.dayBlock.value)['blocks']), now),
+                  habits: topHabits(habits, logs, DateTime(now.year, now.month, now.day)),
+                  netWorth: fmt.m(fin['netWorth'])['net'],
+                  currency: fmt.s(fin['currency']).isEmpty ? 'KES' : fmt.s(fin['currency']),
+                  onOpenSub: onOpenSub,
                 ),
-              );
-            }),
-            const SectionLabel('The year'),
-            Panel(child: _Heatmap(days: days)),
-            const SizedBox(height: 10),
-            Text(
-              'Derived habits (commits, lessons, journal, tasks) are read from '
-              'what you actually did. Only the rest are yours to tick.',
-              style: T.tiny,
-            ),
+              ),
+              Row(
+                children: [
+                  Expanded(child: _stat('TODAY', '$doneToday/${habits.length}', C.greenBright)),
+                  const SizedBox(width: Sz.gap),
+                  Expanded(child: _stat('STREAK', '${_streak(days)}d', C.cyan)),
+                  const SizedBox(width: Sz.gap),
+                  Expanded(child: _stat('YEAR', '${_activeDays(days)}d', C.violet)),
+                ],
+              ),
+              const SectionLabel('Today'),
+              ...habits.map((h) => tile(h)),
+            ],
+            if (part == 1) ...[
+              SectionLabel('Habits · ${habits.length}',
+                  trailing: TextButton.icon(
+                    key: const Key('habit-add'),
+                    onPressed: () => _editHabit(context, services, habits, null),
+                    icon: const Icon(Icons.add_rounded, size: 16),
+                    label: const Text('Habit'),
+                  )),
+              if (habits.isEmpty) const EmptyState('No habits yet', 'Add one to start a streak.', icon: Icons.repeat_rounded),
+              ...habits.map((h) => tile(h, streak: true)),
+            ],
+            if (part == 2) ...[
+              const SectionLabel('The year'),
+              Panel(child: _Heatmap(days: days)),
+              const SizedBox(height: 10),
+              Text(
+                'Derived habits (commits, lessons, journal, tasks) are read from '
+                'what you actually did. Only the rest are yours to tick.',
+                style: T.tiny,
+              ),
+            ],
           ],
         );
       },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SpaceView(
+      space: 'rhythm',
+      searchHint: 'Search habits',
+      hits: hitsFor,
+      tabs: [for (var i = 0; i < tabLabels.length; i++) SpaceTab(tabLabels[i], _part(context, i))],
     );
   }
 
