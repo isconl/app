@@ -234,6 +234,7 @@ class DeckChannelView extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Panel(
                   key: ValueKey('board-${b.id}'),
+                  onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => DeckBoardScreen(id: b.id, title: b.title))),
                   child: Row(children: [
                     Expanded(child: Text(b.title, style: T.body2.copyWith(color: C.text))),
                     Text('${b.staged} staged', style: T.monoSmall),
@@ -268,6 +269,92 @@ String _ago(DateTime t, DateTime now) {
   if (d.inMinutes < 60) return '${d.inMinutes}m ago';
   if (d.inHours < 48) return '${d.inHours}h ago';
   return '${d.inDays}d ago';
+}
+
+/// One staged card on a board, as `GET /api/deck/board/<id>/items` serves it.
+class DeckCard {
+  const DeckCard({required this.id, required this.kind, required this.title, required this.body, required this.project, required this.field, required this.link, required this.ask});
+  final String id, kind, title, body, project, field, link, ask;
+
+  static List<DeckCard> parse(dynamic json) => [
+        for (final x in fmt.lm(fmt.m(json)['items']))
+          if (fmt.s(x['title']).isNotEmpty)
+            DeckCard(id: fmt.s(x['id']), kind: fmt.s(x['kind']), title: fmt.s(x['title']), body: fmt.s(x['body']), project: fmt.s(x['project']), field: fmt.s(x['field']), link: fmt.s(x['link']), ask: fmt.s(x['ask'])),
+      ];
+}
+
+/// The five fields of a weekly review, in Deck's order, as column headings.
+const deckFields = [('signal', 'Signal'), ('substance', 'Substance'), ('trajectory', 'Trajectory'), ('risks', 'Risks'), ('asks', 'Asks')];
+
+/// A board's staged cards grouped under the review's five headings, with a project filter. Read only on the phone:
+/// editing, moving, removing and composing are the account owner's on deck.qprow.com (BI26101813 follow-up).
+class DeckBoardScreen extends StatefulWidget {
+  const DeckBoardScreen({super.key, required this.id, required this.title});
+  final String id;
+  final String title;
+
+  @override
+  State<DeckBoardScreen> createState() => _DeckBoardScreenState();
+}
+
+class _DeckBoardScreenState extends State<DeckBoardScreen> {
+  String _project = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final services = AppScope.of(context);
+    final snap = services.store.detail('deckboard', widget.id, '/api/deck/board/${Uri.encodeComponent(widget.id)}/items');
+    return Scaffold(
+      backgroundColor: C.bg,
+      appBar: AppBar(title: Text(widget.title, overflow: TextOverflow.ellipsis)),
+      body: SnapshotView(
+        snapshot: snap,
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 56),
+        empty: const EmptyState('Nothing staged', 'Cards staged on this board appear here.', icon: Icons.dashboard_customize_rounded),
+        builder: (context, data) {
+          final cards = DeckCard.parse(data);
+          if (cards.isEmpty) return const EmptyState('Nothing staged', 'Cards staged on this board appear here.', icon: Icons.dashboard_customize_rounded);
+          final projects = ({for (final c in cards) if (c.project.isNotEmpty) c.project}.toList()..sort());
+          final shown = [for (final c in cards) if (_project.isEmpty || c.project == _project) c];
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (projects.length > 1)
+              SingleChildScrollView(
+                key: const Key('deck-project-filter'),
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  Padding(padding: const EdgeInsets.only(right: 6), child: ChoiceChip(label: Text('All ${cards.length}'), selected: _project.isEmpty, onSelected: (_) => setState(() => _project = ''))),
+                  for (final p in projects)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(key: Key('deck-filter-$p'), label: Text('$p ${cards.where((c) => c.project == p).length}'), selected: _project == p, onSelected: (_) => setState(() => _project = p)),
+                    ),
+                ]),
+              ),
+            for (final (key, heading) in deckFields)
+              if (shown.any((c) => c.field == key)) ...[
+                SectionLabel('$heading (${shown.where((c) => c.field == key).length})'),
+                for (final c in shown.where((c) => c.field == key))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Panel(
+                      key: ValueKey('card-${c.id}'),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(c.title, style: T.w600(T.body2)),
+                        if (c.body.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(c.body, style: T.small.copyWith(color: C.text2))),
+                        if (c.ask.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('Ask: ${c.ask}', style: T.small.copyWith(color: C.amber))),
+                        Padding(padding: const EdgeInsets.only(top: 6), child: Text([c.kind, c.project].where((e) => e.isNotEmpty).join(' · '), style: T.monoSmall)),
+                      ]),
+                    ),
+                  ),
+              ],
+            if (shown.every((c) => !deckFields.any((f) => f.$1 == c.field)) && shown.isNotEmpty)
+              for (final c in shown)
+                Padding(padding: const EdgeInsets.only(bottom: 8), child: Panel(child: Text(c.title, style: T.body2))),
+          ]);
+        },
+      ),
+    );
+  }
 }
 
 /// A draft, read-only.

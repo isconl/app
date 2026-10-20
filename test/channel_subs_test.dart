@@ -116,4 +116,28 @@ void main() {
     await t.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
     await t.pump(const Duration(seconds: 1));
   });
+
+  testWidgets('BI26101813: a board opens to its cards under the five review headings, with a project filter', (t) async {
+    t.view.physicalSize = const Size(600, 1600);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+    final services = (await t.runAsync(() => buildTestServices(_Api(), online: false)))!;
+    services.store.detail('deckboard', 'b1', '/api/deck/board/b1/items').value = {
+      'items': [
+        {'id': 'i1', 'kind': 'work', 'title': 'Shipped the board', 'body': '', 'project': 'deck', 'field': 'signal', 'link': '', 'ask': ''},
+        {'id': 'i2', 'kind': 'ask', 'title': 'Need a decision', 'body': '', 'project': 'vela', 'field': 'asks', 'link': '', 'ask': 'Pick one'},
+      ],
+    };
+    await t.pumpWidget(AppScope(services: services, child: const MaterialApp(home: DeckBoardScreen(id: 'b1', title: 'Work review: Joel'))));
+    await t.pump();
+    expect(find.text('SIGNAL (1)'), findsOneWidget);
+    expect(find.text('ASKS (1)'), findsOneWidget);
+    expect(find.text('Ask: Pick one'), findsOneWidget);
+    await t.tap(find.byKey(const Key('deck-filter-deck')));
+    await t.pump();
+    expect(find.byKey(const ValueKey('card-i1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('card-i2')), findsNothing);
+    await t.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
+    await t.pump(const Duration(seconds: 1));
+  });
 }
