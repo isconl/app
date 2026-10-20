@@ -19,7 +19,7 @@ import 'views/chat.dart';
 import 'views/circle.dart';
 import 'views/corporate.dart';
 import 'views/decisions.dart';
-import 'views/files.dart';
+import 'views/hold_space.dart';
 import 'views/finance.dart';
 import 'views/github.dart';
 import 'views/hosted_services.dart';
@@ -118,7 +118,7 @@ List<_SubTab> _projectsSubsFor(void Function(int) openSub) => [
 // BI26100131: Settings carries the Systems dashboard, whose tiles open Ops and the Slate Register.
 List<_SubTab> _settingsSubsFor(void Function(int) openSub) => [
   _SubTab('Settings', SettingsView(onOpenSub: openSub)),
-  const _SubTab('Hold',     FilesView()),
+  const _SubTab('Hold',     HoldSpace()),
   const _SubTab('OpSec',    OpsView()),
 ];
 
@@ -1046,7 +1046,7 @@ class MenuSheet extends StatelessWidget {
           _item(ctx, Icons.apps_rounded, 'Services',
               () => go(const HostedServicesView(), 'Services')),
           _item(ctx, Icons.folder_rounded, 'Hold',
-              () => go(const FilesView(), 'Hold')),
+              () => go(const HoldSpace(), 'Hold')),
           _item(ctx, Icons.play_circle_filled_rounded, 'Media',
               () => go(const MediaView(), 'Media')),
           _item(ctx, Icons.link_rounded, 'Audit',
@@ -1217,7 +1217,7 @@ class SecondaryScreen extends StatelessWidget {
     'spaces' => (const SpacesView(), 'Spaces'),
     'ops' => (const OpsView(), 'OpSec'),
     'services' || 'hosted' => (const HostedServicesView(), 'Services'),
-    'files' || 'hold' => (const FilesView(), 'Hold'),
+    'files' || 'hold' => (const HoldSpace(), 'Hold'),
     'media' => (const MediaView(), 'Media'),
     'audit' => (const AuditView(), 'Audit'),
     'articles' => (const ArticlesView(), 'Articles'),

@@ -58,6 +58,10 @@ class ConsolePlayer extends ChangeNotifier {
   final AudioBackend Function() _makeBackend;
   final ConsoleKeyValue _store;
 
+  /// Turns a stored track into one the backend can open right now (a library track's "media:" uri becomes a fresh
+  /// streaming url, or a cached file). Null means tracks load as they are.
+  Future<ConsoleTrack> Function(ConsoleTrack)? resolver;
+
   static const speeds = <double>[1.0, 1.25, 1.5, 2.0];
   static const skipBack = Duration(seconds: 15);
   static const skipForward = Duration(seconds: 30);
@@ -90,6 +94,18 @@ class ConsolePlayer extends ChangeNotifier {
     queue.add(t);
     notifyListeners();
     if (playNow || index < 0) await playAt(queue.length - 1, autoplay: playNow);
+    await _persist();
+  }
+
+  /// Puts [t] right after the current track (long-press "play next"); a track already queued moves there.
+  Future<void> playNext(ConsoleTrack t) async {
+    final playingId = current?.id;
+    queue.removeWhere((q) => q.id == t.id && q.id != playingId);
+    final at = index < 0 ? queue.length : (queue.indexWhere((q) => q.id == playingId) + 1).clamp(0, queue.length);
+    queue.insert(at, t);
+    if (playingId != null) index = queue.indexWhere((q) => q.id == playingId);
+    notifyListeners();
+    if (playingId == null) await playAt(queue.indexWhere((q) => q.id == t.id), autoplay: false);
     await _persist();
   }
 
@@ -135,7 +151,7 @@ class ConsolePlayer extends ChangeNotifier {
     notifyListeners();
     final b = _ensureBackend();
     try {
-      final d = await b.load(queue[i]);
+      final d = await b.load(resolver == null ? queue[i] : await resolver!(queue[i]));
       duration = d ?? Duration.zero;
       await b.setSpeed(speed);
       if (autoplay) {

@@ -12,6 +12,9 @@ import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../console/console_lines.dart';
+import '../../data/audio_library.dart';
+import '../../util/fmt.dart' as fmt;
+import 'common.dart' show MiniSpinner;
 import '../../console/console_mode.dart';
 import '../../console/console_player.dart';
 import '../../console/console_recorder.dart';
@@ -556,6 +559,12 @@ class _QueueSheetState extends State<_QueueSheet> {
                   ),
               ],
             ),
+            if (widget.services.library != null) ...[
+              const SizedBox(height: 16),
+              Text('Library', style: T.label),
+              for (final f in libraryFolders())
+                _LibraryFolderTile(key: Key('library-${f.label}'), folder: f, source: widget.services.library!.source, player: player),
+            ],
             if (_recordings.isNotEmpty) ...[
               const SizedBox(height: 16),
               Text('Recordings', style: T.label),
@@ -596,6 +605,69 @@ class _QueueSheetState extends State<_QueueSheet> {
   static String _base(String b) {
     final t = b.trim();
     return t.endsWith('/') ? t.substring(0, t.length - 1) : t;
+  }
+}
+
+/// BI26101807: one library folder. Opening it lists its files; tap adds to the queue, long-press plays next.
+class _LibraryFolderTile extends StatefulWidget {
+  const _LibraryFolderTile({super.key, required this.folder, required this.source, required this.player});
+  final LibraryFolder folder;
+  final AudioLibrarySource source;
+  final ConsolePlayer player;
+
+  @override
+  State<_LibraryFolderTile> createState() => _LibraryFolderTileState();
+}
+
+class _LibraryFolderTileState extends State<_LibraryFolderTile> {
+  List<LibraryTrack>? _tracks;
+  String? _error;
+  bool _loading = false;
+
+  Future<void> _load() async {
+    if (_tracks != null || _loading) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final t = await widget.source.files(widget.folder);
+      if (mounted) setState(() => _tracks = t);
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not read ${widget.folder.label}.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  ConsoleTrack _track(LibraryTrack t) => ConsoleTrack(id: t.id, title: t.title, uri: t.uri);
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpansionTile(
+      dense: true,
+      tilePadding: EdgeInsets.zero,
+      leading: Icon(widget.folder.kind == LibraryFolderKind.music ? Icons.library_music_rounded : widget.folder.kind == LibraryFolderKind.recordings ? Icons.mic_rounded : Icons.voicemail_rounded, size: 18, color: C.text2),
+      title: Text(widget.folder.label),
+      onExpansionChanged: (open) {
+        if (open) _load();
+      },
+      children: [
+        if (_loading) const Padding(padding: EdgeInsets.all(12), child: MiniSpinner()),
+        if (_error != null) Padding(padding: const EdgeInsets.all(8), child: Text(_error!, style: T.small.copyWith(color: C.red))),
+        if (_tracks != null && _tracks!.isEmpty) Padding(padding: const EdgeInsets.all(8), child: Text('Nothing here yet.', style: T.small.copyWith(color: C.text3))),
+        for (final t in _tracks ?? const <LibraryTrack>[])
+          ListTile(
+            key: Key('lib-${t.path}'),
+            dense: true,
+            title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(fmt.bytesLabel(t.bytes), style: T.tiny),
+            trailing: const Icon(Icons.add_rounded),
+            onTap: () => widget.player.addToQueue(_track(t)),
+            onLongPress: () => widget.player.playNext(_track(t)),
+          ),
+      ],
+    );
   }
 }
 

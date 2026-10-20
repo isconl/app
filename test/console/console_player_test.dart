@@ -139,4 +139,29 @@ void main() {
     await player.restore();
     expect(player.queue, isEmpty);
   });
+
+  test('BI26101807: a long-press plays a library track next, right after the current one', () async {
+    await player.addToQueue(t('a'));
+    await player.addToQueue(t('b'));
+    await player.addToQueue(t('c'));
+    await player.playNext(t('z'));
+    expect([for (final q in player.queue) q.id], ['a', 'z', 'b', 'c']);
+    await player.playNext(t('c'));
+    expect([for (final q in player.queue) q.id], ['a', 'c', 'z', 'b'], reason: 'a queued track moves rather than doubling');
+    expect(player.current!.id, 'a');
+  });
+
+  test('BI26101807: a media: uri is resolved to a fresh url at play time, not at queue time', () async {
+    final urls = <String>[];
+    player.resolver = (tr) async {
+      urls.add(tr.id);
+      return ConsoleTrack(id: tr.id, title: tr.title, uri: 'https://media.test/stream?t=${urls.length}');
+    };
+    await player.addToQueue(const ConsoleTrack(id: 'm1', title: 'Song', uri: 'media:Audio/audio-music/song.mp3'));
+    await player.addToQueue(const ConsoleTrack(id: 'm2', title: 'Song 2', uri: 'media:Audio/audio-music/song2.mp3'));
+    expect(urls, ['m1'], reason: 'only the track that is loading is resolved');
+    await player.next();
+    expect(urls, ['m1', 'm2']);
+    expect(player.queue.first.uri, startsWith('media:'), reason: 'the queue keeps the stable uri, so a restored queue never holds an expired ticket');
+  });
 }
