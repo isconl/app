@@ -5,31 +5,57 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/space_header.dart';
 
-/// Ventures / products / platforms with live health checks.
+/// BI26101815: which of Active, Building and Shipped a project's status belongs to. Every value lands in exactly one;
+/// anything unknown or empty is Active.
+int projectTabOf(String status) {
+  final v = status.toLowerCase().trim();
+  if (const {'building', 'build', 'wip', 'in progress', 'in-progress', 'developing', 'development', 'dev', 'design', 'designing', 'planned', 'planning', 'idea', 'prototype', 'draft', 'alpha', 'beta', 'pre-launch'}.contains(v)) return 1;
+  if (const {'shipped', 'launched', 'released', 'done', 'complete', 'completed', 'sold', 'archived', 'retired', 'closed', 'sunset'}.contains(v)) return 2;
+  return 0;
+}
+
+const projectTabLabels = ['Active', 'Building', 'Shipped'];
+
+List<Map<String, dynamic>> _projectsOf(dynamic data, String? cat) {
+  final all = fmt.lm(fmt.m(data)['projects']);
+  if (cat == null || cat.isEmpty || cat.toLowerCase() == 'all') return all;
+  return all.where((p) => fmt.s(p['CATEGORY'] ?? p['TYPE'] ?? p['cat']).toLowerCase().contains(cat.toLowerCase())).toList();
+}
+
+/// Ventures / products / platforms with live health checks, in three tabs by status (BI26101815).
 class ProjectsView extends StatelessWidget {
   const ProjectsView({super.key, this.cat});
   final String? cat;
 
-  @override
-  Widget build(BuildContext context) {
+  /// The search finds a project by name, kind, note or address and opens the tab its status puts it in.
+  static List<SpaceHit> hitsFor(BuildContext context, String? cat) => [
+        for (final p in _projectsOf(AppScope.of(context).store.projects.value, cat))
+          if (fmt.s(p['NAME']).isNotEmpty)
+            SpaceHit(
+              title: fmt.s(p['NAME']),
+              subtitle: [fmt.s(p['KIND']), fmt.s(p['STATUS']), fmt.s(p['NOTE'])].where((x) => x.isNotEmpty).join(' · '),
+              tab: projectTabOf(fmt.s(p['STATUS'])),
+            ),
+      ];
+
+  Widget _tab(BuildContext context, int tab) {
     final services = AppScope.of(context);
     return SnapshotView(
       snapshot: services.store.projects,
       builder: (context, data) {
-        final allProjects = fmt.lm(fmt.m(data)['projects']);
-        final projects = cat == null || cat!.isEmpty || cat!.toLowerCase() == 'all'
-            ? allProjects
-            : allProjects.where((p) {
-                final category = fmt.s(p['CATEGORY'] ?? p['TYPE'] ?? p['cat']).toLowerCase();
-                return category.contains(cat!.toLowerCase());
-              }).toList();
-        if (projects.isEmpty) {
+        final all = _projectsOf(data, cat);
+        if (all.isEmpty) {
           return EmptyState(
             cat == null ? 'No projects registered' : 'No $cat projects registered',
             'Ventures and products from the finance vault appear here.',
             icon: Icons.rocket_launch_rounded,
           );
+        }
+        final projects = [for (final p in all) if (projectTabOf(fmt.s(p['STATUS'])) == tab) p];
+        if (projects.isEmpty) {
+          return EmptyState('Nothing ${projectTabLabels[tab].toLowerCase()}', 'Projects with this status appear here.', icon: Icons.rocket_launch_rounded);
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -42,6 +68,17 @@ class ProjectsView extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final noun = (cat == null || cat!.isEmpty) ? 'projects' : '${cat!}s';
+    return SpaceView(
+      space: 'projects-${cat == null || cat!.isEmpty ? 'all' : cat}',
+      searchHint: 'Search $noun',
+      hits: (c) => hitsFor(c, cat),
+      tabs: [for (var i = 0; i < projectTabLabels.length; i++) SpaceTab(projectTabLabels[i], _tab(context, i))],
     );
   }
 }

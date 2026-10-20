@@ -23,6 +23,9 @@ class DebriefCard extends StatefulWidget {
   /// Tests show it at any hour.
   final bool alwaysShow;
 
+  /// The hour the evening rule reads. Tests pin it, so a suite run after 18:00 does not build a real recorder.
+  static int Function() hourNow = () => DateTime.now().hour;
+
   @override
   State<DebriefCard> createState() => _DebriefCardState();
 }
@@ -67,7 +70,7 @@ class _DebriefCardState extends State<DebriefCard> {
   @override
   Widget build(BuildContext context) {
     // Nothing is built, and no microphone plugin touched, outside the evening.
-    if (_c == null && widget.controller == null && !widget.alwaysShow && DateTime.now().hour < 18) return const SizedBox.shrink();
+    if (_c == null && widget.controller == null && !widget.alwaysShow && DebriefCard.hourNow() < 18) return const SizedBox.shrink();
     final ctl = c;
     return ListenableBuilder(
       listenable: ctl,

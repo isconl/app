@@ -4,6 +4,7 @@ import '../../theme.dart';
 import '../widgets/common.dart';
 import '../../app_scope.dart';
 import '../../util/fmt.dart' as fmt;
+import '../widgets/space_header.dart';
 import 'portfolio.dart';
 import 'practice_leads.dart';
 import 'projects_dash_model.dart';
@@ -17,105 +18,60 @@ import 'projects_dashboard.dart';
 /// hub/web/static/app.js's renderPractice()/PRACTICE_TABS exactly, tab
 /// for tab, so a later full build (BI26092652) lands on the same shape
 /// both platforms already show.
-enum _PracticeTab { dashboard, documents, overview, practices, codex, enquiries }
-
 const _practiceLater = ['Bookings', 'Orders', 'Newsletter', 'Portfolios'];
 const _soon = 'Arrives when the sconl-practice engine is live.';
 
-class PracticeView extends StatefulWidget {
+/// BI26101815: Practice is Overview (the dashboard tiles and what is still to arrive), Documents and Enquiries.
+const practiceTabLabels = ['Overview', 'Documents', 'Enquiries'];
+
+class PracticeView extends StatelessWidget {
   const PracticeView({super.key, this.onOpenSub});
 
   /// Opens a sibling Projects sub-tab (Corporate 1, Products 2, Platforms 3).
   final void Function(int sub)? onOpenSub;
 
-  @override
-  State<PracticeView> createState() => _PracticeViewState();
-}
+  /// The search finds a document and opens the Documents tab. Enquiries are fetched live by their own tab, so they are
+  /// searched there.
+  static List<SpaceHit> hitsFor(BuildContext context) => [
+        for (final i in fmt.lm(fmt.m(AppScope.of(context).store.portfolio.value)['items']))
+          if (fmt.s(i['title']).isNotEmpty) SpaceHit(title: fmt.s(i['title']), subtitle: fmt.s(i['url']), tab: 1),
+      ];
 
-class _PracticeViewState extends State<PracticeView> {
-  _PracticeTab _tab = _PracticeTab.dashboard;
-
-  String _label(_PracticeTab t) => switch (t) {
-        _PracticeTab.dashboard => 'Dashboard',
-        _PracticeTab.documents => 'Documents',
-        _PracticeTab.overview => 'Overview',
-        _PracticeTab.practices => 'Practices',
-        _PracticeTab.codex => 'Codex',
-        _PracticeTab.enquiries => 'Enquiries',
-      };
-
-  Widget _placeholder(String title) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: EmptyState(title, _soon),
-      );
-
-  Widget _overviewBody() => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // BI26092652: Leads (enquiries and booked diagnostics, the funnel and the actions) is the live part of Overview.
-          const PracticeLeads(),
-          const SizedBox(height: 12),
-          Panel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Also arriving with the engine', style: T.w600(T.body2)),
-                const SizedBox(height: 6),
-                Text(
-                  '${_practiceLater.join(' · ')}: each ${_soon.toLowerCase()}',
-                  style: T.small.copyWith(color: C.text3),
-                ),
-              ],
+  Widget _later() => Panel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Also arriving with the engine', style: T.w600(T.body2)),
+            const SizedBox(height: 6),
+            Text(
+              'Practices and Codex, then ${_practiceLater.join(' · ')}: each ${_soon.toLowerCase()}',
+              style: T.small.copyWith(color: C.text3),
             ),
-          ),
-        ],
+          ],
+        ),
       );
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SectionLabel('Practice'),
-        Text(
-          "The Practice: Sconl's public platform and its own documents",
-          style: T.small.copyWith(color: C.text3),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 34,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: [
-              for (final t in _PracticeTab.values)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(_label(t)),
-                    selected: _tab == t,
-                    onSelected: (_) => setState(() => _tab = t),
-                  ),
-                ),
-            ],
+    return SpaceView(
+      space: 'practice',
+      searchHint: 'Search documents and enquiries',
+      subtitle: "The Practice: Sconl's public platform and its own documents",
+      hits: hitsFor,
+      tabs: [
+        SpaceTab(
+          practiceTabLabels[0],
+          SnapshotView(
+            snapshot: AppScope.of(context).store.projects,
+            builder: (context, data) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              ProjectsDashboard(dash: ProjectsDash.from(fmt.lm(fmt.m(data)['projects'])), onOpenSub: onOpenSub),
+              const SizedBox(height: 12),
+              _later(),
+            ]),
           ),
         ),
-        const SizedBox(height: 12),
-        // The tab body fills what is left. Documents scroll themselves; the rest scroll here.
-        Expanded(
-          child: switch (_tab) {
-            _PracticeTab.dashboard => SnapshotView(
-                snapshot: AppScope.of(context).store.projects,
-                builder: (context, data) => ProjectsDashboard(
-                  dash: ProjectsDash.from(fmt.lm(fmt.m(data)['projects'])),
-                  onOpenSub: widget.onOpenSub,
-                ),
-              ),
-            _PracticeTab.documents => const PortfolioView(),
-            _PracticeTab.overview => SingleChildScrollView(child: _overviewBody()),
-            _PracticeTab.enquiries => const SingleChildScrollView(child: PracticeLeads()),
-            _ => SingleChildScrollView(child: _placeholder(_label(_tab))),
-          },
-        ),
+        SpaceTab(practiceTabLabels[1], const PortfolioView()),
+        SpaceTab(practiceTabLabels[2], const SingleChildScrollView(child: PracticeLeads())),
       ],
     );
   }

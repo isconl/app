@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:isconl/api/client.dart';
 import 'package:isconl/app_scope.dart';
+import 'package:isconl/ui/widgets/debrief_card.dart';
 import 'package:isconl/data/db.dart';
 import 'package:isconl/data/lesson_notes.dart';
 import 'package:isconl/data/modules.dart';
@@ -58,6 +59,7 @@ void main() {
   });
 
   Future<AppServices> buildTestServices({bool online = true}) async {
+    DebriefCard.hourNow = () => 9; // the debrief card appears from 18:00 and would build a real recorder
     final rawDb = await databaseFactory.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(

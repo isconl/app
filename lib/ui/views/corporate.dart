@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
+import '../../data/store.dart' show Snapshot;
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show ShellAppBar;
 import '../widgets/common.dart';
+import '../widgets/space_header.dart';
 
 /// Corporate Engagements, from /api/corporate.
 ///
@@ -20,6 +22,46 @@ import '../widgets/common.dart';
 /// entry in the registry this reads.
 class CorporateView extends StatelessWidget {
   const CorporateView({super.key});
+
+  static const tabLabels = ['Entities', 'Work', 'People'];
+
+  /// BI26101815: the search finds an engagement by name or role, and any task, decision, risk or person of an engagement
+  /// whose detail the app already holds, and opens the tab that holds it.
+  static List<SpaceHit> hitsFor(BuildContext context) {
+    final store = AppScope.of(context).store;
+    final out = <SpaceHit>[];
+    for (final eng in fmt.lm(fmt.m(store.corporate.value)['engagements'])) {
+      final id = fmt.s(eng['id']);
+      final name = fmt.s(eng['name']);
+      if (name.isNotEmpty) out.add(SpaceHit(title: name, subtitle: fmt.s(eng['role']), tab: 0));
+      final d = fmt.m(store.detail('corporate', id, '/api/corporate/detail?id=$id').value);
+      for (final t in [...fmt.lm(d['tasks']), ...fmt.lm(d['decisions']), ...fmt.lm(d['risks'])]) {
+        if (fmt.s(t['title']).isNotEmpty) out.add(SpaceHit(title: fmt.s(t['title']), subtitle: name, tab: 1));
+      }
+      for (final p in fmt.lm(d['people'])) {
+        if (fmt.s(p['name']).isNotEmpty) out.add(SpaceHit(title: fmt.s(p['name']), subtitle: [fmt.s(p['role']), name].where((x) => x.isNotEmpty).join(' · '), tab: 2));
+      }
+    }
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SpaceView(
+      space: 'corporate',
+      searchHint: 'Search corporates, tasks and people',
+      hits: hitsFor,
+      tabs: const [
+        SpaceTab('Entities', _EntitiesTab()),
+        SpaceTab('Work', _AcrossTab(work: true)),
+        SpaceTab('People', _AcrossTab(work: false)),
+      ],
+    );
+  }
+}
+
+class _EntitiesTab extends StatelessWidget {
+  const _EntitiesTab();
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +89,67 @@ class CorporateView extends StatelessWidget {
               ),
           ],
         );
+      },
+    );
+  }
+}
+
+/// Work (tasks, decisions and risks) or People across every engagement, one section per engagement, from each one's
+/// detail (already cached for the detail screen).
+class _AcrossTab extends StatelessWidget {
+  const _AcrossTab({required this.work});
+  final bool work;
+
+  @override
+  Widget build(BuildContext context) {
+    final services = AppScope.of(context);
+    return SnapshotView(
+      snapshot: services.store.corporate,
+      builder: (context, data) {
+        final engagements = fmt.lm(fmt.m(data)['engagements']);
+        if (engagements.isEmpty) {
+          return EmptyState(work ? 'No work on record' : 'No people on record', 'Engagements appear here from the career vault.', icon: Icons.apartment_rounded);
+        }
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final eng in engagements)
+            _AcrossSection(
+              key: ValueKey('${work ? 'work' : 'people'}-${fmt.s(eng['id'])}'),
+              name: fmt.s(eng['name']),
+              snapshot: services.store.detail('corporate', fmt.s(eng['id']), '/api/corporate/detail?id=${fmt.s(eng['id'])}'),
+              work: work,
+            ),
+        ]);
+      },
+    );
+  }
+}
+
+class _AcrossSection extends StatelessWidget {
+  const _AcrossSection({super.key, required this.name, required this.snapshot, required this.work});
+  final String name;
+  final Snapshot snapshot;
+  final bool work;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: snapshot,
+      builder: (context, _) {
+        final d = fmt.m(snapshot.value);
+        final rows = work
+            ? [
+                for (final t in fmt.lm(d['tasks'])) KvRow(fmt.s(t['status']), fmt.s(t['title'])),
+                for (final x in fmt.lm(d['decisions'])) KvRow(fmt.s(x['id']), fmt.s(x['title'])),
+                for (final x in fmt.lm(d['risks'])) KvRow(fmt.s(x['id']), fmt.s(x['title'])),
+              ]
+            : [for (final p in fmt.lm(d['people'])) KvRow(fmt.s(p['role']), fmt.s(p['name']))];
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          SectionLabel(name),
+          if (rows.isEmpty)
+            Panel(child: Text(snapshot.value == null ? 'Loading…' : (work ? 'No tasks, decisions or risks.' : 'No people.'), style: T.small.copyWith(color: C.text3)))
+          else
+            Panel(child: Column(children: rows)),
+        ]);
       },
     );
   }

@@ -8,6 +8,7 @@ import 'package:isconl/data/outbox.dart';
 import 'package:isconl/data/store.dart';
 import 'package:isconl/data/sync.dart';
 import 'package:isconl/data/vault_mirror.dart';
+import 'package:isconl/ui/widgets/debrief_card.dart';
 import 'package:isconl/services/narration.dart';
 import 'package:isconl/services/session.dart';
 import 'package:isconl/services/sms_ingest.dart';
@@ -49,6 +50,8 @@ class _Sync extends SyncEngine {
 
 /// Full in-memory app services around [api], for widget tests. Call inside `tester.runAsync`.
 Future<AppServices> buildTestServices(ApiClient api, {bool online = true}) async {
+  // The debrief card appears from 18:00 and would build a real microphone recorder; pin the hour for every test.
+  DebriefCard.hourNow = () => 9;
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
   final rawDb = await databaseFactory.openDatabase(
