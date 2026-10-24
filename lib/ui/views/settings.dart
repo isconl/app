@@ -5,6 +5,7 @@ import '../../services/branding.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../update_flow.dart';
+import '../widgets/apk_link_button.dart';
 import '../widgets/parity9c_widgets.dart';
 import '../widgets/common.dart';
 import '../widgets/slate_closes_card.dart';
@@ -393,6 +394,7 @@ class _SettingsViewState extends State<SettingsView> {
                                   size: 16),
                           label: const Text('Check for update'),
                         ),
+                        const ApkLinkButton(),
                       ],
                     ),
                     const SizedBox(height: 10),
