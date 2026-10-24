@@ -10,7 +10,10 @@ import '../widgets/space_header.dart';
 /// address ever used, old and throwaway included), Sign-ups (what each address is signed up to) and AI seats (Claude and
 /// agy accounts with live usage from slate). Passwords, codes and keys are never stored; only the Bitwarden item name is.
 class AccountsSpace extends StatefulWidget {
-  const AccountsSpace({super.key, this.api, this.clock});
+  const AccountsSpace({super.key, this.api, this.clock, this.initialTab = 0});
+
+  /// 0 Addresses, 1 Sign-ups, 2 AI seats. The home card opens Sign-ups.
+  final int initialTab;
 
   /// Overrides for tests; the app passes none and gets the live client.
   final AccountsApi? api;
@@ -39,6 +42,7 @@ class _AccountsSpaceState extends State<AccountsSpace> {
     final api = _api!;
     return SpaceView(
       space: 'accounts',
+      initialTab: widget.initialTab,
       searchHint: 'Search addresses and sign-ups',
       onSearch: (ctx) => ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Use the filters on each tab.'))),
       tabs: [

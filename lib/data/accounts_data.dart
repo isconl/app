@@ -17,6 +17,9 @@
 ///   GET  /api/accounts/breaches                  -> {enabled,line,items:[{address,breach,date,notified}]}
 ///   POST /api/accounts/breaches/notified         -> {notified}
 ///
+/// BI26102403 (money out beside money in, for the home card):
+///   GET  /api/accounts/spend?month=YYYY-MM       -> {totals:[{currency,monthly}], renewals:[{id,service,amount,currency,renewsOn}], unknownCost}
+///
 /// Never stored or shown: passwords, recovery codes, 2FA seeds, API keys, cookies. Only the Bitwarden item NAME is kept.
 library;
 
@@ -324,6 +327,56 @@ class BreachStatus {
   List<Breach> get fresh => [for (final b in items) if (!b.notified) b];
 }
 
+class RenewalChip {
+  const RenewalChip({required this.id, required this.service, required this.amount, required this.currency, required this.renewsOn});
+  factory RenewalChip.from(Map<String, dynamic> m) => RenewalChip(
+        id: fmt.s(m['id']),
+        service: fmt.s(m['service']),
+        amount: (m['amount'] is num) ? (m['amount'] as num).toDouble() : double.tryParse(fmt.s(m['amount'])) ?? 0,
+        currency: fmt.s(m['currency']),
+        renewsOn: DateTime.tryParse(fmt.s(m['renewsOn'])) ?? DateTime.now(),
+      );
+  final String id, service, currency;
+  final double amount;
+  final DateTime renewsOn;
+
+  /// "Claude Team, 2 Nov, USD 30": no address, because the home card can be seen over a shoulder.
+  String get label => '$service, ${renewsOn.day} ${fmt.monthsFull[renewsOn.month - 1].substring(0, 3)}, $currency ${amountText(amount)}';
+
+  /// Amber when the renewal is within 3 days.
+  bool soon(DateTime now) => DateTime(renewsOn.year, renewsOn.month, renewsOn.day).difference(DateTime(now.year, now.month, now.day)).inDays <= 3;
+}
+
+/// This month's sign-up spend, per currency and never converted (no rate is stored, and a made-up rate would mislead).
+class SpendSummary {
+  const SpendSummary({this.totals = const {}, this.renewals = const [], this.unknownCost = 0});
+  factory SpendSummary.from(Map<String, dynamic> m) => SpendSummary(
+        totals: {
+          for (final t in fmt.lm(m['totals']))
+            fmt.s(t['currency']): (t['monthly'] is num) ? (t['monthly'] as num).toDouble() : double.tryParse(fmt.s(t['monthly'])) ?? 0,
+        },
+        renewals: [for (final r in fmt.lm(m['renewals'])) RenewalChip.from(r)],
+        unknownCost: fmt.i(m['unknownCost']),
+      );
+  final Map<String, double> totals;
+  final List<RenewalChip> renewals;
+  final int unknownCost;
+
+  bool get empty => totals.isEmpty && unknownCost == 0;
+
+  /// "Out this month: KES 4,200 · USD 45 (3 with no cost set)", or "No paid sign-ups recorded".
+  String get line {
+    if (empty) return 'No paid sign-ups recorded';
+    final money = totals.entries.map((e) => '${e.key} ${amountText(e.value)}').join(' · ');
+    final unknown = unknownCost > 0 ? '($unknownCost with no cost set)' : '';
+    if (money.isEmpty) return 'Out this month: nothing priced yet $unknown'.trim();
+    return 'Out this month: $money${unknown.isEmpty ? '' : ' $unknown'}';
+  }
+}
+
+/// 4200 -> "4,200"; 45.5 -> "45.50".
+String amountText(double v) => v == v.roundToDouble() ? fmt.thousands(v.round()) : v.toStringAsFixed(2);
+
 class ScanResult {
   const ScanResult({this.added = 0, this.mailboxes = 0, this.failed = 0});
   final int added, mailboxes, failed;
@@ -341,6 +394,7 @@ abstract class AccountsApi {
   Future<void> decide(String id, String decision);
   Future<BreachStatus> breaches();
   Future<void> markBreachesNotified();
+  Future<SpendSummary> spend();
 }
 
 class HttpAccountsApi implements AccountsApi {
@@ -403,6 +457,9 @@ class HttpAccountsApi implements AccountsApi {
   Future<void> markBreachesNotified() async {
     await _go(() => api.postJson('/api/accounts/breaches/notified', {}));
   }
+
+  @override
+  Future<SpendSummary> spend() async => SpendSummary.from(await _go(() => api.getJson('/api/accounts/spend')));
 }
 
 /// In-memory stand-in, seeded with the addresses already on record.
@@ -460,6 +517,10 @@ class FakeAccountsApi implements AccountsApi {
     }
     if (decision != 'later') dismissed.add(id);
   }
+
+  @override
+  Future<SpendSummary> spend() async => SpendSummary(totals: monthlyTotals(_signUps), unknownCost: unknownCostCount);
+  int unknownCostCount = 0;
 
   @override
   Future<BreachStatus> breaches() async => _breaches;
