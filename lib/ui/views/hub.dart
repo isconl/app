@@ -12,6 +12,7 @@ import 'spaced_review_view.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show openNavRoute;
 import '../../util/freshness.dart';
+import '../widgets/revenue_actions_card.dart';
 import '../widgets/as_of_line.dart';
 import '../widgets/block_card.dart';
 import '../widgets/checkpoint_card.dart';
@@ -191,6 +192,8 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
                 ],
               ),
             ),
+            // ---- BI26102202: the first shilling stays in view ----
+            const RevenueActionsCard(),
             // ---- checkpoint, between the date block and the ring (BI26092624) ----
             const CheckpointCard(),
             // ---- Data October (PI26093009): hides when the hub has no feed ----
