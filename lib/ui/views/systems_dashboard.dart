@@ -88,7 +88,7 @@ class SystemsDashboard extends StatelessWidget {
         DashTile(
           label: 'Slate rows, live',
           onTap: onOpenSlate ?? () {
-            SlateView.remembered = SlateTab.register;
+            SlateView.remembered = SlateTab.grid;
             Navigator.push(
               context,
               MaterialPageRoute<void>(

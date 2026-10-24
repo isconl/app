@@ -11,10 +11,9 @@ void main() {
       expect(viewForNavRoute('slate')!.$2, 'Slate');
     });
 
-    test('the strip has Slate first and defaults to it, with Tasks kept', () {
-      expect(SlateTab.values.first, SlateTab.slate);
-      expect(SlateTab.values, contains(SlateTab.tasks));
-      expect(SlateView.remembered, SlateTab.slate);
+    test('BS26102104: the strip is Overview, Grid and Asks, and defaults to Overview', () {
+      expect(SlateTab.values, [SlateTab.overview, SlateTab.grid, SlateTab.asks]);
+      expect(SlateView.remembered, SlateTab.overview);
     });
   });
 }

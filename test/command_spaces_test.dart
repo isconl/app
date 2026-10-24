@@ -58,10 +58,10 @@ void main() {
     await end(t);
   });
 
-  testWidgets('Slate: the entry above Command, Tasks and Register', (t) async {
+  testWidgets('Slate: the entry above Overview, Grid and Asks', (t) async {
     await pump(t, const SlateView());
     expect(find.text('Search tasks and register rows'), findsOneWidget);
-    for (final l in ['Command', 'Tasks', 'Register']) {
+    for (final l in ['Overview', 'Grid', 'Asks']) {
       expect(find.text(l), findsWidgets, reason: l);
     }
     await end(t);
@@ -87,8 +87,8 @@ void main() {
     })));
     expect(hub.firstWhere((h) => h.title == 'Renew the licence').tab, 1, reason: 'a task due today is on Today');
     expect(hub.firstWhere((h) => h.title == 'hub').tab, 2, reason: 'a service is on Services');
-    expect(slate.firstWhere((h) => h.title == 'Plan the sprint').tab, 1);
-    expect(slate.firstWhere((h) => h.title == 'The hold file manager').tab, 2);
+    expect(slate.firstWhere((h) => h.title == 'Plan the sprint').tab, 0);
+    expect(slate.firstWhere((h) => h.title == 'The hold file manager').tab, 1);
     expect(compass.firstWhere((h) => h.title == 'Ship the app').tab, 0);
     expect(compass.firstWhere((h) => h.title == 'Write the plan').tab, 1, reason: 'a task follows its goal\'s horizon');
     expect(compass.firstWhere((h) => h.title == 'Decade goal').tab, 2);
