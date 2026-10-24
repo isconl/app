@@ -44,10 +44,6 @@ class _Client implements SlateClient {
   Future<String> sendCommand(CommandDraft draft) async => 'c1';
   @override
   Future<DeliveryState> deliveryState(String commandId) async => DeliveryState.sent;
-  @override
-  Future<void> shelveProject(String project, String reason, {String? subset, bool releaseClaims = false}) async {}
-  @override
-  Future<void> unshelveProject(String project, String reason, {String? subset}) async {}
 }
 
 class _Agents implements AgentsApi {
