@@ -6,6 +6,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../../util/markdown.dart';
+import '../widgets/parity9c_widgets.dart';
 import '../widgets/common.dart';
 import 'cover_pane.dart';
 
@@ -381,6 +382,12 @@ class _ChatSheetState extends State<ChatSheet> {
                   children: [
                     Text('Conversations', style: T.title),
                     const Spacer(),
+                    IconButton(
+                      key: const Key('thread-export'),
+                      tooltip: 'Export the open conversation',
+                      icon: const Icon(Icons.ios_share_rounded, size: 18),
+                      onPressed: () => exportChatThread(ctx, parity9cFor(ctx)),
+                    ),
                     TextButton.icon(
                       onPressed: () async {
                         Navigator.pop(ctx);
@@ -438,6 +445,15 @@ class _ChatSheetState extends State<ChatSheet> {
                             if (fmt.s(t['ID']) == current)
                               const Badge2('open',
                                   color: C.greenBg, textColor: C.greenBright),
+                            IconButton(
+                              key: Key('thread-delete-${fmt.s(t['ID'])}'),
+                              tooltip: 'Delete',
+                              icon: const Icon(Icons.delete_outline_rounded, size: 18, color: C.red),
+                              onPressed: () async {
+                                final title = fmt.s(t['TITLE']).isEmpty ? fmt.s(t['ID']) : fmt.s(t['TITLE']);
+                                if (await deleteChatThread(ctx, parity9cFor(ctx), fmt.s(t['ID']), title)) threads.refresh();
+                              },
+                            ),
                           ],
                         ),
                       ),

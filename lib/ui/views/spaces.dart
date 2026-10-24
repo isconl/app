@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
+import '../widgets/parity9c_widgets.dart';
 import '../widgets/common.dart';
 
 /// The axial tree: AX-WRI / AX-VIS / AX-INN / AX-CRE.
@@ -35,6 +36,15 @@ class SpacesView extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                key: const Key('spaces-sync-check'),
+                onPressed: () => spacesSyncCheck(context, parity9cFor(context)),
+                icon: const Icon(Icons.sync_rounded, size: 16),
+                label: const Text('Check against OneDrive'),
+              ),
+            ),
             for (final node in tree)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),

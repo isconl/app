@@ -4,6 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
+import '../../services/parity9c.dart';
+import '../widgets/parity9c_widgets.dart';
 import '../widgets/common.dart';
 import '../widgets/space_header.dart';
 import 'channels_dash_model.dart';
@@ -636,7 +638,7 @@ class Bubble extends StatelessWidget {
     final soft = outbound ? Colors.white70 : C.text3;
     final links = {...linksIn(text), ...row.extraLinks}.toList();
     return GestureDetector(
-      onLongPress: () => _actions(context, services, id),
+      onLongPress: () => _actions(context, services, id, item),
       child: Align(
         alignment: outbound ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
@@ -706,7 +708,7 @@ class Bubble extends StatelessWidget {
     );
   }
 
-  void _actions(BuildContext context, AppServices services, String id) {
+  void _actions(BuildContext context, AppServices services, String id, Map<String, dynamic> item) {
     showModalBottomSheet(
       context: context,
       backgroundColor: C.panel,
@@ -735,10 +737,70 @@ class Bubble extends StatelessWidget {
                   if (!res.ok) toast(context, res.error!, error: true);
                 },
               ),
+            if (isEmailChannel(fmt.s(item['CHANNEL'])) && !row.outbound && _senderAddress(item) != null)
+              ListTile(
+                key: const Key('bubble-reply'),
+                dense: true,
+                leading: const Icon(Icons.reply_rounded, size: 18),
+                title: Text('Reply by email', style: T.body2),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _reply(context, item);
+                },
+              ),
+            ListTile(
+              key: const Key('bubble-backfill'),
+              dense: true,
+              leading: const Icon(Icons.history_rounded, size: 18),
+              title: Text('Fetch older history', style: T.body2),
+              onTap: () {
+                Navigator.pop(ctx);
+                runInboxBackfill(context, parity9cFor(context));
+              },
+            ),
+            ListTile(
+              key: const Key('bubble-delete'),
+              dense: true,
+              leading: const Icon(Icons.delete_outline_rounded, size: 18, color: C.red),
+              title: Text('Delete', style: T.body2.copyWith(color: C.red)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await deleteInboxMessages(context, parity9cFor(context), [id]);
+              },
+            ),
             const SizedBox(height: 8),
           ],
         ),
       ),
     );
+  }
+
+  /// `Name <email>` or a bare address, as the console's extractEmailAddress does; null when there is none.
+  static String? _senderAddress(Map<String, dynamic> item) {
+    final sender = fmt.s(item['SENDER']);
+    final angle = RegExp(r'<([^>]+)>').firstMatch(sender);
+    if (angle != null) return angle.group(1);
+    return RegExp(r'^[^\s<>]+@[^\s<>]+$').hasMatch(sender.trim()) ? sender.trim() : null;
+  }
+
+  Future<void> _reply(BuildContext context, Map<String, dynamic> item) async {
+    final to = _senderAddress(item);
+    if (to == null) return;
+    final body = TextEditingController();
+    final subj = fmt.s(item['TITLE']).isNotEmpty ? fmt.s(item['TITLE']) : fmt.s(item['SUBJECT']);
+    final subject = subj.isEmpty || subj == '-' ? 'Re:' : 'Re: $subj';
+    final write = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Reply to $to'),
+        content: TextField(key: const Key('reply-body'), controller: body, maxLines: 6, autofocus: true),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(key: const Key('reply-next'), onPressed: () => Navigator.pop(ctx, true), child: const Text('Review')),
+        ],
+      ),
+    );
+    if (write != true || body.text.trim().isEmpty || !context.mounted) return;
+    await confirmAndSendGoogle(context, parity9cFor(context), GoogleDraft(to: to, subject: subject, body: body.text.trim(), personId: fmt.s(item['PERSON_ID'])));
   }
 }

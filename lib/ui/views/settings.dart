@@ -5,6 +5,7 @@ import '../../services/branding.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../update_flow.dart';
+import '../widgets/parity9c_widgets.dart';
 import '../widgets/common.dart';
 import '../widgets/slate_closes_card.dart';
 import '../widgets/standard_tag.dart';
@@ -227,6 +228,10 @@ class _SettingsViewState extends State<SettingsView> {
               JournalAccessCard(client: HubCxGrantsClient(AppScope.of(context).api, AppScope.of(context).session.passkeys)),
               ],
               if (part == 2) ...[
+              const SectionLabel('Google'),
+              const GoogleConnectCard(),
+              const SectionLabel('PIN'),
+              const PinCard(),
               const SectionLabel('Passkeys'),
               const PasskeysCard(),
               ],

@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
+import '../widgets/parity9c_widgets.dart';
 import '../widgets/common.dart';
 import '../widgets/space_header.dart';
 
@@ -96,6 +97,7 @@ class _ProjectTile extends StatelessWidget {
         : fmt.s(project['URL']);
     return Panel(
       padding: const EdgeInsets.all(12),
+      onLongPress: fmt.s(project['ID']).isEmpty ? null : () => projectUrlDialog(context, parity9cFor(context), fmt.s(project['ID']), current: url),
       onTap: url.isEmpty
           ? null
           : () {

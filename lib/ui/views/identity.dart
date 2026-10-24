@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme.dart';
 import '../shell.dart' show SecondaryScreen;
 import '../widgets/common.dart';
+import '../widgets/parity9c_widgets.dart';
 import 'spaces.dart';
 
 /// BI26100207: Personal › Identity. The three archetype spaces moved here from the
@@ -64,6 +65,8 @@ class IdentityView extends StatelessWidget {
             const Icon(Icons.chevron_right_rounded, color: C.text3),
           ]),
         ),
+        const SectionLabel('Persona and voice'),
+        const PersonaVoiceSection(),
       ],
     );
   }
