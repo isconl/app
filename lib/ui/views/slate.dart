@@ -5,6 +5,7 @@ import 'package:slate_ui/slate_ui.dart';
 
 import '../../app_scope.dart';
 import '../../util/fmt.dart' as fmt;
+import '../widgets/machines_card.dart';
 import '../../services/slate_hub_client.dart';
 import 'backlog.dart';
 import 'tasks.dart';
@@ -60,11 +61,16 @@ class SlateView extends StatelessWidget {
       initialTab: remembered.index,
       hits: hitsFor,
       tabs: [
-        SpaceTab(label(SlateTab.slate), SlateHome(
-          client: _client(context),
-          commandStepUp: passkeyStepUp(app.api, app.session.passkeys),
-          writeStepUp: passkeyWriteStepUp(app.api, app.session.passkeys),
-        )),
+        SpaceTab(label(SlateTab.slate), Column(children: [
+          const MachinesCard(),
+          Expanded(
+            child: SlateHome(
+              client: _client(context),
+              commandStepUp: passkeyStepUp(app.api, app.session.passkeys),
+              writeStepUp: passkeyWriteStepUp(app.api, app.session.passkeys),
+            ),
+          ),
+        ])),
         SpaceTab(label(SlateTab.tasks), const TasksView()),
         SpaceTab(label(SlateTab.register), const BacklogView()),
       ],
