@@ -153,10 +153,10 @@ abstract class LedgerApi {
 
   /// Moves a group's transactions to [newCategory]; returns how many changed.
   Future<int> resolve({required String vendor, required String category, required String newCategory});
-  Future<({String filename, List<int> bytes})> report(ReportPeriod p, {bool pdf = false});
+  /// [format] is html or csv. The hub answers 415 for pdf: open the html and print it to PDF.
+  Future<({String filename, List<int> bytes})> report(ReportPeriod p, {String format = 'html'});
 
   /// The hub's own save to the reader's OneDrive; returns the file names.
-  Future<List<String>> exportToOneDrive(ReportPeriod p, List<String> formats);
   Future<List<Possession>> possessions();
   Future<void> upsertPossession(Map<String, String> fields, {String id = ''});
   Future<void> deletePossession(String id);
@@ -280,14 +280,8 @@ class HubLedgerApi implements LedgerApi {
   }
 
   @override
-  Future<({String filename, List<int> bytes})> report(ReportPeriod p, {bool pdf = false}) =>
-      api.getBytes('/api/finance/report?${p.query}${pdf ? '&format=pdf' : ''}');
-
-  @override
-  Future<List<String>> exportToOneDrive(ReportPeriod p, List<String> formats) async {
-    final d = _ok(await api.postJson('/api/finance/report/export', {...p.toJson(), 'formats': formats}, cold: true));
-    return [for (final f in _l(d['files'])) '$f'];
-  }
+  Future<({String filename, List<int> bytes})> report(ReportPeriod p, {String format = 'html'}) =>
+      api.getBytes('/api/finance/report?${p.query}&format=$format');
 
   @override
   Future<List<Possession>> possessions() async {

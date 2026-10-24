@@ -422,7 +422,7 @@ class _ReviewTabState extends State<ReviewTab> with _Loads<ReviewTab> {
 
 // ----------------------------------------------------------- report
 
-/// The report on this device, and the hub's own save to OneDrive. Nothing here sends a figure to anyone.
+/// The report on this device. Nothing here sends a figure to anyone.
 class ReportTab extends StatefulWidget {
   const ReportTab({super.key, this.api, this.now});
   final LedgerApi? api;
@@ -436,28 +436,13 @@ class _ReportTabState extends State<ReportTab> with _Loads<ReportTab> {
   LedgerApi get _api => widget.api ?? _defaultApi(context);
   late final Map<String, ReportPeriod> _presets = ReportPeriod.presets((widget.now ?? DateTime.now)());
   late String _period = _presets.keys.first;
-  final _formats = <String, bool>{'pdf': true, 'csv': true, 'html': false};
 
-  Future<void> _open(bool pdf) => run(() async {
-        final f = await _api.report(_presets[_period]!, pdf: pdf);
-        final name = f.filename.isEmpty ? (pdf ? 'report.pdf' : 'report.html') : f.filename;
-        final ok = await export_impl.saveAndOpenExport(name, f.bytes, mime: pdf ? 'application/pdf' : 'text/html');
+  Future<void> _open(String format) => run(() async {
+        final f = await _api.report(_presets[_period]!, format: format);
+        final name = f.filename.isEmpty ? 'report.$format' : f.filename;
+        final ok = await export_impl.saveAndOpenExport(name, f.bytes, mime: format == 'csv' ? 'text/csv' : 'text/html');
         return ok ? null : 'Saved, but nothing on this device opens that file.';
       });
-
-  Future<void> _export() async {
-    final chosen = [for (final e in _formats.entries) if (e.value) e.key];
-    if (chosen.isEmpty) {
-      setState(() => message = 'Pick a format.');
-      return;
-    }
-    final ok = await _confirm(context, 'Save to your OneDrive?', 'The hub writes ${chosen.join(', ')} for "$_period" into your OneDrive vault. Nothing is sent to anyone else.', 'Save it');
-    if (!ok) return;
-    await run(() async {
-      final files = await _api.exportToOneDrive(_presets[_period]!, chosen);
-      return 'Saved to OneDrive: ${files.join(', ')}.';
-    });
-  }
 
   @override
   Widget build(BuildContext context) => ListView(padding: const EdgeInsets.fromLTRB(14, 8, 14, 96), children: [
@@ -470,15 +455,11 @@ class _ReportTabState extends State<ReportTab> with _Loads<ReportTab> {
           onChanged: (v) => setState(() => _period = v ?? _period),
         ),
         Wrap(spacing: 8, children: [
-          OutlinedButton(key: const Key('report-pdf'), onPressed: busy ? null : () => _open(true), child: const Text('Open PDF')),
-          OutlinedButton(key: const Key('report-html'), onPressed: busy ? null : () => _open(false), child: const Text('Open HTML')),
-        ]),
-        const SectionLabel('Export to OneDrive'),
-        Wrap(spacing: 10, children: [
-          for (final e in _formats.entries) FilterChip(label: Text(e.key), selected: e.value, onSelected: (v) => setState(() => _formats[e.key] = v)),
+          OutlinedButton(key: const Key('report-html'), onPressed: busy ? null : () => _open('html'), child: const Text('Open report')),
+          OutlinedButton(key: const Key('report-csv'), onPressed: busy ? null : () => _open('csv'), child: const Text('Open CSV')),
         ]),
         const SizedBox(height: 8),
-        FilledButton(key: const Key('report-export'), onPressed: busy ? null : _export, child: const Text('Export to OneDrive')),
+        Text('To get a PDF, open the report and print it to PDF. OneDrive is a read-only archive now, so reports stay on this device.', key: const Key('report-note'), style: T.small),
         msg(),
       ]);
 }

@@ -51,11 +51,9 @@ class FakeLedger implements LedgerApi {
   }
 
   @override
-  Future<({String filename, List<int> bytes})> report(ReportPeriod p, {bool pdf = false}) async => (filename: 'r', bytes: [1]);
-  @override
-  Future<List<String>> exportToOneDrive(ReportPeriod p, List<String> formats) async {
-    calls.add('export:${formats.join(',')}');
-    return ['a.pdf'];
+  Future<({String filename, List<int> bytes})> report(ReportPeriod p, {String format = 'html'}) async {
+    calls.add('report:$format');
+    return (filename: 'r.$format', bytes: [1]);
   }
 
   @override
@@ -152,20 +150,15 @@ void main() {
     expect(find.byKey(const Key('review-empty')), findsOneWidget);
   });
 
-  testWidgets('report: export asks first and only then writes', (t) async {
+  testWidgets('report: no PDF or OneDrive export is offered, and the note says how to get a PDF', (t) async {
     final api = FakeLedger();
     await t.pumpWidget(host(ReportTab(api: api, now: () => DateTime(2026, 3, 10))));
-    await t.tap(find.byKey(const Key('report-export')));
-    await t.pumpAndSettle();
-    expect(find.text('Save to your OneDrive?'), findsOneWidget);
-    await t.tap(find.text('Cancel'));
-    await t.pumpAndSettle();
+    expect(find.byKey(const Key('report-pdf')), findsNothing);
+    expect(find.byKey(const Key('report-export')), findsNothing);
+    expect(find.byKey(const Key('report-html')), findsOneWidget);
+    expect(find.byKey(const Key('report-csv')), findsOneWidget);
+    expect(find.textContaining('print it to PDF'), findsOneWidget);
     expect(api.calls, isEmpty);
-    await t.tap(find.byKey(const Key('report-export')));
-    await t.pumpAndSettle();
-    await t.tap(find.text('Save it'));
-    await t.pumpAndSettle();
-    expect(api.calls, ['export:pdf,csv']);
   });
 
   testWidgets('assets: delete asks to confirm, for a possession and for a venture', (t) async {
