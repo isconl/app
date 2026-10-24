@@ -285,31 +285,38 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
     );
   }
 
-  /// `Sunday · October 18, 2026`: bold weekday, a middle dot, then the date in regular weight with the month in full
-  /// (BI26101801), and the live clock to its right. The row wraps the clock under the date only when the width is too narrow.
+  /// BI26102404: the clock, then `Sunday · October 18, 2026`, on ONE line. Below 340 px the date shortens to `Sun 18 Oct`
+  /// rather than wrapping; the date is never allowed a second line.
   Widget _buildDate(DateTime now) {
-    final date = Text.rich(
-      TextSpan(
-        style: T.headline,
-        children: [
-          TextSpan(
-            text: fmt.weekdaysFull[now.weekday - 1],
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-          TextSpan(
-            text: ' · ${fmt.monthsFull[now.month - 1]} ${now.day}, ${now.year}',
-            style: const TextStyle(fontWeight: FontWeight.w400),
-          ),
-        ],
-      ),
-    );
-    return Wrap(
+    return LayoutBuilder(
       key: const Key('hub-date-row'),
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 12,
-      runSpacing: 4,
-      children: [date, HubClock(clock: widget.clock)],
+      builder: (context, box) {
+        final narrow = box.maxWidth < 340;
+        final dateSpan = narrow
+            ? TextSpan(
+                children: [
+                  TextSpan(text: fmt.weekdaysFull[now.weekday - 1].substring(0, 3), style: const TextStyle(fontWeight: FontWeight.w700)),
+                  TextSpan(text: ' ${now.day} ${fmt.monthsFull[now.month - 1].substring(0, 3)}', style: const TextStyle(fontWeight: FontWeight.w400)),
+                ],
+              )
+            : TextSpan(
+                children: [
+                  TextSpan(text: fmt.weekdaysFull[now.weekday - 1], style: const TextStyle(fontWeight: FontWeight.w700)),
+                  TextSpan(text: ' · ${fmt.monthsFull[now.month - 1]} ${now.day}, ${now.year}', style: const TextStyle(fontWeight: FontWeight.w400)),
+                ],
+              );
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            HubClock(clock: widget.clock),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text.rich(dateSpan, style: T.headline, maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis),
+            ),
+          ],
+        );
+      },
     );
   }
 

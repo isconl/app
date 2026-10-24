@@ -28,6 +28,8 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: HubClock(clock: () => DateTime(2026, 10, 18, 1, 2, 3)))));
       final t = tester.widget<Text>(find.byKey(const Key('hub-clock')));
       expect(t.style!.fontFamily, 'DSEG7Classic');
+      expect(t.style!.fontWeight, FontWeight.w700);
+      expect(t.style!.fontSize, lessThan(22));
       expect(t.style!.color!.toARGB32() & 0xFF00FF00, isNot(0), reason: 'a green channel');
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 3)); // a timer left running would fail the binding's pending-timer check
@@ -87,8 +89,8 @@ void main() {
   });
 
   group('the Hub date block', () {
-    Future<void> pumpHub(WidgetTester tester, Map<String, dynamic>? signals) async {
-      tester.view.physicalSize = const Size(900, 6000);
+    Future<void> pumpHub(WidgetTester tester, Map<String, dynamic>? signals, {double width = 900}) async {
+      tester.view.physicalSize = Size(width, 6000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
       final services = (await tester.runAsync(() => buildTestServices(ScriptedApi({}))))!;
@@ -123,11 +125,22 @@ void main() {
       final row = tester.getRect(find.byKey(const Key('hub-date-row')));
       final clock = tester.getRect(find.byKey(const Key('hub-clock')));
       expect(clock.right, lessThanOrEqualTo(row.right + 0.5));
-      expect(clock.center.dx, greaterThan(row.center.dx), reason: 'to the right of the date');
+      expect(clock.center.dx, lessThan(row.center.dx), reason: 'the time leads, the date follows on the same line');
+      expect((tester.getRect(find.textContaining('Sunday')).center.dy - clock.center.dy).abs(), lessThan(12), reason: 'one line');
       // the strip's own "as of" line is gone: nothing between the strip and the next card starts with "as of"
       final strip = tester.getRect(find.byKey(const Key('hub-signal-strip')));
       final asOfBelowStrip = tester.widgetList<Text>(find.textContaining('as of ')).where((t) => tester.getRect(find.byWidget(t)).top >= strip.bottom - 1 && tester.getRect(find.byWidget(t)).top < strip.bottom + 24);
       expect(asOfBelowStrip, isEmpty);
+      await teardown(tester);
+    });
+
+    testWidgets('at 320 px the date shortens and stays on one line with the clock', (tester) async {
+      await pumpHub(tester, null, width: 320);
+      tester.takeException(); // a card lower on the Hub overflows at 320 px; that is not this row, which is asserted below
+      expect(plain(tester), contains('Sun 18 Oct'));
+      final clock = tester.getRect(find.byKey(const Key('hub-clock')));
+      final row = tester.getRect(find.byKey(const Key('hub-date-row')));
+      expect(row.height, lessThan(clock.height + 14), reason: 'a single line');
       await teardown(tester);
     });
 

@@ -7,6 +7,9 @@ import '../../util/server_clock.dart';
 
 /// BI26101801: the Hub's live clock, `HH:MM:SS`, 24-hour, in seven-segment digits (DSEG7 Classic) in the app's green.
 /// It ticks on the whole second and rebuilds only itself, never the Hub around it.
+/// BI26102404: the clock's size, a little above the date line's height, and its weight (DSEG7 Classic Bold).
+const double hubClockSize = 16;
+
 class HubClock extends StatefulWidget {
   const HubClock({super.key, this.clock});
 
@@ -60,8 +63,9 @@ class _HubClockState extends State<HubClock> {
         style: const TextStyle(
           fontFamily: 'DSEG7Classic',
           color: C.greenBright,
-          fontSize: 22,
-          letterSpacing: 1,
+          fontSize: hubClockSize,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
           fontFeatures: [FontFeature.tabularFigures()],
         ),
       ),
