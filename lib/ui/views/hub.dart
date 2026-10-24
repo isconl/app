@@ -12,6 +12,7 @@ import 'spaced_review_view.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show openNavRoute;
 import '../../util/freshness.dart';
+import '../widgets/clock_card.dart';
 import '../widgets/revenue_actions_card.dart';
 import '../widgets/as_of_line.dart';
 import '../widgets/block_card.dart';
@@ -206,6 +207,8 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
             const _OrientationStrip(),
             ],
             if (part == 1) ...[
+            // ---- BI26101408: the one-tap work-hours clock ----
+            const ClockCard(),
             // ---- block card / today's tasks (BI26092625 + BI26092628) ----
             ListenableBuilder(
               listenable: services.store.day,

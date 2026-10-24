@@ -87,9 +87,12 @@ ClockState? clockStateFromWord(String? w) => switch ((w ?? '').toLowerCase()) {
 
 /// The journal head: where the day stands, and the net minutes worked as of [asOf].
 class ClockHead {
-  const ClockHead({this.state = ClockState.out, this.workedMinutes = 0, required this.asOf});
+  const ClockHead({this.state = ClockState.out, this.workedMinutes = 0, this.breaks = 0, required this.asOf});
   final ClockState state;
   final int workedMinutes;
+
+  /// Breaks started today (BI26101408), shown on the Today card.
+  final int breaks;
   final DateTime asOf;
 
   /// Net minutes, counting the running stretch while the state is working.
@@ -99,16 +102,23 @@ class ClockHead {
   ClockHead afterTap(ClockAction a, DateTime at) {
     final worked = workedNow(at);
     final newDay = state == ClockState.out && (asOf.year != at.year || asOf.month != at.month || asOf.day != at.day);
-    return ClockHead(state: clockAfter(a), workedMinutes: a == ClockAction.clockIn && newDay ? 0 : worked, asOf: at);
+    final reset = a == ClockAction.clockIn && newDay;
+    return ClockHead(
+      state: clockAfter(a),
+      workedMinutes: reset ? 0 : worked,
+      breaks: reset ? 0 : (a == ClockAction.startBreak ? breaks + 1 : breaks),
+      asOf: at,
+    );
   }
 
-  Map<String, dynamic> toJson() => {'state': state.name, 'worked': workedMinutes, 'asOf': asOf.millisecondsSinceEpoch};
+  Map<String, dynamic> toJson() => {'state': state.name, 'worked': workedMinutes, 'breaks': breaks, 'asOf': asOf.millisecondsSinceEpoch};
 
   factory ClockHead.fromJson(dynamic v) {
     final m = fmt.m(v);
     return ClockHead(
       state: ClockState.values.firstWhere((s) => s.name == fmt.s(m['state']), orElse: () => ClockState.out),
       workedMinutes: fmt.i(m['worked']),
+      breaks: fmt.i(m['breaks']),
       asOf: DateTime.fromMillisecondsSinceEpoch(fmt.i(m['asOf'])),
     );
   }
@@ -122,6 +132,9 @@ String clockStamp(DateTime t) {
   return '${t.year.toString().padLeft(4, '0')}-${two(t.month)}-${two(t.day)}T${two(t.hour)}:${two(t.minute)}:${two(t.second)}'
       '${off.isNegative ? '-' : '+'}${two(m ~/ 60)}:${two(m % 60)}';
 }
+
+/// `2026-10-16`: the local day, as the entry list takes it.
+String clockDay(DateTime t) => '${t.year.toString().padLeft(4, '0')}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
 
 /// The tile and widget's side of the channel. A phone with no tile (web, desktop, tests) answers nothing.
 class ClockBridge {
@@ -149,6 +162,21 @@ class ClockBridge {
     } on PlatformException {
       // The surfaces just stay as they were.
     }
+  }
+}
+
+/// One journal entry as hub lists it for the correction form (BI26101408).
+class ClockEntry {
+  const ClockEntry({required this.seq, required this.kind, this.at});
+  final int seq;
+  final String kind;
+  final DateTime? at;
+
+  static ClockEntry? from(Map<String, dynamic> m) {
+    final seq = fmt.i(m['seq'], -1);
+    if (seq < 1) return null;
+    final secs = m['at'] is num ? (m['at'] as num).toInt() : null;
+    return ClockEntry(seq: seq, kind: fmt.s(m['kind']), at: secs == null ? null : DateTime.fromMillisecondsSinceEpoch(secs * 1000));
   }
 }
 
@@ -274,6 +302,34 @@ class ClockService {
     }
     if (announced > 0) await resync();
     return announced;
+  }
+
+  static const listPath = '/api/ledger/time/list';
+  static const correctionsPath = '/api/ledger/time/corrections';
+
+  /// Today's entries, to pick one to correct. Empty when offline.
+  Future<List<ClockEntry>> entries() async {
+    try {
+      final d = clockDay(_now());
+      final res = fmt.m(await api().getJson('$listPath?from=$d&to=$d'));
+      return [for (final m in fmt.lm(res['entries'])) ?ClockEntry.from(m)];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Queues a correction through the outbox (it works offline and keeps its order): it reverses [seq], says why, and may
+  /// carry a replacement time. Null when queued; otherwise the sentence saying what is missing. Nothing is edited.
+  Future<String?> correct({required int seq, required String reason, DateTime? at}) async {
+    final why = reason.trim();
+    if (why.length < 3) return 'A correction needs a reason.';
+    await outbox.enqueue(
+      path: correctionsPath,
+      body: {'reverses': seq, 'reason': why, if (at != null) 'at': clockStamp(at), 'tz': (at ?? _now()).timeZoneName},
+      label: 'Fix a time',
+      view: 'clock',
+    );
+    return null;
   }
 
   /// The whole pass the app runs when it comes to the front: take native taps, deliver, announce refusals, publish.
