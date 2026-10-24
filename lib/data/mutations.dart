@@ -107,6 +107,16 @@ class Mutations {
     );
   }
 
+  /// PI26101601: after a drag, tell slate why. Queued offline; slate's one-line answer comes back in the payload.
+  Future<MutationResult> rankFeedback({required String moved, required String answer, String? above, String title = ''}) {
+    return _write(
+      path: '/api/rank/feedback',
+      body: {'moved': moved, 'answer': answer, if (above != null && above.isNotEmpty) 'above': above},
+      label: 'Order · ${fmt.truncate(title.isEmpty ? moved : title, 40)}',
+      view: 'tasks',
+    );
+  }
+
   Future<MutationResult> completeTask(Map<String, dynamic> task,
       {String target = 'done'}) {
     final id = fmt.s(task['ID']);

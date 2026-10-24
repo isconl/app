@@ -22,6 +22,7 @@ import '../widgets/status_briefs_card.dart';
 import '../../services/day_close_planner.dart';
 import '../../util/day_close.dart';
 import '../widgets/space_header.dart';
+import 'learned_ranking.dart';
 import 'systems_dashboard.dart';
 
 /// Connection, security, sync, update-on-cue, appearance, about.
@@ -66,6 +67,7 @@ class _SettingsViewState extends State<SettingsView> {
     ('Day close', 'the end-of-day review', 0),
     ('Automatic context', 'M-Pesa messages from SMS', 0),
     ('Prefetch', 'what the phone downloads ahead', 0),
+    ('Learned ranking', 'what dragging a task taught slate', 0),
     ('General', 'appearance, local data and branding', 0),
     ('Notifications', 'slate closes and alerts', 1),
     ('Study', 'standard on list', 1),
@@ -219,6 +221,14 @@ class _SettingsViewState extends State<SettingsView> {
               const PrefetchCard(),
               const SizedBox(height: 10),
               const WidgetSettingsCard(),
+              const SectionLabel('Learned ranking'),
+              ListTile(
+                key: const Key('learned-ranking'),
+                title: const Text('Learned ranking'),
+                subtitle: const Text('What dragging a task taught slate, with undo'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LearnedRankingPage())),
+              ),
               ],
               if (part == 1) ...[
               const SectionLabel('Study'),

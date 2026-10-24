@@ -5,6 +5,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
+import '../widgets/rank_drag.dart';
 import 'task_detail.dart';
 
 const kStatuses = ['today', 'next', 'waiting', 'review', 'done'];
@@ -86,13 +87,40 @@ class _TasksViewState extends State<TasksView> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         SectionLabel('$status · ${group.length}'),
-                        ...visible.map((t) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: TaskRowTile(
-                                task: t,
-                                subtasks: subtasks[fmt.s(t['ID'])] ?? const [],
-                              ),
-                            )),
+                        if (status == 'done')
+                          ...visible.map((t) => Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: TaskRowTile(
+                                  task: t,
+                                  subtasks: subtasks[fmt.s(t['ID'])] ?? const [],
+                                ),
+                              ))
+                        else
+                          // PI26101601: hold the handle to drag; a drop asks why, and slate's order redraws the list.
+                          ReorderableListView(
+                            key: ValueKey('rank-list-$status'),
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            buildDefaultDragHandles: false,
+                            onReorderStart: (_) => HapticFeedback.mediumImpact(),
+                            onReorder: (o, n) => handleRankDrop(context, items: visible, oldIndex: o, newIndex: n, reload: services.store.state.refresh),
+                            children: [
+                              for (var i = 0; i < visible.length; i++)
+                                Padding(
+                                  key: ValueKey('rank-row-${fmt.s(visible[i]['ID'])}'),
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Expanded(
+                                      child: TaskRowTile(
+                                        task: visible[i],
+                                        subtasks: subtasks[fmt.s(visible[i]['ID'])] ?? const [],
+                                      ),
+                                    ),
+                                    RankHandle(index: i),
+                                  ]),
+                                ),
+                            ],
+                          ),
                       ],
                     );
                   }),

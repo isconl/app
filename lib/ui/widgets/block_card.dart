@@ -7,6 +7,7 @@ import '../../util/current_block.dart';
 import '../../util/fmt.dart' as fmt;
 import '../views/task_detail.dart';
 import 'common.dart';
+import 'rank_drag.dart';
 
 /// One palette for the day blocks, ported from web's BLOCK_TONE (app.js ~9856).
 const Map<String, Color> kBlockTones = {
@@ -254,12 +255,28 @@ class _BlockCardState extends State<BlockCard> {
                 )
               // Placeable block with items (up to 3)
               else ...[
-                for (var i = 0; i < tasks.length && i < 3; i++)
-                  _BlockItemTile(
-                    key: ValueKey('block_task_${fmt.s(tasks[i]['id'] ?? tasks[i]['ID'])}'),
-                    task: tasks[i],
-                    blockId: blockId,
-                  ),
+                // PI26101601: hold the handle to drag; a drop asks why, and the list is redrawn from slate's order.
+                ReorderableListView(
+                  key: ValueKey('rank-block-$blockId'),
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  onReorder: (o, n) => handleRankDrop(context,
+                      items: tasks.take(3).toList(), oldIndex: o, newIndex: n, reload: AppScope.of(context).store.state.refresh),
+                  children: [
+                    for (var i = 0; i < tasks.length && i < 3; i++)
+                      Row(key: ValueKey('rank-item-${fmt.s(tasks[i]['id'] ?? tasks[i]['ID'])}'), crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Expanded(
+                          child: _BlockItemTile(
+                            key: ValueKey('block_task_${fmt.s(tasks[i]['id'] ?? tasks[i]['ID'])}'),
+                            task: tasks[i],
+                            blockId: blockId,
+                          ),
+                        ),
+                        RankHandle(index: i),
+                      ]),
+                  ],
+                ),
                 if (tasks.length > 3)
                   InkWell(
                     borderRadius: BorderRadius.circular(Sz.rSm),
