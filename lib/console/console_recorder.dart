@@ -89,7 +89,9 @@ class ConsoleRecorder extends ChangeNotifier {
 
   /// Raw bytes per upload part. Base64 inflates it by a third, so a part is about 256 KB on the wire.
   static const chunkBytes = 192 * 1024;
-  static const uploadPath = '/api/console/recordings/chunk';
+  /// BI26102002: parts go to the Media library (audio-recordings/{yyyy}) through hub and the media engine; the old
+  /// /api/console/recordings/chunk (vault) is still served for takes already queued, and its recordings stay readable.
+  static const uploadPath = '/api/console/recordings/part';
   static const _recordingsKey = 'console.recordings';
 
   RecorderBackend? _backend;
