@@ -94,4 +94,71 @@ void main() {
     expect(find.textContaining('5-hour 42% · 7-day 61%'), findsOneWidget);
     await teardown(tester);
   });
+
+  // BI26102402: suggestions from mail headers, and the optional breach check.
+  final acme = SignUpSuggestion(id: 'acme-com-me-x-com', service: 'Acme', domain: 'acme.com', address: 'me@x.com', firstMail: DateTime(2026, 6, 1), lastMail: DateTime(2026, 9, 1), paid: true, count: 2);
+  final zed = SignUpSuggestion(id: 'zed-co-uk-me-x-com', service: 'Zed', domain: 'zed.co.uk', address: 'me@x.com', lastMail: DateTime(2025, 1, 3), count: 1);
+
+  Future<void> openSignUps(WidgetTester tester) async {
+    await tester.tap(find.text('Sign-ups'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
+  testWidgets('suggestions are offered one at a time and Accept adds the sign-up with the mail date as last seen', (tester) async {
+    final api = FakeAccountsApi(suggestions: [acme, zed]);
+    await pump(tester, api);
+    await openSignUps(tester);
+    expect(find.byKey(Key('suggestion-${acme.id}')), findsOneWidget);
+    expect(find.byKey(Key('suggestion-${zed.id}')), findsNothing);
+    expect(find.textContaining('2 to look at'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('suggestion-accept')));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final added = (await api.signUps()).single;
+    expect(added.service, 'Acme');
+    expect(added.lastSeenSource, 'mail');
+    expect(added.lastSeen, DateTime(2026, 9, 1));
+    await teardown(tester);
+  });
+
+  testWidgets('Not a sign-up removes the suggestion for good and Later keeps it', (tester) async {
+    final api = FakeAccountsApi(suggestions: [acme, zed]);
+    await pump(tester, api);
+    await openSignUps(tester);
+    await tester.tap(find.byKey(const Key('suggestion-never')));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect((await api.suggestions()).map((x) => x.id), [zed.id]);
+    await api.decide(zed.id, 'later');
+    expect((await api.suggestions()).map((x) => x.id), [zed.id]);
+    expect(await api.signUps(), isEmpty);
+    await teardown(tester);
+  });
+
+  testWidgets('with no Have I Been Pwned key the Addresses tab says the breach check is off and nothing else', (tester) async {
+    await pump(tester, FakeAccountsApi());
+    expect(find.text('Breach check off: needs a Have I Been Pwned key'), findsOneWidget);
+    expect(find.byKey(const Key('breach-notice')), findsNothing);
+    await teardown(tester);
+  });
+
+  testWidgets('a new breach is named on its address card and raises one notice that Got it clears', (tester) async {
+    final api = FakeAccountsApi(breaches: BreachStatus(enabled: true, line: 'Breach check on: weekly.', items: [Breach(address: 'sconl@proton.me', breach: 'Adobe', date: DateTime(2013, 10, 4))]));
+    await pump(tester, api);
+    expect(find.byKey(const Key('breach-notice')), findsOneWidget);
+    expect(find.textContaining('New breach: Adobe'), findsOneWidget);
+    expect(find.byKey(const Key('breaches-sconl@proton.me')), findsOneWidget);
+    expect(find.textContaining('Adobe 2013'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('breach-dismiss')));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byKey(const Key('breach-notice')), findsNothing);
+    expect(find.byKey(const Key('breaches-sconl@proton.me')), findsOneWidget);
+    await teardown(tester);
+  });
 }

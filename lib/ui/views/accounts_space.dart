@@ -91,17 +91,47 @@ class _AddressesTab extends StatelessWidget {
   final VoidCallback onChanged;
 
   @override
-  Widget build(BuildContext context) => _Loader<List<AccountAddress>>(
-        load: api.addresses,
-        builder: (ctx, all) {
+  Widget build(BuildContext context) => _Loader<(List<AccountAddress>, BreachStatus)>(
+        load: () async {
+          final addrs = await api.addresses();
+          BreachStatus b;
+          try {
+            b = await api.breaches();
+          } on AccountsException {
+            b = const BreachStatus();
+          }
+          return (addrs, b);
+        },
+        builder: (ctx, data) {
+          final all = data.$1, breach = data.$2;
           final single = recoverySinglePoints(all);
           return ListView(
             children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text(breach.line, key: const Key('breach-line'), style: T.small.copyWith(color: breach.enabled ? C.text2 : C.text3)),
+              ),
+              if (breach.fresh.isNotEmpty)
+                _card(key: const Key('breach-notice'), [
+                  for (final b in breach.fresh)
+                    Text('New breach: ${b.breach} (${b.date == null ? 'date unknown' : b.date!.toIso8601String().substring(0, 10)}) exposed ${b.address}.', style: T.body2.copyWith(color: C.red)),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      key: const Key('breach-dismiss'),
+                      onPressed: () async {
+                        await api.markBreachesNotified();
+                        onChanged();
+                      },
+                      child: const Text('Got it'),
+                    ),
+                  ),
+                ]),
               for (final a in single)
                 _card(key: Key('recovery-warning-$a'), [
                   Text('$a is the only recovery route for ${recoveryChain(all)[a]!.length} addresses.', style: T.body2.copyWith(color: C.amber)),
                 ]),
-              for (final a in all) _addressCard(a),
+              for (final a in all) _addressCard(a, breach.forAddress(a.address)),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: OutlinedButton.icon(
@@ -116,7 +146,7 @@ class _AddressesTab extends StatelessWidget {
         },
       );
 
-  Widget _addressCard(AccountAddress a) => _card(key: Key('address-${a.address}'), dim: a.closedOut, [
+  Widget _addressCard(AccountAddress a, List<Breach> breaches) => _card(key: Key('address-${a.address}'), dim: a.closedOut, [
         Text(a.address, style: T.body.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 2),
         Text([a.provider, a.purpose, a.status].where((s) => s.isNotEmpty).join(' · '), style: T.small.copyWith(color: C.text3)),
@@ -134,6 +164,11 @@ class _AddressesTab extends StatelessWidget {
             child: Text('Recovery: ${a.recoveryAddress}${a.recoveryPhoneLast2.isEmpty ? '' : ' · phone …${a.recoveryPhoneLast2}'}', style: T.small),
           ),
         if (a.twoFa.isNotEmpty) Text('2FA: ${a.twoFa}', style: T.small),
+        if (breaches.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('Breaches: ${breaches.map((b) => '${b.breach}${b.date == null ? '' : ' ${b.date!.toIso8601String().substring(0, 4)}'}').join(', ')}', key: Key('breaches-${a.address}'), style: T.small.copyWith(color: C.red)),
+          ),
         if (a.bitwardenItem.isNotEmpty) Text('Bitwarden item: ${a.bitwardenItem}', style: T.small),
         if (a.note.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(a.note, style: T.small.copyWith(color: C.text2))),
         Padding(
@@ -198,9 +233,19 @@ class _SignUpsTabState extends State<_SignUpsTab> {
   String _status = '';
 
   @override
-  Widget build(BuildContext context) => _Loader<List<SignUp>>(
-        load: widget.api.signUps,
-        builder: (ctx, all) {
+  Widget build(BuildContext context) => _Loader<(List<SignUp>, List<SignUpSuggestion>)>(
+        load: () async {
+          final ups = await widget.api.signUps();
+          List<SignUpSuggestion> sug;
+          try {
+            sug = await widget.api.suggestions();
+          } on AccountsException {
+            sug = const [];
+          }
+          return (ups, sug);
+        },
+        builder: (ctx, data) {
+          final all = data.$1, suggestions = data.$2;
           final now = widget.now();
           final shown = [
             for (final s in all)
@@ -210,6 +255,7 @@ class _SignUpsTabState extends State<_SignUpsTab> {
           final dueSoon = [for (final s in all) if (s.renewsWithin(14, now)) s];
           return ListView(
             children: [
+              _suggestionCard(ctx, suggestions),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Text(
@@ -243,9 +289,9 @@ class _SignUpsTabState extends State<_SignUpsTab> {
                 ]),
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Row(children: [
+                child: Wrap(spacing: 8, runSpacing: 8, children: [
                   OutlinedButton.icon(key: const Key('add-signup'), icon: const Icon(Icons.add_rounded), label: const Text('Add'), onPressed: () => _addDialog(ctx)),
-                  const SizedBox(width: 8),
+                  OutlinedButton.icon(key: const Key('scan-mail'), icon: const Icon(Icons.mark_email_read_rounded), label: const Text('Scan mail'), onPressed: () => _scan(ctx)),
                   OutlinedButton.icon(key: const Key('import-signups'), icon: const Icon(Icons.upload_file_rounded), label: const Text('Import a list'), onPressed: () => _importDialog(ctx)),
                 ]),
               ),
@@ -253,6 +299,47 @@ class _SignUpsTabState extends State<_SignUpsTab> {
           );
         },
       );
+
+  /// One suggestion at a time: Accept adds the sign-up (last seen = the last mail date, source mail), Not a sign-up
+  /// never suggests it again, Later keeps it queued. Only the sender, subject and date were read; no mail text is shown.
+  Widget _suggestionCard(BuildContext context, List<SignUpSuggestion> list) {
+    if (list.isEmpty) return const SizedBox.shrink();
+    final x = list.first;
+    String day(DateTime? d) => d == null ? 'unknown' : d.toIso8601String().substring(0, 10);
+    Future<void> act(String decision) async {
+      try {
+        await widget.api.decide(x.id, decision);
+        widget.onChanged();
+      } on AccountsException catch (e) {
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+
+    return _card(key: Key('suggestion-${x.id}'), [
+      Text('Found in your mail (${list.length} to look at)', style: T.small.copyWith(color: C.text3)),
+      const SizedBox(height: 4),
+      Text('${x.service} (${x.domain})', style: T.body.copyWith(fontWeight: FontWeight.w700)),
+      Text('${x.address} · first mail ${day(x.firstMail)} · last mail ${day(x.lastMail)} · ${x.count} mails${x.paid ? ' · looks paid' : ''}', style: T.small),
+      Wrap(children: [
+        TextButton(key: const Key('suggestion-accept'), onPressed: () => act('accept'), child: const Text('Accept')),
+        TextButton(key: const Key('suggestion-never'), onPressed: () => act('never'), child: const Text('Not a sign-up')),
+        TextButton(key: const Key('suggestion-later'), onPressed: () => act('later'), child: const Text('Later')),
+      ]),
+    ]);
+  }
+
+  Future<void> _scan(BuildContext context) async {
+    try {
+      final r = await widget.api.scanMail();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(r.mailboxes == 0 ? 'No mailbox is connected.' : 'Scanned ${r.mailboxes} mailbox(es): ${r.added} new.${r.failed > 0 ? ' ${r.failed} failed.' : ''}'),
+      ));
+      widget.onChanged();
+    } on AccountsException catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
 
   Future<void> _addDialog(BuildContext context) async {
     final service = TextEditingController(), addr = TextEditingController(), cost = TextEditingController();

@@ -10,6 +10,13 @@
 ///   GET  /api/accounts/seats                     -> {items:[seat]}   (usage from slate GET /api/usage)
 ///   POST /api/accounts/import    {rows}          -> {added}
 ///
+/// BI26102402 (sign-up discovery from mail headers, and the optional breach check):
+///   POST /api/accounts/discover                  -> {scanned,failed,added,updated,mailboxes}   (headers only)
+///   GET  /api/accounts/suggestions               -> {items:[suggestion]}
+///   POST /api/accounts/suggestions/decide {id,decision: accept|never|later} -> {id,state}
+///   GET  /api/accounts/breaches                  -> {enabled,line,items:[{address,breach,date,notified}]}
+///   POST /api/accounts/breaches/notified         -> {notified}
+///
 /// Never stored or shown: passwords, recovery codes, 2FA seeds, API keys, cookies. Only the Bitwarden item NAME is kept.
 library;
 
@@ -274,6 +281,54 @@ class AccountsImport {
   }
 }
 
+/// A service found in the sender, subject and date of sign-up mail. Nothing reaches the register until it is accepted.
+class SignUpSuggestion {
+  const SignUpSuggestion({required this.id, required this.service, required this.domain, required this.address, this.firstMail, this.lastMail, this.paid = false, this.count = 0});
+  factory SignUpSuggestion.from(Map<String, dynamic> m) => SignUpSuggestion(
+        id: fmt.s(m['id']),
+        service: fmt.s(m['service']),
+        domain: fmt.s(m['domain']),
+        address: fmt.s(m['address']),
+        firstMail: DateTime.tryParse(fmt.s(m['first_mail'])),
+        lastMail: DateTime.tryParse(fmt.s(m['last_mail'])),
+        paid: m['paid'] == true,
+        count: fmt.i(m['count']),
+      );
+  final String id, service, domain, address;
+  final DateTime? firstMail, lastMail;
+  final bool paid;
+  final int count;
+}
+
+class Breach {
+  const Breach({required this.address, required this.breach, this.date, this.notified = false});
+  factory Breach.from(Map<String, dynamic> m) => Breach(address: fmt.s(m['address']), breach: fmt.s(m['breach']), date: DateTime.tryParse(fmt.s(m['date'])), notified: m['notified'] == true);
+  final String address, breach;
+  final DateTime? date;
+  final bool notified;
+}
+
+/// With no Have I Been Pwned key the line reads "Breach check off: needs a Have I Been Pwned key" and nothing else happens.
+class BreachStatus {
+  const BreachStatus({this.enabled = false, this.line = offLine, this.items = const []});
+  factory BreachStatus.from(Map<String, dynamic> m) => BreachStatus(
+        enabled: m['enabled'] == true,
+        line: fmt.s(m['line']).isEmpty ? offLine : fmt.s(m['line']),
+        items: [for (final x in fmt.lm(m['items'])) Breach.from(x)],
+      );
+  static const offLine = 'Breach check off: needs a Have I Been Pwned key';
+  final bool enabled;
+  final String line;
+  final List<Breach> items;
+  List<Breach> forAddress(String a) => [for (final b in items) if (b.address.toLowerCase() == a.toLowerCase()) b];
+  List<Breach> get fresh => [for (final b in items) if (!b.notified) b];
+}
+
+class ScanResult {
+  const ScanResult({this.added = 0, this.mailboxes = 0, this.failed = 0});
+  final int added, mailboxes, failed;
+}
+
 abstract class AccountsApi {
   Future<List<AccountAddress>> addresses();
   Future<void> addAddress(AccountAddress a);
@@ -281,6 +336,11 @@ abstract class AccountsApi {
   Future<void> addSignUp(SignUp s);
   Future<List<AiSeat>> seats();
   Future<int> importSignUps(List<SignUp> rows);
+  Future<ScanResult> scanMail();
+  Future<List<SignUpSuggestion>> suggestions();
+  Future<void> decide(String id, String decision);
+  Future<BreachStatus> breaches();
+  Future<void> markBreachesNotified();
 }
 
 class HttpAccountsApi implements AccountsApi {
@@ -321,17 +381,44 @@ class HttpAccountsApi implements AccountsApi {
   @override
   Future<int> importSignUps(List<SignUp> rows) async =>
       fmt.i((await _go(() => api.postJson('/api/accounts/import', {'rows': [for (final r in rows) r.toJson()]})))['added']);
+
+  @override
+  Future<ScanResult> scanMail() async {
+    final m = await _go(() => api.postJson('/api/accounts/discover', {}));
+    return ScanResult(added: fmt.i(m['added']), mailboxes: fmt.i(m['mailboxes']), failed: fmt.i(m['failed']));
+  }
+
+  @override
+  Future<List<SignUpSuggestion>> suggestions() async => [for (final m in fmt.lm((await _go(() => api.getJson('/api/accounts/suggestions')))['items'])) SignUpSuggestion.from(m)];
+
+  @override
+  Future<void> decide(String id, String decision) async {
+    await _go(() => api.postJson('/api/accounts/suggestions/decide', {'id': id, 'decision': decision}));
+  }
+
+  @override
+  Future<BreachStatus> breaches() async => BreachStatus.from(await _go(() => api.getJson('/api/accounts/breaches')));
+
+  @override
+  Future<void> markBreachesNotified() async {
+    await _go(() => api.postJson('/api/accounts/breaches/notified', {}));
+  }
 }
 
 /// In-memory stand-in, seeded with the addresses already on record.
 class FakeAccountsApi implements AccountsApi {
-  FakeAccountsApi({List<AccountAddress>? addresses, List<SignUp>? signUps, List<AiSeat>? seats})
+  FakeAccountsApi({List<AccountAddress>? addresses, List<SignUp>? signUps, List<AiSeat>? seats, List<SignUpSuggestion>? suggestions, BreachStatus? breaches})
       : _addresses = addresses ?? seedAddresses(),
         _signUps = signUps ?? [],
-        _seats = seats ?? [];
+        _seats = seats ?? [],
+        _suggestions = suggestions ?? [],
+        _breaches = breaches ?? const BreachStatus();
   final List<AccountAddress> _addresses;
   final List<SignUp> _signUps;
   final List<AiSeat> _seats;
+  final List<SignUpSuggestion> _suggestions;
+  BreachStatus _breaches;
+  final Set<String> dismissed = {};
 
   static List<AccountAddress> seedAddresses() => const [
         AccountAddress(address: 'sconl.vv@gmail.com', provider: 'Google', purpose: 'work'),
@@ -359,6 +446,26 @@ class FakeAccountsApi implements AccountsApi {
   Future<int> importSignUps(List<SignUp> rows) async {
     _signUps.addAll(rows);
     return rows.length;
+  }
+
+  @override
+  Future<ScanResult> scanMail() async => ScanResult(added: _suggestions.length, mailboxes: 1);
+  @override
+  Future<List<SignUpSuggestion>> suggestions() async => [for (final x in _suggestions) if (!dismissed.contains(x.id)) x];
+  @override
+  Future<void> decide(String id, String decision) async {
+    final x = _suggestions.firstWhere((e) => e.id == id);
+    if (decision == 'accept') {
+      _signUps.add(SignUp(service: x.service, address: x.address, url: 'https://${x.domain}', status: x.paid ? 'active' : 'unknown', lastSeen: x.lastMail, lastSeenSource: 'mail'));
+    }
+    if (decision != 'later') dismissed.add(id);
+  }
+
+  @override
+  Future<BreachStatus> breaches() async => _breaches;
+  @override
+  Future<void> markBreachesNotified() async {
+    _breaches = BreachStatus(enabled: _breaches.enabled, line: _breaches.line, items: [for (final b in _breaches.items) Breach(address: b.address, breach: b.breach, date: b.date, notified: true)]);
   }
 }
 
