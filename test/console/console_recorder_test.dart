@@ -91,6 +91,8 @@ void main() {
     expect(saved!.chunks, 3);
     expect(uploads, hasLength(3));
     expect(uploads.map((u) => u.path).toSet(), {ConsoleRecorder.uploadPath});
+    expect(ConsoleRecorder.uploadPath, '/api/console/recordings/part', reason: 'the Media library route, not the old vault one');
+    expect(uploads.every((u) => RegExp(r'^[A-Za-z0-9_-]{1,64}$').hasMatch(u.body['id'] as String) && u.body['mime'] == 'audio/mp4'), isTrue, reason: 'the engine takes this id and type');
     expect(uploads.map((u) => u.body['index']), [0, 1, 2]);
     expect(uploads.every((u) => u.body['total'] == 3 && u.body['title'] == 'Standup notes'), isTrue);
     expect(uploads.every((u) => u.view == 'console'), isTrue);
