@@ -79,10 +79,10 @@ class SpaceSearchEntry extends StatelessWidget {
 /// The search entry, then exactly three tabs. [onSearch] opens the space's search; when it is null the entry opens a
 /// [SpaceSearchScreen] over [hits].
 class SpaceView extends StatefulWidget {
-  SpaceView({
+  const SpaceView({
     super.key,
     required this.space,
-    required this.searchHint,
+    this.searchHint,
     required this.tabs,
     this.hits,
     this.onSearch,
@@ -91,12 +91,13 @@ class SpaceView extends StatefulWidget {
     this.subtitle,
     this.subtitleKey,
     this.top,
+    this.showSearch = true,
     this.controller,
   }) : assert(tabs.length == spaceTabCount, 'a space has exactly $spaceTabCount tabs');
 
   /// Stable id for the key prefix and the remembered tab.
   final String space;
-  final String searchHint;
+  final String? searchHint;
   final List<SpaceTab> tabs;
   final List<SpaceHit> Function(BuildContext)? hits;
   final void Function(BuildContext)? onSearch;
@@ -109,6 +110,7 @@ class SpaceView extends StatefulWidget {
 
   /// Something that sits above the search entry (OpSec's headline line).
   final Widget? top;
+  final bool showSearch;
   final SpaceTabController? controller;
 
   @override
@@ -161,11 +163,13 @@ class _SpaceViewState extends State<SpaceView> {
   }
 
   Future<void> _search() async {
+    if (!widget.showSearch || widget.searchHint == null) return;
     if (widget.onSearch != null) return widget.onSearch!(context);
+    final hint = widget.searchHint!;
     final picked = await Navigator.push<SpaceHit>(
       context,
       MaterialPageRoute(
-        builder: (ctx) => SpaceSearchScreen(title: widget.searchHint, hint: widget.searchHint, hits: widget.hits?.call(ctx) ?? const []),
+        builder: (ctx) => SpaceSearchScreen(title: hint, hint: hint, hits: widget.hits?.call(ctx) ?? const []),
       ),
     );
     if (picked?.tab != null && mounted) {
@@ -178,17 +182,23 @@ class _SpaceViewState extends State<SpaceView> {
 
   @override
   Widget build(BuildContext context) {
+    final hasSearch = widget.showSearch && widget.searchHint != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.top != null) Padding(padding: const EdgeInsets.fromLTRB(14, 10, 14, 0), child: widget.top),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-          child: KeyedSubtree(
-            key: widget.searchKey ?? Key('${widget.space}-search-entry'),
-            child: SpaceSearchEntry(hint: widget.searchHint, onTap: _search),
+        if (widget.top != null)
+          Padding(
+            padding: EdgeInsets.fromLTRB(14, 10, 14, hasSearch ? 0 : 6),
+            child: widget.top,
           ),
-        ),
+        if (hasSearch)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+            child: KeyedSubtree(
+              key: widget.searchKey ?? Key('${widget.space}-search-entry'),
+              child: SpaceSearchEntry(hint: widget.searchHint!, onTap: _search),
+            ),
+          ),
         if (widget.subtitle != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),

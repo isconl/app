@@ -165,7 +165,6 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildDate(now),
                   const ThemeOfDayLine(),
                   const SizedBox(height: 4),
                   if (fmt.s(eq['eqShort']).isNotEmpty)
@@ -193,8 +192,6 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
                 ],
               ),
             ),
-            // ---- BI26102202: the first shilling stays in view ----
-            const RevenueActionsCard(),
             // ---- checkpoint, between the date block and the ring (BI26092624) ----
             const CheckpointCard(),
             // ---- Data October (PI26093009): hides when the hub has no feed ----
@@ -203,6 +200,8 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
             const DebriefCard(),
             // ---- console ring ----
             const ContextRingCard(),
+            // ---- BI26102202 / BI26102601: the first shilling stays in view, below console ----
+            const RevenueActionsCard(),
             // ---- orientation ----
             const _OrientationStrip(),
             ],
@@ -283,10 +282,11 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final now = (widget.clock ?? DateTime.now)();
     return SpaceView(
       space: 'hub',
-      searchHint: 'Search today, signals and services',
-      hits: hitsFor,
+      showSearch: false,
+      top: _buildDate(now),
       tabs: [for (var i = 0; i < tabLabels.length; i++) SpaceTab(tabLabels[i], _part(i))],
     );
   }

@@ -8,6 +8,8 @@ import 'package:isconl/ui/views/hub.dart';
 import 'package:isconl/ui/views/planning.dart';
 import 'package:isconl/ui/views/slate.dart';
 import 'package:isconl/ui/widgets/space_header.dart';
+import 'package:isconl/ui/widgets/context_ring_card.dart';
+import 'package:isconl/ui/widgets/revenue_actions_card.dart';
 
 import 'support/test_services.dart';
 
@@ -49,12 +51,34 @@ void main() {
     await t.pump(const Duration(seconds: 11));
   }
 
-  testWidgets('Hub: the entry above Now, Today and Services', (t) async {
+  testWidgets('Hub: first child is the date/time block, no search field, and revenue actions follows console', (t) async {
     await pump(t, HubView(clock: () => DateTime(2026, 10, 20, 9, 0)));
-    expect(find.text('Search today, signals and services'), findsOneWidget);
+    // Hub's first child is the date/time block:
+    final column = t.widget<Column>(find.descendant(of: find.byType(HubView), matching: find.byType(Column)).first);
+    expect(find.descendant(of: find.byWidget(column.children.first), matching: find.byKey(const Key('hub-date-row'))), findsOneWidget);
+
+    // Hub contains no search field:
+    expect(find.text('Search today, signals and services'), findsNothing);
+    expect(find.byType(SpaceSearchEntry), findsNothing);
+    expect(find.byType(TextField), findsNothing);
+
+    // tabs exist:
     for (final l in hubTabLabels) {
       expect(find.text(l), findsWidgets, reason: l);
     }
+
+    // and the revenue actions card comes immediately after the console:
+    final ringFinder = find.byType(ContextRingCard);
+    expect(ringFinder, findsOneWidget, reason: 'console is present');
+    final revFinder = find.byType(RevenueActionsCard);
+    expect(revFinder, findsOneWidget, reason: 'revenue actions is present');
+
+    final outerColumn = t.widget<Column>(find.ancestor(of: ringFinder, matching: find.byType(Column)).first);
+    final ringIdx = outerColumn.children.indexWhere((w) => w is ContextRingCard);
+    final revIdx = outerColumn.children.indexWhere((w) => w is RevenueActionsCard);
+    expect(ringIdx, isNonNegative, reason: 'console is present in outer column');
+    expect(revIdx, ringIdx + 1, reason: 'the revenue actions card comes immediately after the console');
+
     await end(t);
   });
 
