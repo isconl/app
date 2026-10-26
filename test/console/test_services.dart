@@ -126,6 +126,20 @@ Future<AppServices> buildTestServices({bool online = true}) async {
             updated_at INTEGER NOT NULL,
             PRIMARY KEY (course, file)
           )''');
+        await db.execute('''
+          CREATE TABLE study_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            module TEXT NOT NULL,
+            started_at INTEGER NOT NULL,
+            ended_at INTEGER NOT NULL,
+            fraction_read REAL NOT NULL,
+            finished INTEGER NOT NULL,
+            hour INTEGER NOT NULL,
+            block_name TEXT,
+            energy INTEGER,
+            not_now_reason TEXT,
+            synced INTEGER NOT NULL DEFAULT 0
+          )''');
         await ensureVaultMirrorTables(db);
       },
     ),

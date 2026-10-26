@@ -56,7 +56,7 @@ class AppDb {
       // movement, how many blocks, words left, title), so reading resumes at the
       // same block after a font-size or renderer change, and Today can offer
       // "Continue reading" without opening the module.
-      version: 7,
+      version: 8,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE snapshots (
@@ -115,6 +115,20 @@ class AppDb {
             updated_at INTEGER NOT NULL,
             PRIMARY KEY (course, file)
           )''');
+        await db.execute('''
+          CREATE TABLE study_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            module TEXT NOT NULL,
+            started_at INTEGER NOT NULL,
+            ended_at INTEGER NOT NULL,
+            fraction_read REAL NOT NULL,
+            finished INTEGER NOT NULL,
+            hour INTEGER NOT NULL,
+            block_name TEXT,
+            energy INTEGER,
+            not_now_reason TEXT,
+            synced INTEGER NOT NULL DEFAULT 0
+          )''');
         await ensureVaultMirrorTables(db);
         await CdmCache.createTables(db);
       },
@@ -167,6 +181,22 @@ class AppDb {
               await db.execute('ALTER TABLE lesson_resume ADD COLUMN $col');
             } catch (_) {}
           }
+        }
+        if (oldVersion < 8) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS study_sessions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              module TEXT NOT NULL,
+              started_at INTEGER NOT NULL,
+              ended_at INTEGER NOT NULL,
+              fraction_read REAL NOT NULL,
+              finished INTEGER NOT NULL,
+              hour INTEGER NOT NULL,
+              block_name TEXT,
+              energy INTEGER,
+              not_now_reason TEXT,
+              synced INTEGER NOT NULL DEFAULT 0
+            )''');
         }
       },
     );
@@ -615,6 +645,15 @@ class AppDb {
     final baseWithMirror =
         await overlayVaultMirrorTables(_db, snapshotKey, base);
     return overlayLessonProgressLocal(_db, snapshotKey, baseWithMirror);
+  }
+
+  // ---- study sessions (BI26101606) ----
+  Future<int> insertStudySession(Map<String, dynamic> row) => _db.insert('study_sessions', row);
+  Future<List<Map<String, dynamic>>> getStudySessions({int limit = 100}) =>
+      _db.query('study_sessions', orderBy: 'id DESC', limit: limit);
+  Future<int> getStudySessionCount() async {
+    final r = await _db.rawQuery('SELECT COUNT(*) as c FROM study_sessions');
+    return (r.first['c'] as num?)?.toInt() ?? 0;
   }
 }
 

@@ -91,10 +91,20 @@ class StudyPickService {
     // snapshot does not know are dropped, so a stale index never offers a module that is gone.
     final cards = loaded.degraded ? thin : loaded.cards.where((c) => titles.containsKey(c.id)).toList();
     final target = now.add(const Duration(days: 26 * 7));
+    List<StudySession> sessions = const [];
+    try {
+      final dbSessions = await _db.getStudySessions(limit: 200);
+      sessions = dbSessions.map((m) => StudySession(
+        DateTime.fromMillisecondsSinceEpoch(m['started_at'] as int),
+        (m['finished'] as int) == 1,
+      )).toList();
+    } catch (_) {}
+
     final inputs = StudyInputs(
       now: now,
       cards: cards,
       progress: progress,
+      sessions: sessions,
       minutesUntilNextBlock: minutesUntilNextBlock,
       nextBlockLabel: nextBlockLabel,
       energy: energy,

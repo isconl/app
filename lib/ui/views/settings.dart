@@ -1,3 +1,4 @@
+import '../widgets/study_model_card.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
@@ -233,6 +234,8 @@ class _SettingsViewState extends State<SettingsView> {
               if (part == 1) ...[
               const SectionLabel('Study'),
               const Panel(child: StandardOnListSwitch()),
+              const SizedBox(height: 10),
+              const StudyModelSettingCard(),
               const SectionLabel('Offline narration'),
               const OfflineNarrationCard(),
               const SectionLabel('Journal access'),
