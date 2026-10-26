@@ -94,6 +94,18 @@ class _StudyModelSettingCardState extends State<StudyModelSettingCard> {
               onChanged: (v) => setState(() => _nudgesEnabled = v),
             ),
           ),
+          if (_nudgesEnabled)
+            Material(
+              type: MaterialType.transparency,
+              child: SwitchListTile(
+                key: const Key('study-weekend-nudge-switch'),
+                contentPadding: EdgeInsets.zero,
+                title: Text('Include weekends', style: T.label),
+                subtitle: Text('Off by default; enable nudges on Saturday and Sunday', style: T.tiny.copyWith(color: C.text3)),
+                value: _weekendNudges,
+                onChanged: (v) => setState(() => _weekendNudges = v),
+              ),
+            ),
         ],
       ),
     );
