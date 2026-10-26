@@ -14,6 +14,7 @@ String _month(DateTime d) => nairobiMonth(d);
 void main() {
   final now = DateTime.now();
   final thisMonth = _month(now);
+  final nextMonth = weekEnd(now).substring(0, 7);
   final y = now.year;
 
   Map<String, dynamic> row(String id, String date, String type, num amount, {String category = '', String desc = '', String account = 'a1'}) => {
@@ -51,6 +52,11 @@ void main() {
 
   Map<String, Object> api(List<Map<String, dynamic>> items, {String? newest, int? total}) => {
         '/api/finance/summary': summary,
+        if (nextMonth != thisMonth)
+          '/api/finance/transactions?month=$nextMonth': {
+            'items': const <Map<String, dynamic>>[], 'total': 0, 'all': 0, 'newest': newest ?? '${y}-08-09', 'oldest': '${y}-01-01',
+            'months': ['${y}-08', '${y}-07', thisMonth], 'categories': ['food', 'transport'],
+          },
         '/api/finance/transactions': {
           'items': items, 'total': total ?? items.length, 'all': total ?? items.length, 'newest': newest ?? '${y}-08-09', 'oldest': '${y}-01-01',
           'months': ['${y}-08', '${y}-07', thisMonth], 'categories': ['food', 'transport'],
