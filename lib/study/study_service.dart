@@ -30,13 +30,15 @@ class SnapshotIndexStore implements StudyIndexStore {
 }
 
 class StudyPickResult {
-  const StudyPickResult(this.pick, {this.degraded = false, this.notice, this.titles = const {}});
+  const StudyPickResult(this.pick, {this.degraded = false, this.notice, this.titles = const {}, this.inputs});
   final StudyPick pick;
   final bool degraded;
   final String? notice;
 
   /// card id (`course/file`) -> lesson title, for display.
   final Map<String, String> titles;
+
+  final StudyInputs? inputs;
 }
 
 /// `course/file` is the card id; a track is the course's group.
@@ -99,7 +101,7 @@ class StudyPickService {
       tracks: {for (final e in tracks.entries) e.key: TrackState(unreadMinutes: e.value, targetDate: target)},
     );
     final pick = pickStudy(inputs, StudyProfile.parse(null));
-    return StudyPickResult(pick, degraded: loaded.degraded, notice: loaded.degraded ? loaded.notice : null, titles: titles);
+    return StudyPickResult(pick, degraded: loaded.degraded, notice: loaded.degraded ? loaded.notice : null, titles: titles, inputs: inputs);
   }
 
   /// For tests and the "delete the cache" check: drops the stored index so the next pick is degraded.

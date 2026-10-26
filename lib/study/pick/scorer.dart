@@ -29,7 +29,8 @@ class StudyPick {
   final Recommendation? lighter;
   final Recommendation? deeper;
   final int candidates;
-  const StudyPick({this.top, this.lighter, this.deeper, this.candidates = 0});
+  final List<Recommendation> scored;
+  const StudyPick({this.top, this.lighter, this.deeper, this.candidates = 0, this.scored = const []});
   Map<String, dynamic> toJson() => {
         'top': top?.toJson(),
         'lighter': lighter?.toJson(),
@@ -95,7 +96,7 @@ StudyPick pickStudy(StudyInputs inp, StudyProfile prof) {
     if (isDeeper && deeper == null) deeper = r;
     if (lighter != null && deeper != null) break;
   }
-  return StudyPick(top: top, lighter: lighter, deeper: deeper, candidates: scored.length);
+  return StudyPick(top: top, lighter: lighter, deeper: deeper, candidates: scored.length, scored: scored);
 }
 
 bool _reviewDue(Progress p, DateTime now, StudyProfile prof) {
@@ -182,4 +183,42 @@ String _phrase(String part, ModuleCard c, TrackState? ts, Progress? pr, int wind
       return 'named in a campus announcement';
   }
   return part;
+}
+
+String plainScorePart(ScorePart part, Recommendation rec, StudyInputs? inp) {
+  switch (part.name) {
+    case 'fit':
+      if (inp?.nextBlockLabel != null) {
+        return 'Fits before your ${inp!.nextBlockLabel} block';
+      } else if (inp?.minutesUntilNextBlock != null) {
+        return 'Fits your ${inp!.minutesUntilNextBlock} min window';
+      }
+      return 'Fits your available study time';
+    case 'coverage':
+      final ts = inp?.tracks[rec.card.track];
+      final b = ts?.cyclesBehind ?? 0;
+      if (b >= 1) {
+        final n = b.round();
+        return '${rec.card.track} is $n ${n == 1 ? 'cycle' : 'cycles'} behind';
+      }
+      return '${rec.card.track.isEmpty ? 'Track' : rec.card.track} is behind cycle pace';
+    case 'momentum':
+      final pr = inp?.progress[rec.card.id];
+      final pct = ((pr?.fraction ?? 0) * 100).round();
+      return pct > 0 ? 'In progress ($pct% read)' : 'Started and in progress';
+    case 'relevance':
+      if (inp != null && inp.events.any((e) => e.subjects.any(rec.card.subjects.contains))) {
+        return 'Matches upcoming calendar event';
+      }
+      if (inp != null && inp.tasks.any((t) => t.subjects.any(rec.card.subjects.contains))) {
+        return 'Matches open task';
+      }
+      return 'Matches cycle theme';
+    case 'review':
+      return 'Due for spaced review';
+    case 'announcement':
+      return 'Named in campus announcement';
+    default:
+      return part.name;
+  }
 }

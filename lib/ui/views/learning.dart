@@ -198,28 +198,48 @@ class _LearningViewState extends State<LearningView> {
                   ),
                 );
               }),
-              // BI26101214: what to read right now, and the study activity map.
-              if (tab == 1) CampusCard(onOpen: (courseId, lesson) {
-                if (lesson.isEmpty) return;
-                final course = courses.firstWhere(
-                    (c) => (fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID'])) == courseId,
-                    orElse: () => const <String, dynamic>{});
-                final lessons = fmt.lm(course['lessons']);
-                final l = lessons.firstWhere((x) => fmt.s(x['file']) == lesson, orElse: () => const <String, dynamic>{});
-                final rawTitle = fmt.s(l['title']).isEmpty ? lesson : fmt.s(l['title']);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => LessonScreen(
-                      course: courseId,
-                      file: lesson,
-                      title: safeModuleTitle(stripEmoji(rawTitle), lesson),
-                      status: fmt.s(l['status']).isEmpty ? 'new' : fmt.s(l['status']),
-                      allLessons: lessons,
+              // BI26101605: Announcements section, collapsed by default, fed by campus.tsv (CampusCard).
+              if (tab == 1)
+                Container(
+                  key: const Key('campus-announcements'),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(border: Border.all(color: C.border), borderRadius: BorderRadius.circular(Sz.rMd)),
+                  child: Theme(
+                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      initiallyExpanded: false,
+                      tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                      leading: const Icon(Icons.campaign_outlined, size: 20, color: C.text2),
+                      title: Text('Announcements', style: T.label),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          child: CampusCard(onOpen: (courseId, lesson) {
+                            if (lesson.isEmpty) return;
+                            final course = courses.firstWhere(
+                                (c) => (fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID'])) == courseId,
+                                orElse: () => const <String, dynamic>{});
+                            final lessons = fmt.lm(course['lessons']);
+                            final l = lessons.firstWhere((x) => fmt.s(x['file']) == lesson, orElse: () => const <String, dynamic>{});
+                            final rawTitle = fmt.s(l['title']).isEmpty ? lesson : fmt.s(l['title']);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => LessonScreen(
+                                  course: courseId,
+                                  file: lesson,
+                                  title: safeModuleTitle(stripEmoji(rawTitle), lesson),
+                                  status: fmt.s(l['status']).isEmpty ? 'new' : fmt.s(l['status']),
+                                  allLessons: lessons,
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
+                      ],
                     ),
                   ),
-                );
-              }),
+                ),
               // Tracks tab: the track cards and the offline progress.
               // ── transient prefetch progress only - the idle summary moved
               // down to each track card, where "how much of THIS is offline"
