@@ -2,15 +2,20 @@ import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../theme.dart';
+import '../../util/space_nav_prefs.dart';
 import '../../util/tab_memory.dart';
 import 'common.dart';
+import 'space_rail.dart';
 import 'sub_tabs.dart';
 
 /// BI26101802: the header Study set the pattern for, as one widget every sub-tab space wears: a search entry, then
 /// exactly three tabs. The search is tailored to the space (its hint names what it finds, its hits are that space's own
 /// data) and opens a full search screen. A space with nothing searchable yet passes [filterHits] built from the list it
 /// shows, so the box still filters what is on screen.
+/// BI26102802: rail navigation inside spaces: vertical pill rail on the right edge holding up to five icons, one per
+/// destination. Setting (Settings: Space navigation, Rail or Tabs) defaults to Rail, switchable back without restart.
 const int spaceTabCount = 3;
+const int maxSpaceDestinations = 5;
 
 /// One search result: a title, a line under it, and what tapping it opens.
 class SpaceHit {
@@ -51,9 +56,64 @@ class SpaceTabController extends ChangeNotifier {
 }
 
 class SpaceTab {
-  const SpaceTab(this.label, this.body);
+  const SpaceTab(this.label, this.body, {this.icon});
   final String label;
   final Widget body;
+  final IconData? icon;
+
+  IconData get effectiveIcon => icon ?? defaultIconFor(label);
+
+  static IconData defaultIconFor(String label) {
+    switch (label.trim().toLowerCase()) {
+      case 'map': return Icons.map_outlined;
+      case 'campus': return Icons.school_outlined;
+      case 'tracks': return Icons.alt_route_rounded;
+      case 'now': return Icons.radar_rounded;
+      case 'today': return Icons.today_rounded;
+      case 'services': return Icons.dns_rounded;
+      case 'addresses': return Icons.alternate_email_rounded;
+      case 'sign-ups': case 'signups': return Icons.subscriptions_outlined;
+      case 'ai seats': case 'seats': return Icons.psychology_outlined;
+      case 'browse': return Icons.folder_open_rounded;
+      case 'recent': return Icons.history_rounded;
+      case 'device': return Icons.phone_android_rounded;
+      case 'storage': return Icons.inventory_2_outlined;
+      case 'general': return Icons.tune_rounded;
+      case 'study and notes': return Icons.edit_note_rounded;
+      case 'account and sync': return Icons.sync_lock_rounded;
+      case 'command': return Icons.terminal_rounded;
+      case 'tasks': return Icons.task_alt_rounded;
+      case 'register': return Icons.table_chart_outlined;
+      case 'inbox': return Icons.inbox_rounded;
+      case 'deck': return Icons.view_kanban_outlined;
+      case 'teams': return Icons.groups_outlined;
+      case 'tools': return Icons.construction_rounded;
+      case 'overview': return Icons.dashboard_outlined;
+      case 'leads': return Icons.trending_up_rounded;
+      case 'practices': return Icons.business_center_outlined;
+      case 'documents': return Icons.description_outlined;
+      case 'calendar': return Icons.calendar_month_outlined;
+      case 'rhythm': return Icons.speed_rounded;
+      case 'review': return Icons.rate_review_outlined;
+      case 'assets': return Icons.account_balance_outlined;
+      case 'report': return Icons.assessment_outlined;
+      case 'plan': return Icons.assignment_outlined;
+      case 'transactions': return Icons.receipt_long_outlined;
+      case 'portfolio': return Icons.folder_special_outlined;
+      case 'focus': return Icons.center_focus_strong_rounded;
+      case 'ideas': return Icons.lightbulb_outline_rounded;
+      case 'articles': return Icons.article_outlined;
+      case 'activity': return Icons.timeline_rounded;
+      case 'audit': return Icons.fact_check_outlined;
+      case 'status': return Icons.info_outline_rounded;
+      case 'one': return Icons.looks_one_outlined;
+      case 'two': return Icons.looks_two_outlined;
+      case 'three': return Icons.looks_3_outlined;
+      case 'four': return Icons.looks_4_outlined;
+      case 'five': return Icons.looks_5_outlined;
+      default: return Icons.circle_outlined;
+    }
+  }
 }
 
 /// The search entry that sits above the three tabs. Same look as Study's.
@@ -76,8 +136,9 @@ class SpaceSearchEntry extends StatelessWidget {
   }
 }
 
-/// The search entry, then exactly three tabs. [onSearch] opens the space's search; when it is null the entry opens a
-/// [SpaceSearchScreen] over [hits].
+/// The search entry, then destinations inside a space.
+/// In Tabs mode: horizontal tab bar with green underline under the search entry.
+/// In Rail mode: vertical pill rail on the right edge holding up to 5 icons.
 class SpaceView extends StatefulWidget {
   const SpaceView({
     super.key,
@@ -93,7 +154,10 @@ class SpaceView extends StatefulWidget {
     this.top,
     this.showSearch = true,
     this.controller,
-  }) : assert(tabs.length == spaceTabCount, 'a space has exactly $spaceTabCount tabs');
+    this.mode,
+    this.primaryFab,
+    this.secondaryFabs,
+  }) : assert(tabs.length >= 3 && tabs.length <= maxSpaceDestinations, 'a space has between 3 and $maxSpaceDestinations destinations');
 
   /// Stable id for the key prefix and the remembered tab.
   final String space;
@@ -104,7 +168,7 @@ class SpaceView extends StatefulWidget {
   final int initialTab;
   final Key? searchKey;
 
-  /// A quiet line between the search entry and the tabs.
+  /// A quiet line between the search entry and the tabs/canvas.
   final String? subtitle;
   final Key? subtitleKey;
 
@@ -112,6 +176,13 @@ class SpaceView extends StatefulWidget {
   final Widget? top;
   final bool showSearch;
   final SpaceTabController? controller;
+
+  /// Mode override (Rail or Tabs). When null, reads SpaceNavPrefs.instance.mode.
+  final SpaceNavMode? mode;
+
+  /// Optional primary and secondary FABs for layout coordination.
+  final Widget? primaryFab;
+  final List<Widget>? secondaryFabs;
 
   @override
   State<SpaceView> createState() => _SpaceViewState();
@@ -136,7 +207,7 @@ class _SpaceViewState extends State<SpaceView> {
 
   void _onRequest() {
     final t = widget.controller?.requested;
-    if (t == null || t < 0 || t >= spaceTabCount || !mounted) return;
+    if (t == null || t < 0 || t >= widget.tabs.length || !mounted) return;
     setState(() {
       _tab = t;
       _restored++;
@@ -149,7 +220,8 @@ class _SpaceViewState extends State<SpaceView> {
     if (_read) return;
     _read = true;
     try {
-      readTabIndex(AppScope.of(context).db, widget.space, spaceTabCount).then((saved) {
+      SpaceNavPrefs.instance.ensureLoaded(AppScope.of(context).db);
+      readTabIndex(AppScope.of(context).db, widget.space, widget.tabs.length).then((saved) {
         if (mounted && saved != null && saved != _tab) {
           setState(() {
             _tab = saved;
@@ -182,44 +254,101 @@ class _SpaceViewState extends State<SpaceView> {
 
   @override
   Widget build(BuildContext context) {
-    final hasSearch = widget.showSearch && widget.searchHint != null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (widget.top != null)
-          Padding(
-            padding: EdgeInsets.fromLTRB(14, 10, 14, hasSearch ? 0 : 6),
-            child: widget.top,
-          ),
-        if (hasSearch)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-            child: KeyedSubtree(
-              key: widget.searchKey ?? Key('${widget.space}-search-entry'),
-              child: SpaceSearchEntry(hint: widget.searchHint!, onTap: _search),
+    return ListenableBuilder(
+      listenable: SpaceNavPrefs.instance,
+      builder: (context, _) {
+        final activeMode = widget.mode ?? SpaceNavPrefs.instance.mode;
+        final hasSearch = widget.showSearch && widget.searchHint != null;
+        final activeIndex = _tab.clamp(0, widget.tabs.length - 1);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.top != null)
+              Padding(
+                padding: EdgeInsets.fromLTRB(14, 10, 14, hasSearch ? 0 : 6),
+                child: widget.top,
+              ),
+            if (hasSearch)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+                child: KeyedSubtree(
+                  key: widget.searchKey ?? Key('${widget.space}-search-entry'),
+                  child: SpaceSearchEntry(hint: widget.searchHint!, onTap: _search),
+                ),
+              ),
+            if (widget.subtitle != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Text(widget.subtitle!, key: widget.subtitleKey, style: T.small.copyWith(color: C.text3)),
+              ),
+            Expanded(
+              child: activeMode == SpaceNavMode.tabs
+                  ? SubTabs(
+                      key: ValueKey('${widget.space}-view-$_restored'),
+                      keyPrefix: widget.space,
+                      labels: [for (final t in widget.tabs) t.label],
+                      initialIndex: activeIndex,
+                      onChanged: (i) {
+                        _tab = i;
+                        try {
+                          writeTabIndex(AppScope.of(context).db, widget.space, i);
+                        } catch (_) {}
+                      },
+                      children: [for (final t in widget.tabs) t.body],
+                    )
+                  : Stack(
+                      key: ValueKey('${widget.space}-rail-stack'),
+                      children: [
+                        // Canvas: padded on the right so content never sits under the rail
+                        Padding(
+                          padding: const EdgeInsets.only(right: 68),
+                          child: KeyedSubtree(
+                            key: ValueKey('${widget.space}-canvas-$activeIndex'),
+                            child: widget.tabs[activeIndex].body,
+                          ),
+                        ),
+                        // Floating rail: right edge, sits vertically above the 2 secondary FAB slots
+                        Positioned(
+                          right: 20,
+                          bottom: 184,
+                          child: SpaceRail(
+                            keyPrefix: widget.space,
+                            tabs: widget.tabs,
+                            currentIndex: activeIndex,
+                            onSelect: (i) {
+                              setState(() {
+                                _tab = i;
+                                _restored++;
+                              });
+                              try {
+                                writeTabIndex(AppScope.of(context).db, widget.space, i);
+                              } catch (_) {}
+                            },
+                          ),
+                        ),
+                        // Stacked secondary FABs if provided
+                        if (widget.secondaryFabs != null) ...[
+                          for (var i = 0; i < widget.secondaryFabs!.length; i++)
+                            Positioned(
+                              right: 24,
+                              bottom: 82 + i * 50.0,
+                              child: widget.secondaryFabs![i],
+                            ),
+                        ],
+                        // Primary FAB if provided
+                        if (widget.primaryFab != null)
+                          Positioned(
+                            right: 16,
+                            bottom: 16,
+                            child: widget.primaryFab!,
+                          ),
+                      ],
+                    ),
             ),
-          ),
-        if (widget.subtitle != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child: Text(widget.subtitle!, key: widget.subtitleKey, style: T.small.copyWith(color: C.text3)),
-          ),
-        Expanded(
-          child: SubTabs(
-            key: ValueKey('${widget.space}-view-$_restored'),
-            keyPrefix: widget.space,
-            labels: [for (final t in widget.tabs) t.label],
-            initialIndex: _tab,
-            onChanged: (i) {
-              _tab = i;
-              try {
-                writeTabIndex(AppScope.of(context).db, widget.space, i);
-              } catch (_) {}
-            },
-            children: [for (final t in widget.tabs) t.body],
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }

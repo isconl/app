@@ -2,6 +2,7 @@ import '../widgets/study_model_card.dart';
 import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
+import '../../data/db.dart';
 import '../../services/branding.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
@@ -22,6 +23,7 @@ import '../widgets/passkeys_card.dart';
 import '../widgets/status_briefs_card.dart';
 import '../../services/day_close_planner.dart';
 import '../../util/day_close.dart';
+import '../../util/space_nav_prefs.dart';
 import '../widgets/space_header.dart';
 import 'learned_ranking.dart';
 import 'systems_dashboard.dart';
@@ -65,6 +67,7 @@ class _SettingsViewState extends State<SettingsView> {
 
   /// Section titles and switch labels, with the tab that holds each, for the search.
   static const searchTable = <(String, String, int)>[
+    ('Space navigation', 'Rail or tabs navigation inside spaces', 0),
     ('Day close', 'the end-of-day review', 0),
     ('Automatic context', 'M-Pesa messages from SMS', 0),
     ('Prefetch', 'what the phone downloads ahead', 0),
@@ -116,6 +119,9 @@ class _SettingsViewState extends State<SettingsView> {
                   padding: const EdgeInsets.only(bottom: 14),
                   child: SystemsDashboardHost(onOpenSub: widget.onOpenSub),
                 ),
+              // ---- Space navigation mode (BI26102802) ----
+              const SectionLabel('Space navigation'),
+              const _SpaceNavModeSetting(),
               // ---- the end-of-day review ----
               const SectionLabel('Day close'),
               _DayCloseSettings(
@@ -691,6 +697,61 @@ class _Stat extends StatelessWidget {
   }
 }
 
+
+/// BI26102802: Space navigation mode setting: Rail or Tabs.
+class _SpaceNavModeSetting extends StatelessWidget {
+  const _SpaceNavModeSetting();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: SpaceNavPrefs.instance,
+      builder: (context, _) {
+        final current = SpaceNavPrefs.instance.mode;
+        AppDb? db;
+        try {
+          db = AppScope.of(context).db;
+        } catch (_) {}
+
+        return Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Space navigation', style: T.w600(T.body2)),
+              const SizedBox(height: 4),
+              Text(
+                'Rail puts destinations on a vertical pill on the right edge. Tabs uses a horizontal bar at the top.',
+                style: T.tiny.copyWith(color: C.text3),
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<SpaceNavMode>(
+                key: const Key('settings-space-nav-segmented'),
+                segments: const [
+                  ButtonSegment<SpaceNavMode>(
+                    value: SpaceNavMode.rail,
+                    label: Text('Rail'),
+                    icon: Icon(Icons.view_sidebar_rounded, size: 16),
+                  ),
+                  ButtonSegment<SpaceNavMode>(
+                    value: SpaceNavMode.tabs,
+                    label: Text('Tabs'),
+                    icon: Icon(Icons.tab_rounded, size: 16),
+                  ),
+                ],
+                selected: {current},
+                onSelectionChanged: (set) {
+                  if (set.isNotEmpty) {
+                    SpaceNavPrefs.instance.setMode(set.first, db);
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
 
 /// BI26100143: when the end-of-day review notification fires, and whether weekends are skipped.
 class _DayCloseSettings extends StatefulWidget {

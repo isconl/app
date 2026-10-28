@@ -6,6 +6,7 @@ import 'package:isconl/ui/views/codex.dart';
 import 'package:isconl/ui/views/learning.dart';
 import 'package:isconl/ui/views/ops.dart';
 import 'package:isconl/ui/widgets/space_header.dart';
+import 'package:isconl/util/space_nav_prefs.dart';
 
 import 'console/test_services.dart';
 
@@ -20,6 +21,7 @@ SpaceView _space({List<SpaceHit>? hits}) => SpaceView(
 
 void main() {
   setUpAll(initSqfliteForTests);
+  setUp(() => SpaceNavPrefs.instance.setMode(SpaceNavMode.tabs));
 
   Future<AppServices> services(WidgetTester t) async => (await t.runAsync(() => buildTestServices(online: true)))!;
   Future<void> settle(WidgetTester t) async {
