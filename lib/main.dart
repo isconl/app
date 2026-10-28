@@ -34,6 +34,7 @@ import 'ui/views/day_close.dart';
 import 'readiness/readiness_host.dart';
 import 'ui/widgets/journal_access.dart';
 import 'ui/widgets/common.dart';
+import 'ui/widgets/space_header.dart' show SpaceNavMode;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,6 +57,8 @@ Future<void> main() async {
   await ensureBackgroundAudio();
   final services = await AppServices.boot();
   await BrandingService.instance.load();
+  // BI26102802: spaces open in the rail unless Settings says tabs.
+  await SpaceNavMode.load(services.db);
   runApp(IsconlApp(services: services));
 }
 

@@ -69,6 +69,7 @@ class _SettingsViewState extends State<SettingsView> {
     ('Automatic context', 'M-Pesa messages from SMS', 0),
     ('Prefetch', 'what the phone downloads ahead', 0),
     ('Learned ranking', 'what dragging a task taught slate', 0),
+    ('Navigation', 'rail or tabs inside each space', 0),
     ('General', 'appearance, local data and branding', 0),
     ('Notifications', 'slate closes and alerts', 1),
     ('Study', 'standard on list', 1),
@@ -428,6 +429,31 @@ class _SettingsViewState extends State<SettingsView> {
               // separate sections into one - both are "how this device's
               // copy of the app looks and holds", the lightest-touch settings
               // that were previously getting a full section each.
+              // BI26102802: how every space moves between its destinations, changed live.
+              const SectionLabel('Navigation'),
+              Panel(
+                key: const Key('space-nav-setting'),
+                child: ValueListenableBuilder<SpaceNav>(
+                  valueListenable: SpaceNavMode.mode,
+                  builder: (context, mode, _) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        mode == SpaceNav.rail
+                            ? 'Rail: a column of icons on the right edge, above the buttons. Hold an icon to see its name.'
+                            : 'Tabs: a row of tabs under the search.',
+                        style: T.small.copyWith(color: C.text3),
+                      ),
+                      const SizedBox(height: 10),
+                      Segmented(
+                        options: const ['Rail', 'Tabs'],
+                        value: mode == SpaceNav.rail ? 'Rail' : 'Tabs',
+                        onChanged: (v) => SpaceNavMode.set(services.db, v == 'Rail' ? SpaceNav.rail : SpaceNav.tabs),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               const SectionLabel('General'),
               Panel(
                 child: ListenableBuilder(

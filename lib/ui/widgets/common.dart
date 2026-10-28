@@ -669,8 +669,10 @@ class ViewFab extends StatelessWidget {
   /// A small button is 40 dp; slots are 10 dp apart.
   static const double slotStep = 50;
 
-  /// Clears the shell's 56dp Assistant button (16dp margin) with a 10dp gap, centred over it.
-  static const double right = 24;
+  /// Clears the shell's 56dp Assistant button (16dp margin) with a 10dp gap, centred over it. A small button takes
+  /// 48 dp with its tap padding, so its centre sits 20 + 24 = 44 dp from the edge, the Assistant's own centre line
+  /// (16 + 28). It was 24 until 28 Oct 2026, which put the small buttons 4 dp off that line.
+  static const double right = 20;
   static const double bottom = 82;
 
   @override

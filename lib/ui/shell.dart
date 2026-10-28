@@ -633,7 +633,9 @@ class ShellAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
       actions: [
-        ...actions,
+        // 28 Oct 2026: a screen's own SyncIndicator is dropped here, because the bar always draws the one below; the
+        // Study track and course screens each passed one, and the bar showed two clouds.
+        ...actions.where((a) => a is! SyncIndicator),
         // BI26092617: the sync indicator, then the hamburger, right-most on every view.
         const SyncIndicator(),
         IconButton(
