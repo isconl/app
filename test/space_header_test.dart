@@ -41,9 +41,16 @@ void main() {
     expect(filterHits(hits, 'finance report people').length, 0);
   });
 
-  test('a space has exactly three tabs', () {
-    expect(() => SpaceView(space: 'x', searchHint: 'h', tabs: [SpaceTab('A', _tab('a')), SpaceTab('B', _tab('b'))]), throwsAssertionError);
+  // BI26102802: the rail holds up to five destinations, so a space has two to five (three is still the usual).
+  test('a space has two to five destinations', () {
+    List<SpaceTab> n(int count) => [for (var i = 0; i < count; i++) SpaceTab('T$i', _tab('t$i'))];
+    expect(() => SpaceView(space: 'x', searchHint: 'h', tabs: n(1)), throwsAssertionError);
+    expect(() => SpaceView(space: 'x', searchHint: 'h', tabs: n(6)), throwsAssertionError);
+    for (final ok in [2, 3, 5]) {
+      expect(SpaceView(space: 'x', searchHint: 'h', tabs: n(ok)).tabs.length, ok);
+    }
     expect(spaceTabCount, 3);
+    expect(spaceMaxTabs, 5);
   });
 
   testWidgets('the search entry sits above exactly three tabs', (t) async {
