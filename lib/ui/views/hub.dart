@@ -301,7 +301,8 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
         final dateSpan = narrow
             ? TextSpan(
                 children: [
-                  TextSpan(text: fmt.weekdaysFull[now.weekday - 1].substring(0, 3), style: const TextStyle(fontWeight: FontWeight.w700)),
+                  // Sconl, 28 Oct 2026: the day is always written in full ("Wednesday"); only the month shortens.
+                  TextSpan(text: fmt.weekdaysFull[now.weekday - 1], style: const TextStyle(fontWeight: FontWeight.w700)),
                   TextSpan(text: ' ${now.day} ${fmt.monthsFull[now.month - 1].substring(0, 3)}', style: const TextStyle(fontWeight: FontWeight.w400)),
                 ],
               )

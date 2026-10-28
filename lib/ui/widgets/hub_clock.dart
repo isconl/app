@@ -5,9 +5,10 @@ import 'package:flutter/material.dart';
 import '../../theme.dart';
 import '../../util/server_clock.dart';
 
-/// BI26101801: the Hub's live clock, `HH:MM:SS`, 24-hour, in seven-segment digits (DSEG7 Classic) in the app's green.
+/// BI26101801: the Hub's live clock, `HH:MM:SS`, 24-hour, in the app's green.
 /// It ticks on the whole second and rebuilds only itself, never the Hub around it.
-/// BI26102404: the clock's size, a little above the date line's height, and its weight (DSEG7 Classic Bold).
+/// BI26102404: the clock's size, a little above the date line's height, and its weight.
+/// Sconl, 28 Oct 2026: the app's own font, not seven-segment digits; tabular figures keep the digits from jumping.
 const double hubClockSize = 16;
 
 class HubClock extends StatefulWidget {
@@ -61,7 +62,6 @@ class _HubClockState extends State<HubClock> {
         key: const Key('hub-clock'),
         maxLines: 1,
         style: const TextStyle(
-          fontFamily: 'DSEG7Classic',
           color: C.greenBright,
           fontSize: hubClockSize,
           fontWeight: FontWeight.w700,

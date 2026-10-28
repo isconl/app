@@ -7,7 +7,7 @@ import 'package:isconl/util/server_clock.dart';
 
 import 'support/test_services.dart';
 
-/// BI26101801: the Hub's date block: month in full, a live seven-segment clock, no "as of" line, always three spots.
+/// BI26101801: the Hub's date block: day and month in full, a live clock in the app font, no "as of" line, always three spots.
 void main() {
   group('the clock', () {
     testWidgets('shows HH:MM:SS for a fixed time and advances one second at a time', (tester) async {
@@ -24,10 +24,10 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
     });
 
-    testWidgets('is seven-segment, green, and its timer stops with the widget', (tester) async {
+    testWidgets('is in the app font (not seven-segment), green, and its timer stops with the widget', (tester) async {
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: HubClock(clock: () => DateTime(2026, 10, 18, 1, 2, 3)))));
       final t = tester.widget<Text>(find.byKey(const Key('hub-clock')));
-      expect(t.style!.fontFamily, 'DSEG7Classic');
+      expect(t.style!.fontFamily, isNull, reason: 'inherits the app font');
       expect(t.style!.fontWeight, FontWeight.w700);
       expect(t.style!.fontSize, lessThan(22));
       expect(t.style!.color!.toARGB32() & 0xFF00FF00, isNot(0), reason: 'a green channel');
@@ -134,10 +134,10 @@ void main() {
       await teardown(tester);
     });
 
-    testWidgets('at 320 px the date shortens and stays on one line with the clock', (tester) async {
+    testWidgets('at 320 px the month shortens, the day stays in full, and it stays on one line with the clock', (tester) async {
       await pumpHub(tester, null, width: 320);
       tester.takeException(); // a card lower on the Hub overflows at 320 px; that is not this row, which is asserted below
-      expect(plain(tester), contains('Sun 18 Oct'));
+      expect(plain(tester), contains('Sunday 18 Oct'));
       final clock = tester.getRect(find.byKey(const Key('hub-clock')));
       final row = tester.getRect(find.byKey(const Key('hub-date-row')));
       expect(row.height, lessThan(clock.height + 14), reason: 'a single line');
