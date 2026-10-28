@@ -34,8 +34,17 @@ class OfflineException implements Exception {
   String toString() => 'offline';
 }
 
+/// Where the client keeps the last good answer to each GET, so a screen reads
+/// what it last saw when the server cannot be reached (Sconl, 27 Oct 2026: once
+/// pulled, data stays readable on the phone until the server sends an update).
+abstract class ResponseCache {
+  Future<void> put(String path, dynamic value);
+  Future<(dynamic, DateTime)?> get(String path);
+}
+
 class ApiClient {
-  ApiClient({required this.baseUrl, this.token = ''});
+  ApiClient({required this.baseUrl, this.token = '', http.Client? httpClient})
+      : _http = httpClient ?? http.Client();
 
   String baseUrl;
   String token;
@@ -44,7 +53,37 @@ class ApiClient {
   /// the shell uses it to force re-login.
   void Function()? onAuthFailure;
 
-  final http.Client _http = http.Client();
+  /// The phone's copy of every GET answer. Null (tests, the background
+  /// prefetch worker) means no fallback: errors surface exactly as before.
+  ResponseCache? cache;
+
+  /// True from the first GET that could not reach the server until the next one
+  /// that did. The phone can be online while the server is not (the tunnel is
+  /// down, the VM is off), so this is not the same as the device's connectivity.
+  bool serverUnreachable = false;
+
+  /// When the copy most recently served in place of the server was fetched.
+  DateTime? servedFromCacheAt;
+
+  /// Called whenever [serverUnreachable] changes, so the shell can say so.
+  void Function()? onReachabilityChanged;
+
+  void _reachable(bool ok) {
+    if (serverUnreachable == !ok) return;
+    serverUnreachable = !ok;
+    if (ok) servedFromCacheAt = null;
+    onReachabilityChanged?.call();
+  }
+
+  /// A failure that means "the server did not answer", as opposed to "the
+  /// server answered no". Timeouts, no network, and 5xx (Cloudflare's 502/530
+  /// when the tunnel has no connector, hub's 502 when an engine is down) all
+  /// count. A 4xx is an answer and is never papered over with a stored copy.
+  static bool isUnreachable(Object e) =>
+      e is OfflineException ||
+      (e is ApiException && (e.status >= 500 || (e.status == 0 && e.message == 'Request timed out')));
+
+  final http.Client _http;
 
   static const _shortTimeout = Duration(seconds: 20);
   static const _coldTimeout = Duration(seconds: 75);
@@ -61,9 +100,40 @@ class ApiClient {
       };
 
   /// GET returning decoded JSON (object or array).
-  Future<dynamic> getJson(String path, {bool cold = false}) async {
-    final res = await _send('GET', path, cold: cold);
-    return _decode(res, path);
+  ///
+  /// Every good answer is stored on the phone; when the server cannot be
+  /// reached, the stored answer comes back instead of the error. Stored data is
+  /// only ever replaced by a later good answer, never cleared by a failure.
+  /// [stored] false skips both, for callers that keep their own copy
+  /// ([Snapshot] does, with its own fetched-at time).
+  Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async {
+    final c = stored ? cache : null;
+    try {
+      final res = await _send('GET', path, cold: cold);
+      final value = _decode(res, path);
+      _reachable(true);
+      if (c != null) {
+        try {
+          await c.put(path, value);
+        } catch (_) {
+          // A full or locked database must not turn a good answer into an error.
+        }
+      }
+      return value;
+    } catch (e) {
+      if (!isUnreachable(e) || baseUrl.trim().isEmpty) rethrow;
+      _reachable(false);
+      (dynamic, DateTime)? hit;
+      if (c != null) {
+        try {
+          hit = await c.get(path);
+        } catch (_) {}
+      }
+      if (hit == null) rethrow;
+      servedFromCacheAt = hit.$2;
+      onReachabilityChanged?.call();
+      return hit.$1;
+    }
   }
 
   /// GET /api/signals returning the signals payload.

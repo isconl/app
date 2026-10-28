@@ -11,6 +11,7 @@ import 'data/lesson_notes.dart';
 import 'data/modules.dart';
 import 'data/mutations.dart';
 import 'data/outbox.dart';
+import 'data/response_cache.dart';
 import 'data/store.dart';
 import 'data/sync.dart';
 import 'services/audio_downloads.dart';
@@ -96,6 +97,11 @@ class AppServices {
     final store = Store(db, apiOf);
     final outbox = OutboxService(db, apiOf);
     final sync = SyncEngine(store, outbox, apiOf);
+    // Every GET answer is kept on the phone and served when the server cannot be reached; the shell's
+    // offline strip listens to sync, which re-announces the client's reachability.
+    session.api
+      ..cache = DbResponseCache(db)
+      ..onReachabilityChanged = sync.reachabilityChanged;
     final mutations = Mutations(store, outbox, sync, apiOf, db);
     final modules = ModuleLibrary(db, store, apiOf);
     // Narration kept on the phone for offline listening (BI26101397). Not on the web build.

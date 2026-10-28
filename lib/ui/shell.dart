@@ -796,8 +796,24 @@ class OfflineBanner extends StatelessWidget {
     return ListenableBuilder(
       listenable: Listenable.merge([services.sync, services.outbox]),
       builder: (context, _) {
-        if (services.sync.online) return const SizedBox.shrink();
+        final sync = services.sync;
+        if (sync.online && !sync.serverUnreachable) return const SizedBox.shrink();
         final queued = services.outbox.pending;
+        if (sync.online) {
+          // Signal, but no server: say what is on screen is the phone's copy, and how old.
+          final at = sync.servedFromCacheAt;
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            color: C.amberBg,
+            child: Text(
+              'Server unreachable · showing what is on this phone'
+              '${at == null ? '' : ' · last updated ${fmt.ago(at.toIso8601String())}'}'
+              '${queued > 0 ? ' · ${fmt.plural(queued, "change")} queued' : ''}',
+              style: T.tiny.copyWith(color: C.amber),
+            ),
+          );
+        }
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),

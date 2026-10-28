@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../api/client.dart';
 import '../util/fmt.dart' as fmt;
 import 'db.dart';
+import 'response_cache.dart';
 import 'store.dart';
 
 /// The local module library.
@@ -147,7 +148,25 @@ class ModuleLibrary extends ChangeNotifier {
     if (_loaded) return;
     _loaded = true;
     await _rescanLocal();
+    // The manifest the server last sent, so a restart with no server still lists the whole library
+    // (Sconl, 27 Oct 2026). A later check() replaces it only with a newer good answer.
+    final kept = await _db.getSnapshot(DbResponseCache.keyOf(manifestPath));
+    if (kept != null) _applyManifest(kept.$1);
     notifyListeners();
+  }
+
+  static const manifestPath = '/api/learning/manifest';
+
+  void _applyManifest(dynamic res) {
+    final lessons = fmt.lm(fmt.m(res)['lessons']);
+    if (lessons.isEmpty) return;   // an empty answer never wipes a library the phone already knows
+    _manifest.clear();
+    for (final l in lessons) {
+      final course = fmt.s(l['course']);
+      final file = fmt.s(l['file']);
+      if (course.isEmpty || file.isEmpty) continue;
+      _manifest[keyOf(course, file)] = l;
+    }
   }
 
   Future<void> _rescanLocal() async {
@@ -172,16 +191,12 @@ class ModuleLibrary extends ChangeNotifier {
     busy = true;
     notifyListeners();
     try {
-      final res = await _api().getJson('/api/learning/manifest');
-      final lessons = fmt.lm(fmt.m(res)['lessons']);
-      _manifest.clear();
-      for (final l in lessons) {
-        final course = fmt.s(l['course']);
-        final file = fmt.s(l['file']);
-        if (course.isEmpty || file.isEmpty) continue;
-        _manifest[keyOf(course, file)] = l;
-      }
-      checkedAt = DateTime.now();
+      final api = _api();
+      final res = await api.getJson(manifestPath);
+      _applyManifest(res);
+      // A stored copy served while the server is down is not a check: leave checkedAt alone so the next
+      // call asks again rather than waiting out the two-minute window.
+      if (!api.serverUnreachable) checkedAt = DateTime.now();
       await _rescanLocal();
     } catch (_) {
       // Offline or unreachable. Deliberately silent: a failed manifest check

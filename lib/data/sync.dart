@@ -25,6 +25,21 @@ class SyncEngine extends ChangeNotifier {
   final ApiClient Function() _api;
 
   bool online = true;
+
+  /// The phone has signal but the server did not answer (tunnel down, VM off). The app then reads the
+  /// copies on the phone, and the shell says so.
+  bool get serverUnreachable => _api().serverUnreachable;
+
+  /// When the copy most recently shown in place of the server was fetched, for "last updated".
+  DateTime? get servedFromCacheAt => _api().servedFromCacheAt;
+
+  /// Wired to ApiClient.onReachabilityChanged. Coming back from unreachable delivers queued writes and
+  /// refreshes, the same as regaining signal.
+  void reachabilityChanged() {
+    notifyListeners();
+    if (!serverUnreachable && online && phase == SyncPhase.idle && _outbox.pending > 0) fullSync();
+  }
+
   SyncPhase phase = SyncPhase.idle;
   DateTime? lastFullSync;
   String? lastError;

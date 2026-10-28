@@ -55,7 +55,9 @@ class Snapshot extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      final fresh = await _api().getJson(path, cold: cold);
+      // stored: false, because this class keeps its own copy (and its own fetched-at, which must not move
+      // when the server is down); the client still records whether the server answered.
+      final fresh = await _api().getJson(path, cold: cold, stored: false);
       fetchedAt = DateTime.now();
       await _db.putSnapshot(key, fresh);
       // BN26083107, BI26092608: real per-collection tables, populated alongside
@@ -82,6 +84,14 @@ class Snapshot extends ChangeNotifier {
     } on OfflineException {
       error = 'offline';
     } on ApiException catch (e) {
+      // A server that did not answer (5xx, timeout) is the same as no signal for this copy: keep showing
+      // what is stored, under the shell's "server unreachable" strip, not an error over it.
+      if (ApiClient.isUnreachable(e)) {
+        error = 'offline';
+        loading = false;
+        notifyListeners();
+        return false;
+      }
       error = e.message;
     } catch (e) {
       error = 'Unexpected: $e';
