@@ -23,7 +23,7 @@ class FixtureHub extends ApiClient {
   }
 
   @override
-  Future<dynamic> getJson(String path, {bool cold = false}) async {
+  Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async {
     calls.add(('GET', path, null));
     return _answer(path);
   }

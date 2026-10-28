@@ -11,7 +11,7 @@ import 'support/test_services.dart';
 class _Api extends ApiClient {
   _Api() : super(baseUrl: 'http://test', token: 'test');
   @override
-  Future<dynamic> getJson(String path, {bool cold = false}) async => <String, dynamic>{};
+  Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async => <String, dynamic>{};
 }
 
 const _md = '''

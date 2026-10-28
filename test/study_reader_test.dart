@@ -29,7 +29,7 @@ class _TestApiClient extends ApiClient {
   Map<String, dynamic>? lessonData;
 
   @override
-  Future<dynamic> getJson(String path, {bool cold = false}) async {
+  Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async {
     if (shouldFail) throw OfflineException();
     if (path.startsWith('/api/learning/lesson')) {
       if (lessonData != null) return lessonData!;

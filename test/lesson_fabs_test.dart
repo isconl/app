@@ -19,7 +19,7 @@ class FakeApiClient extends ApiClient {
   final Map<String, Map<String, dynamic>> _storage = {};
 
   @override
-  Future<dynamic> getJson(String path, {bool cold = false}) async {
+  Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async {
     final uri = Uri.parse(path);
     final course = uri.queryParameters['course'] ?? '';
     final file = uri.queryParameters['file'] ?? '';

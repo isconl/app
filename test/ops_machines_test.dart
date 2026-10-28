@@ -10,7 +10,7 @@ class _Rec extends ApiClient {
   final posts = <(String, Map<String, dynamic>)>[];
 
   @override
-  Future<dynamic> getJson(String path, {bool cold = false}) async {
+  Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async {
     gets.add(path);
     for (final e in answers.entries) {
       if (path.startsWith(e.key)) return e.value;

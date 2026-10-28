@@ -15,7 +15,7 @@ class _Api extends ApiClient {
   String theme = 'Mend';
   final asked = <String>[];
   @override
-  Future<dynamic> getJson(String path, {bool cold = false}) async {
+  Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async {
     asked.add(path);
     if (path.startsWith('/api/cycle-theme')) return {'theme': theme};
     return <String, dynamic>{};

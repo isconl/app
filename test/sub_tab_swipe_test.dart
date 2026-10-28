@@ -22,7 +22,7 @@ class ShellTestApiClient extends ApiClient {
   ShellTestApiClient() : super(baseUrl: 'http://test', token: 'test');
 
   @override
-  Future<dynamic> getJson(String path, {bool cold = false}) async {
+  Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async {
     if (path.contains('/api/teams')) {
       return {'teams': []};
     }

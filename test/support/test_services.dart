@@ -22,7 +22,7 @@ class ScriptedApi extends ApiClient {
   final List<String> asked = [];
 
   @override
-  Future<dynamic> getJson(String path, {bool cold = false}) async {
+  Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async {
     asked.add(path);
     for (final e in answers.entries) {
       if (path.startsWith(e.key)) {

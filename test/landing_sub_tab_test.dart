@@ -22,7 +22,7 @@ class LandingTestApiClient extends ApiClient {
   LandingTestApiClient() : super(baseUrl: 'http://test', token: 'test');
 
   @override
-  Future<dynamic> getJson(String path, {bool cold = false}) async {
+  Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async {
     if (path.contains('/api/state')) {
       return {
         'tasks': [
