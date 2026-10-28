@@ -3,11 +3,14 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  battery_plus
   connectivity_plus
   file_selector_windows
   flutter_secure_storage_windows
   flutter_tts
   local_auth_windows
+  passkeys_windows
+  record_windows
   url_launcher_windows
 )
 
