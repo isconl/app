@@ -1814,38 +1814,42 @@ class _LessonScreenState extends State<LessonScreen> {
 
   /// BI26100537: a `module:<course>/<NN>#anchor` link. Same module: scroll to the section. Another
   /// module of this course: open exactly that module at that section, never the course index.
+  /// BI26102805: a module in another course opens too (from the library's manifest), and a module the app cannot
+  /// find says so plainly instead of doing nothing.
   void _openModuleLink(ModuleLink link) {
-    final index = link.index;
-    bool matches(Map<String, dynamic> l) {
-      final f = fmt.s(l['file']);
-      return f.startsWith(index) && (f.length == index.length || !RegExp(r'\d').hasMatch(f[index.length]));
-    }
+    bool matches(Map<String, dynamic> l) => link.matchesFile(fmt.s(l['file']));
+    final sameCourse = link.course == widget.course;
 
-    if (link.course != widget.course) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
-          content: Text('That module is in another course. Open the course, then the module.')));
-      return;
-    }
-    if (matches({'file': widget.file})) {
+    if (sameCourse && matches({'file': widget.file})) {
       if (link.anchor.isNotEmpty) _anchors.revealAnchor(link.anchor);
       return;
     }
-    final target = widget.allLessons.where(matches).toList();
-    if (target.isEmpty) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => LessonScreen(
-          course: widget.course,
-          file: fmt.s(target.first['file']),
-          title: fmt.s(target.first['title']),
-          status: fmt.s(target.first['status']),
-          allLessons: widget.allLessons,
-          trackColor: widget.trackColor,
-          initialAnchor: link.anchor,
-        ),
+    final lessons = sameCourse ? widget.allLessons : AppScope.maybeOf(context)?.modules.lessonsOf(link.course) ?? const [];
+    final target = lessons.where(matches).toList();
+    if (target.isEmpty) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+          content: Text(lessons.isEmpty
+              ? 'That module is not on this phone yet. Connect to the server once to load the ${link.course} course.'
+              : 'Module ${link.index} of ${link.course} is not in the library yet.')));
+      return;
+    }
+    final route = MaterialPageRoute<void>(
+      builder: (_) => LessonScreen(
+        course: link.course,
+        file: fmt.s(target.first['file']),
+        title: fmt.s(target.first['title']),
+        status: fmt.s(target.first['status']),
+        allLessons: lessons,
+        trackColor: widget.trackColor,
+        initialAnchor: link.anchor,
       ),
     );
+    // The same course replaces this lesson (one back press to the course); another course stacks on top.
+    if (sameCourse) {
+      Navigator.pushReplacement(context, route);
+    } else {
+      Navigator.push(context, route);
+    }
   }
 
   /// BI26101214: the tutor for this module. Turn on Ask in the app bar and every paragraph

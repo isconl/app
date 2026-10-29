@@ -115,6 +115,28 @@ class ModuleLibrary extends ChangeNotifier {
     return out;
   }
 
+  /// BI26102805: every module the library knows in one course, from the manifest and from what is on the device,
+  /// as lesson rows (`file`, `title`) for a module link that points into another course.
+  List<Map<String, dynamic>> lessonsOf(String course) {
+    final seen = <String>{};
+    final out = <Map<String, dynamic>>[];
+    void add(String key, Map<String, dynamic>? entry) {
+      final i = key.indexOf('/');
+      if (i <= 0 || key.substring(0, i) != course) return;
+      final file = key.substring(i + 1);
+      if (file.isEmpty || !seen.add(file)) return;
+      final title = fmt.s(entry?['title']);
+      out.add({'file': file, 'title': title.isEmpty ? file : title});
+    }
+
+    _manifest.forEach(add);
+    for (final k in _local.keys) {
+      add(k, _manifest[k]);
+    }
+    out.sort((a, b) => fmt.s(a['file']).compareTo(fmt.s(b['file'])));
+    return out;
+  }
+
   ModuleStatus status(String course, String file) {
     final k = keyOf(course, file);
     final entry = _manifest[k];
