@@ -1,0 +1,138 @@
+# BI26100206: a try-it APK on every pull request.
+#
+# NEVER creates an `apk-v*` tag or touches /releases/latest: phones find their
+# updates by the `apk-v` prefix (see app-build.yml). A PR build lives on a
+# prerelease tagged `pr-<number>`, is debug-signed (no release keystore is
+# exposed to PR runs, CLAUDE.md s29 rule 3), and is removed when the PR closes.
+# This workflow does not bump the version; it builds the PR as it is (s24).
+
+name: PR preview
+
+on:
+  pull_request:
+    branches: [dev, staging]
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  preview:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.8
+          cache: true
+
+      - name: Analyze
+        id: analyze
+        run: flutter analyze --no-fatal-infos 2>&1 | tee "$RUNNER_TEMP/analyze.log"; exit ${PIPESTATUS[0]}
+
+      - name: Test
+        id: test
+        run: flutter test 2>&1 | tee "$RUNNER_TEMP/test.log"; exit ${PIPESTATUS[0]}
+
+      - name: Build debug APK
+        id: build
+        run: flutter build apk --debug 2>&1 | tee "$RUNNER_TEMP/build.log"; exit ${PIPESTATUS[0]}
+
+      - name: Publish the preview prerelease
+        id: publish
+        run: |
+          VERSION=$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//')
+          SHORT=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+          TAG="pr-$PR"
+          NAME="isconl_pr${PR}_${SHORT}.apk"
+          cp build/app/outputs/flutter-apk/app-debug.apk "$NAME"
+          sudo apt-get install -y qrencode >/dev/null
+          URL="https://github.com/${GH_REPO}/releases/download/${TAG}/${NAME}"
+          qrencode -o "isconl_pr${PR}_qr.png" -s 8 "$URL"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Replace the previous push's assets so the release holds one APK.
+            for a in $(gh release view "$TAG" --json assets --jq '.assets[].name'); do
+              gh release delete-asset "$TAG" "$a" --yes
+            done
+          else
+            gh release create "$TAG" --prerelease --latest=false \
+              --target "${{ github.event.pull_request.head.sha }}" \
+              --title "Preview of PR #$PR" \
+              --notes "Try-it build for PR #$PR. Debug-signed. Removed when the PR closes."
+          fi
+          gh release upload "$TAG" "$NAME" "isconl_pr${PR}_qr.png" --clobber
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "qr=https://github.com/${GH_REPO}/releases/download/${TAG}/isconl_pr${PR}_qr.png" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on the PR (success)
+        if: success()
+        run: |
+          cat > "$RUNNER_TEMP/comment.md" <<EOF
+          <!-- app-pr-preview -->
+          **Try-it build ready** for \`${{ steps.publish.outputs.short }}\`, version ${{ steps.publish.outputs.version }}.
+
+          [Download the APK](${{ steps.publish.outputs.url }}) (sign in to GitHub on the phone first, the repo is private). Debug-signed, so it installs beside the release app only if you uninstall that first.
+
+          [QR code](${{ steps.publish.outputs.qr }})
+          EOF
+          sed -i 's/^          //' "$RUNNER_TEMP/comment.md"
+          echo "STATE=ok" >> "$GITHUB_ENV"
+
+      - name: Comment on the PR (failure)
+        if: failure()
+        run: |
+          STEP=analyze; LOG="$RUNNER_TEMP/analyze.log"
+          if [ -f "$RUNNER_TEMP/test.log" ]; then STEP=test; LOG="$RUNNER_TEMP/test.log"; fi
+          if [ -f "$RUNNER_TEMP/build.log" ]; then STEP=build; LOG="$RUNNER_TEMP/build.log"; fi
+          {
+            echo '<!-- app-pr-preview -->'
+            echo "**Try-it build failed** at the \`$STEP\` step for \`$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)\`."
+            echo
+            echo '```'
+            tail -n 30 "$LOG" 2>/dev/null || echo "(no log captured)"
+            echo '```'
+          } > "$RUNNER_TEMP/comment.md"
+
+      - name: Post or update the single PR comment
+        if: always()
+        run: |
+          [ -f "$RUNNER_TEMP/comment.md" ] || exit 0
+          ID=$(gh api "repos/${GH_REPO}/issues/${PR}/comments" --paginate \
+            --jq '[.[] | select(.body | contains("<!-- app-pr-preview -->"))][0].id // empty')
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/${GH_REPO}/issues/comments/$ID" -F body=@"$RUNNER_TEMP/comment.md"
+          else
+            gh pr comment "$PR" --body-file "$RUNNER_TEMP/comment.md"
+          fi
+
+  cleanup:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Remove the preview prerelease and tag
+        run: gh release delete "pr-${{ github.event.pull_request.number }}" --cleanup-tag --yes || echo "no preview to remove"
