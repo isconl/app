@@ -180,6 +180,23 @@ class _ShellState extends State<Shell> {
     });
   }
 
+  /// Wraps [view] in a SpaceView when the manifest has five destinations
+  /// for [destKey]. The existing view becomes the `overview` destination
+  /// builder; the remaining four show either their real screen (if one
+  /// exists in viewForNavRoute) or an honest empty state.
+  Widget _wrapIfSpace(String destKey, Widget view) {
+    final dests = _dests[destKey];
+    if (dests == null || dests.length != 5) return view;
+    final builders = <String, Widget Function()>{
+      'overview': () => view,
+    };
+    for (final d in dests) {
+      if (d.key == 'overview' || d.key == 'activity') continue;
+      final pair = viewForNavRoute(d.route);
+      if (pair != null) builders[d.key] = () => pair.;
+    }
+    return SpaceView(viewKey: destKey, destinations: dests, builders: builders);
+  }
   void _switchTab(int t) {
     if (_tab == t) {
       if (_sub != 0) {
