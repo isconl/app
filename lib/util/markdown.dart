@@ -1524,6 +1524,156 @@ void _oneCalloutPerSection(List<_Block> blocks) {
   settle(blocks.length);
 }
 
+String _ensureBoldLabel(String text, [String? fallbackLabel]) {
+  final trimmed = text.trim();
+  if (trimmed.startsWith('**')) return trimmed;
+  if (fallbackLabel != null && fallbackLabel.isNotEmpty) {
+    final cleanLabel = fallbackLabel.replaceAll(RegExp(r'[:.*_]+$'), '').trim();
+    return '**$cleanLabel:** $trimmed';
+  }
+  final m = RegExp(r'^(\S+\s+\S+)[:.]\s*(.*)$').firstMatch(trimmed);
+  if (m != null) {
+    return '**${m.group(1)}:** ${m.group(2)}';
+  }
+  return trimmed;
+}
+
+/// BI26102803: the GUARD movement (5) reads as one core failure, then a numbered list.
+/// The callout holds the core failure (an element marked `{failure!}` if the author marked one,
+/// else the first); then a subheading (the `{pitfalls}` element's two-word label when there is one,
+/// else "Failure modes") and a numbered list of every other failure and every pitfall item,
+/// each item opening with its two-word label in bold. No failure is ever shown as a bare paragraph.
+List<_Block> _transformGuardSection(List<_Block> section, {String movementNumber = ''}) {
+  final failureBlocks = <_Block>[];
+  _Block? pitfallsBlock;
+  final pitfallItems = <_Block>[];
+
+  for (final b in section) {
+    if (b.kind == _Kind.callout && (b.elementId == 'failure' || b.callout?.kind == 'watch')) {
+      failureBlocks.add(b);
+    } else if (b.kind == _Kind.callout && (b.elementId == 'pitfalls' || b.callout?.kind == 'pitfalls' || b.uiLabel.toLowerCase().contains('pitfall'))) {
+      pitfallsBlock = b;
+    } else if (b.kind == _Kind.listItem) {
+      pitfallItems.add(b);
+    }
+  }
+
+  if (failureBlocks.isEmpty && pitfallsBlock == null && pitfallItems.isEmpty) {
+    return section;
+  }
+
+  _Block? coreFailure;
+  if (failureBlocks.isNotEmpty) {
+    final marked = failureBlocks.where((b) => b.marked).toList();
+    coreFailure = marked.isNotEmpty ? marked.first : failureBlocks.first;
+    coreFailure.demoted = false;
+    if (movementNumber.isNotEmpty) {
+      coreFailure.number = '$movementNumber.1';
+    }
+  }
+
+  final otherFailures = failureBlocks.where((b) => b != coreFailure).toList();
+  final remainingItems = <_Block>[];
+
+  var counter = 1;
+  for (final f in otherFailures) {
+    final label = f.uiLabel.isNotEmpty ? f.uiLabel : 'Failure';
+    final text = _ensureBoldLabel(f.text, label);
+    final li = _Block(_Kind.listItem, text: text, ordered: true, index: counter++)
+      ..anchor = f.anchor
+      ..number = f.number;
+    remainingItems.add(li);
+  }
+
+  if (pitfallsBlock != null && pitfallsBlock.text.trim().isNotEmpty) {
+    final text = _ensureBoldLabel(pitfallsBlock.text, pitfallsBlock.uiLabel);
+    final li = _Block(_Kind.listItem, text: text, ordered: true, index: counter++)
+      ..anchor = pitfallsBlock.anchor
+      ..number = pitfallsBlock.number;
+    remainingItems.add(li);
+  }
+
+  for (final p in pitfallItems) {
+    final text = _ensureBoldLabel(p.text);
+    final li = _Block(_Kind.listItem, text: text, ordered: true, index: counter++)
+      ..anchor = p.anchor
+      ..number = p.number;
+    remainingItems.add(li);
+  }
+
+  final out = <_Block>[];
+  final specialBlocks = {...failureBlocks, ?pitfallsBlock, ...pitfallItems};
+
+  var idx = 0;
+  while (idx < section.length && !specialBlocks.contains(section[idx])) {
+    out.add(section[idx]);
+    idx++;
+  }
+
+  if (coreFailure != null) {
+    out.add(coreFailure);
+  }
+
+  if (remainingItems.isNotEmpty) {
+    final subheadingText = (pitfallsBlock != null && pitfallsBlock.uiLabel.isNotEmpty)
+        ? pitfallsBlock.uiLabel
+        : 'Failure modes';
+    out.add(_Block(_Kind.heading, text: subheadingText, level: 3));
+    out.addAll(remainingItems);
+  }
+
+  var lastSpecial = -1;
+  for (var k = section.length - 1; k >= 0; k--) {
+    if (specialBlocks.contains(section[k])) {
+      lastSpecial = k;
+      break;
+    }
+  }
+  if (lastSpecial >= 0) {
+    for (var k = lastSpecial + 1; k < section.length; k++) {
+      if (!specialBlocks.contains(section[k])) {
+        out.add(section[k]);
+      }
+    }
+  }
+
+  return out;
+}
+
+List<_Block> _applyGuardMovementRule(List<_Block> blocks) {
+  final hasAnyH2 = blocks.any((b) => b.kind == _Kind.heading && b.level == 2);
+  if (!hasAnyH2 && blocks.any((b) => b.kind == _Kind.callout && (b.elementId == 'failure' || b.elementId == 'pitfalls' || b.callout?.kind == 'watch'))) {
+    return _transformGuardSection(blocks);
+  }
+
+  final out = <_Block>[];
+  var i = 0;
+  while (i < blocks.length) {
+    if (blocks[i].kind == _Kind.heading && blocks[i].level == 2) {
+      final heading = blocks[i];
+      out.add(heading);
+      final isGuard = heading.movementId == 'guard' ||
+          RegExp(r'\bguard\b', caseSensitive: false).hasMatch(heading.text);
+      var j = i + 1;
+      while (j < blocks.length && !(blocks[j].kind == _Kind.heading && blocks[j].level == 2)) {
+        j++;
+      }
+      final sectionBlocks = blocks.sublist(i + 1, j);
+      if (isGuard) {
+        final movementNumber = heading.number.contains('.') ? heading.number.split('.').first : '';
+        out.addAll(_transformGuardSection(sectionBlocks, movementNumber: movementNumber));
+      } else {
+        out.addAll(sectionBlocks);
+      }
+      i = j;
+    } else {
+      out.add(blocks[i]);
+      i++;
+    }
+  }
+  return out;
+}
+
 /// One figure of a module, with the parts the page and the viewer show.
 class _Figure {
   const _Figure({
@@ -1807,7 +1957,7 @@ String _gridTablesToPipe(String text) {
 
 List<_Block> _parseBlocks(String source) {
   final lines = normalizeModuleSource(source).split('\n');
-  final blocks = <_Block>[];
+  var blocks = <_Block>[];
   var idx = 0;
   final para = <String>[];
 
@@ -2075,6 +2225,7 @@ List<_Block> _parseBlocks(String source) {
   flushPara();
   _numberBlocks(blocks);
   _tagSectionZero(blocks);
+  blocks = _applyGuardMovementRule(blocks);
   _oneCalloutPerSection(blocks);
   return blocks;
 }

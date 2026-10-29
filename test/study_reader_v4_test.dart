@@ -143,6 +143,122 @@ void main() {
       expect(anchors.highlighted.value, isNull, reason: 'the highlight is brief');
     });
   });
+
+  group('BI26102803: GUARD movement 5', () {
+    const guardSnippet = '''## {guard} Misreading Risk: Where The Numbers Mislead
+
+**{failure} Core Failure:** The primary failure mode that kills the initiative.
+**{failure} Second Mistake:** Giving away ownership cheaply before traction.
+**{failure} Third Mistake:** Starving the core engine of cash.
+
+**{pitfalls} Common Pitfalls:**
+- **Calling a job an asset.** A business that stops when you stop.
+- **Copying someone else's split.** Borrowed percentages are guesses.
+''';
+
+    testWidgets('a GUARD section with three failure lines and a pitfalls list renders one callout, one subheading, and a numbered list carrying every remaining item in order', (t) async {
+      await _pump(t, guardSnippet);
+
+      // 1. Exactly one callout rendered (the core failure)
+      final calloutLabels = t.widgetList<Text>(find.byKey(const Key('callout-label'))).map((x) => x.data).toList();
+      expect(calloutLabels, hasLength(1));
+      expect(calloutLabels.first, contains('FAILURE'));
+      expect(find.textContaining('The primary failure mode that kills the initiative', findRichText: true), findsOneWidget);
+
+      // 2. Exactly one subheading (from pitfalls two-word label)
+      expect(find.text('Common Pitfalls'), findsOneWidget);
+
+      // 3. Numbered list carrying remaining failures and pitfall items in order (1 to 4)
+      expect(find.text('1.'), findsOneWidget);
+      expect(find.text('2.'), findsOneWidget);
+      expect(find.text('3.'), findsOneWidget);
+      expect(find.text('4.'), findsOneWidget);
+      expect(find.text('5.'), findsNothing);
+
+      // Verify each item opened with its two-word label in bold
+      expect(find.textContaining('Second Mistake', findRichText: true), findsOneWidget);
+      expect(find.textContaining('Third Mistake', findRichText: true), findsOneWidget);
+      expect(find.textContaining('Calling a job an asset.', findRichText: true), findsOneWidget);
+      expect(find.textContaining("Copying someone else's split.", findRichText: true), findsOneWidget);
+
+      // No failure mode is rendered as a bare paragraph (they are list items in Rows)
+      final secondFailureFinder = find.textContaining('Giving away ownership cheaply', findRichText: true);
+      expect(secondFailureFinder, findsOneWidget);
+      expect(find.ancestor(of: secondFailureFinder, matching: find.byType(Row)), findsOneWidget);
+
+      final thirdFailureFinder = find.textContaining('Starving the core engine', findRichText: true);
+      expect(thirdFailureFinder, findsOneWidget);
+      expect(find.ancestor(of: thirdFailureFinder, matching: find.byType(Row)), findsOneWidget);
+    });
+
+    testWidgets('an element marked {failure!} is the callout, and remaining failures precede pitfalls in the numbered list', (t) async {
+      const markedSnippet = '''## {guard} Misreading Risk: Where The Numbers Mislead
+
+**{failure} First Mistake:** The first failure mode.
+**{failure!} Key Failure:** The marked failure mode that must stand out.
+**{failure} Third Mistake:** The third failure mode.
+
+**{pitfalls} Avoid Traps:**
+- **Pitfall Alpha.** First pitfall detail.
+''';
+      await _pump(t, markedSnippet);
+
+      // Callout holds Key Failure
+      final calloutLabels = t.widgetList<Text>(find.byKey(const Key('callout-label'))).map((x) => x.data).toList();
+      expect(calloutLabels, hasLength(1));
+      expect(find.textContaining('The marked failure mode that must stand out', findRichText: true), findsOneWidget);
+
+      // Subheading is Avoid Traps
+      expect(find.text('Avoid Traps'), findsOneWidget);
+
+      // Numbered list items 1..3
+      expect(find.text('1.'), findsOneWidget);
+      expect(find.text('2.'), findsOneWidget);
+      expect(find.text('3.'), findsOneWidget);
+      expect(find.text('4.'), findsNothing);
+
+      // First Mistake is item 1, Third Mistake is item 2, Pitfall Alpha is item 3
+      expect(find.textContaining('First Mistake', findRichText: true), findsOneWidget);
+      expect(find.textContaining('Third Mistake', findRichText: true), findsOneWidget);
+      expect(find.textContaining('Pitfall Alpha', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('three failure lines with no pitfalls element renders subheading Failure modes and numbered list', (t) async {
+      const noPitfallsSnippet = '''## {guard} Misreading Risk: Where The Numbers Mislead
+
+**{failure} Core Risk:** Main risk text.
+**{failure} Second Risk:** Second risk text.
+**{failure} Third Risk:** Third risk text.
+''';
+      await _pump(t, noPitfallsSnippet);
+
+      expect(find.byKey(const Key('callout-label')), findsOneWidget);
+      expect(find.text('Failure modes'), findsOneWidget);
+      expect(find.text('1.'), findsOneWidget);
+      expect(find.text('2.'), findsOneWidget);
+      expect(find.text('3.'), findsNothing);
+    });
+
+    testWidgets('real v4 module fixture renders one callout and numbered pitfalls under subheading', (t) async {
+      const fixtureGuard = '''## {guard} Where Trap: Where Ownership Leaks
+
+**{failure} Where Mistake:** Four common ways this goes wrong. Treating revenue as wealth: \$5,000,000 of sales means nothing if costs and tax take \$4,900,000.
+
+**{pitfalls} Common Pitfalls:**
+- **Calling a job an asset.** A business that stops when you stop is a job with extra paperwork, however it is registered.
+- **Copying someone else's split.** The bucket shares depend on your age, debts, dependants and risk. Borrowed percentages are guesses.
+- **Mistaking a possible gain for a likely one.** Growth-bucket assets can and often do go to zero. Size them so that loss is survivable.
+''';
+      await _pump(t, fixtureGuard);
+
+      expect(find.byKey(const Key('callout-label')), findsOneWidget);
+      expect(find.text('Common Pitfalls'), findsOneWidget);
+      expect(find.text('1.'), findsOneWidget);
+      expect(find.text('2.'), findsOneWidget);
+      expect(find.text('3.'), findsOneWidget);
+      expect(find.text('4.'), findsNothing);
+    });
+  });
 }
 
 TextSpan? _findSpan(InlineSpan root, String text) {
