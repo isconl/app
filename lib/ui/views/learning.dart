@@ -26,6 +26,7 @@ import 'study_search_view.dart';
 import '../shell.dart' show ShellAppBar, openMenu;
 export '../widgets/reader_comfort.dart' show showReaderComfortSheet;
 import '../widgets/common.dart';
+import '../widgets/offline_banner.dart';
 import '../widgets/course_controls.dart';
 import '../widgets/listen_bar.dart';
 import '../widgets/space_header.dart';
@@ -770,6 +771,7 @@ class TrackDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (AppScope.maybeOf(context) case final services?) OfflineBanner(services: services),
             if (sortedCourses.isEmpty && archivedCourses.isEmpty)
               const Padding(
                 padding: EdgeInsets.only(top: 24),
@@ -973,6 +975,7 @@ class CourseDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final services = AppScope.maybeOf(context);
     return Scaffold(
       appBar: ShellAppBar(
         title: title,
@@ -981,7 +984,13 @@ class CourseDetailScreen extends StatelessWidget {
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(Sz.pad),
-        child: CourseTile(course: course, trackColor: trackColor),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (services != null) OfflineBanner(services: services),
+            CourseTile(course: course, trackColor: trackColor),
+          ],
+        ),
       ),
     );
   }

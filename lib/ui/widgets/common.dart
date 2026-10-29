@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../app_scope.dart';
 import '../../data/store.dart';
+import 'offline_banner.dart';
 import '../../theme.dart';
 
 /// 1px-bordered panel card - the dashboard's base surface.
@@ -354,7 +356,7 @@ class _SnapshotViewState extends State<SnapshotView> {
   void initState() {
     super.initState();
     widget.snapshot.hydrate().then((_) {
-      if (mounted && widget.snapshot.value == null) {
+      if (mounted) {
         widget.snapshot.refresh();
       }
     });
@@ -362,6 +364,7 @@ class _SnapshotViewState extends State<SnapshotView> {
 
   @override
   Widget build(BuildContext context) {
+    final services = AppScope.maybeOf(context);
     return ListenableBuilder(
       listenable: widget.snapshot,
       builder: (context, _) {
@@ -376,12 +379,13 @@ class _SnapshotViewState extends State<SnapshotView> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: widget.padding,
                   children: [
+                    if (services != null) OfflineBanner(services: services),
                     if (snap.loading)
                       const Padding(
                         padding: EdgeInsets.only(top: 120),
                         child: Center(child: MiniSpinner(size: 22)),
                       )
-                    else if (snap.error != null)
+                    else if (snap.error != null && snap.error != 'offline')
                       ErrorRetry(snap.error!, onRetry: () => snap.refresh())
                     else
                       widget.empty ??
@@ -396,6 +400,7 @@ class _SnapshotViewState extends State<SnapshotView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (services != null) OfflineBanner(services: services),
                       if (snap.error != null && snap.error != 'offline')
                         ErrorRetry(snap.error!,
                             onRetry: () => snap.refresh()),

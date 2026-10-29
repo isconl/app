@@ -127,6 +127,7 @@ class AppServices {
     final lessonNotes = LessonNotesRepository(apiOf: apiOf, mutations: mutations, db: db);
     await outbox.refreshCount();
     await modules.load();
+    await store.learning.hydrate();
     await updater.loadInstalled();
     return AppServices._(
       db: db,
@@ -148,6 +149,9 @@ class AppScope extends InheritedWidget {
   const AppScope({super.key, required this.services, required super.child});
 
   final AppServices services;
+
+  static AppServices? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<AppScope>()?.services;
 
   static AppServices of(BuildContext context) => context
       .dependOnInheritedWidgetOfExactType<AppScope>()!

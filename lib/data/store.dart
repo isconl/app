@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../api/client.dart';
 import 'db.dart';
+import 'response_cache.dart';
 
 /// One cached endpoint: exposes the last known value instantly (offline-first)
 /// and refreshes it over the network when asked.
@@ -34,7 +35,10 @@ class Snapshot extends ChangeNotifier {
   Future<void> hydrate() async {
     if (_hydrated) return;
     _hydrated = true;
-    final row = await _db.getSnapshot(key);
+    var row = await _db.getSnapshot(key);
+    if (row == null && key != DbResponseCache.keyOf(path)) {
+      row = await _db.getSnapshot(DbResponseCache.keyOf(path));
+    }
     if (value == null) {
       final overlaid = await _db.overlayVaultMirror(key, row?.$1);
       final hasMirrorOnlyData = row == null && overlaid is Map && overlaid.isNotEmpty;
@@ -83,18 +87,48 @@ class Snapshot extends ChangeNotifier {
       return true;
     } on OfflineException {
       error = 'offline';
-    } on ApiException catch (e) {
-      // A server that did not answer (5xx, timeout) is the same as no signal for this copy: keep showing
-      // what is stored, under the shell's "server unreachable" strip, not an error over it.
-      if (ApiClient.isUnreachable(e)) {
+        } on ApiException catch (e) {
+      final isLessonParse = path.contains('/api/learning/lesson') &&
+          (e.status == 400 || e.message.toLowerCase().contains('refused to parse'));
+      if (ApiClient.isUnreachable(e) || isLessonParse || hasData) {
         error = 'offline';
+        final api = _api();
+        api.serverUnreachable = true;
+        api.servedFromCacheAt ??= fetchedAt;
+        api.onReachabilityChanged?.call();
         loading = false;
         notifyListeners();
         return false;
       }
       error = e.message;
     } catch (e) {
+      if (hasData) {
+        error = 'offline';
+        final api = _api();
+        api.serverUnreachable = true;
+        api.servedFromCacheAt ??= fetchedAt;
+        api.onReachabilityChanged?.call();
+        loading = false;
+        notifyListeners();
+        return false;
+      }
       error = 'Unexpected: $e';
+    } finally {
+      if (value == null) {
+        var row = await _db.getSnapshot(key);
+        if (row == null && key != DbResponseCache.keyOf(path)) {
+          row = await _db.getSnapshot(DbResponseCache.keyOf(path));
+        }
+        if (row != null) {
+          value = await _db.overlayVaultMirror(key, row.$1);
+          fetchedAt = row.$2;
+          error = 'offline';
+          final api = _api();
+          api.serverUnreachable = true;
+          api.servedFromCacheAt ??= fetchedAt;
+          api.onReachabilityChanged?.call();
+        }
+      }
     }
     loading = false;
     notifyListeners();

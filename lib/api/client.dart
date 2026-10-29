@@ -81,7 +81,10 @@ class ApiClient {
   /// count. A 4xx is an answer and is never papered over with a stored copy.
   static bool isUnreachable(Object e) =>
       e is OfflineException ||
-      (e is ApiException && (e.status >= 500 || (e.status == 0 && e.message == 'Request timed out')));
+      (e is ApiException &&
+          (e.status >= 500 ||
+              (e.status == 0 && e.message == 'Request timed out') ||
+              (e.status == 400 && e.message.toLowerCase().contains('refused to parse'))));
 
   final http.Client _http;
 
@@ -121,7 +124,10 @@ class ApiClient {
       }
       return value;
     } catch (e) {
-      if (!isUnreachable(e) || baseUrl.trim().isEmpty) rethrow;
+      final isLessonParseFailure = path.contains('/api/learning/lesson') &&
+          e is ApiException &&
+          (e.status == 400 || e.message.toLowerCase().contains('refused to parse'));
+      if ((!isUnreachable(e) && !isLessonParseFailure) || baseUrl.trim().isEmpty) rethrow;
       _reachable(false);
       (dynamic, DateTime)? hit;
       if (c != null) {
