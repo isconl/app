@@ -356,7 +356,7 @@ class _SnapshotViewState extends State<SnapshotView> {
   void initState() {
     super.initState();
     widget.snapshot.hydrate().then((_) {
-      if (mounted) {
+      if (mounted && widget.snapshot.value == null) {
         widget.snapshot.refresh();
       }
     });

@@ -87,10 +87,14 @@ class Snapshot extends ChangeNotifier {
       return true;
     } on OfflineException {
       error = 'offline';
-        } on ApiException catch (e) {
+    } on ApiException catch (e) {
+      // A server that did not answer (5xx, timeout), or a lesson it refused to parse (a 400 from spark), is the same
+      // as no signal for this copy: keep showing what is stored (hydrate() above already loaded it), under the
+      // shell's "server unreachable" strip, not an error over it. Any other answer (a 404, say) is a real error and
+      // shows as one, stored copy or not.
       final isLessonParse = path.contains('/api/learning/lesson') &&
           (e.status == 400 || e.message.toLowerCase().contains('refused to parse'));
-      if (ApiClient.isUnreachable(e) || isLessonParse || hasData) {
+      if (ApiClient.isUnreachable(e) || isLessonParse) {
         error = 'offline';
         final api = _api();
         api.serverUnreachable = true;
@@ -102,33 +106,7 @@ class Snapshot extends ChangeNotifier {
       }
       error = e.message;
     } catch (e) {
-      if (hasData) {
-        error = 'offline';
-        final api = _api();
-        api.serverUnreachable = true;
-        api.servedFromCacheAt ??= fetchedAt;
-        api.onReachabilityChanged?.call();
-        loading = false;
-        notifyListeners();
-        return false;
-      }
       error = 'Unexpected: $e';
-    } finally {
-      if (value == null) {
-        var row = await _db.getSnapshot(key);
-        if (row == null && key != DbResponseCache.keyOf(path)) {
-          row = await _db.getSnapshot(DbResponseCache.keyOf(path));
-        }
-        if (row != null) {
-          value = await _db.overlayVaultMirror(key, row.$1);
-          fetchedAt = row.$2;
-          error = 'offline';
-          final api = _api();
-          api.serverUnreachable = true;
-          api.servedFromCacheAt ??= fetchedAt;
-          api.onReachabilityChanged?.call();
-        }
-      }
     }
     loading = false;
     notifyListeners();
