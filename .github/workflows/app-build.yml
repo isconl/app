@@ -281,6 +281,20 @@ jobs:
           TAG: apk-v${{ needs.version.outputs.version }}
         run: gh release edit "$TAG" --draft=false --latest
 
+      # The fixed link must serve this release's APK the moment it is published. Fails the run loudly if not.
+      - name: Check the one install link
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          URL="https://github.com/${GH_REPO}/releases/latest/download/isconl.apk"
+          for i in 1 2 3 4 5 6; do
+            CODE=$(curl -s -o /dev/null -L -r 0-1023 -w '%{http_code}' "$URL" || true)
+            case "$CODE" in 200|206) echo "$URL serves the APK ($CODE)"; exit 0;; esac
+            sleep 10
+          done
+          echo "::error::$URL answered $CODE after publishing"
+          exit 1
+
   # The update path on an installed phone is unfixable remotely, so it gets an
   # explicit assertion rather than an assumption. If the APK is missing, this
   # fails the run loudly instead of leaving a half-published release behind.
@@ -299,6 +313,12 @@ jobs:
           echo "Attached to $TAG:"; echo "$ASSETS"
           if ! echo "$ASSETS" | grep -qE '\.apk$'; then
             echo "::error::No .apk on $TAG - the phone has nothing to update to."
+            exit 1
+          fi
+          # The one link Sconl shares (releases/latest/download/isconl.apk) must never break: a release that would
+          # become "latest" without the fixed-name copy is never published, so latest stays on the last good one.
+          if ! echo "$ASSETS" | grep -qx 'isconl.apk'; then
+            echo "::error::No isconl.apk on $TAG - publishing it would break https://github.com/${GH_REPO}/releases/latest/download/isconl.apk"
             exit 1
           fi
           echo "$ASSETS" | grep -qE '_windows_x64\.zip$' \

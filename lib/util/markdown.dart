@@ -261,6 +261,8 @@ class Markdown extends StatelessWidget {
       case _Kind.callout:
         if (block.zeroRole == 'prerequisite') return _prerequisite(block, style);
         if (block.zeroRole == 'aside') return _aside(block);
+        if (block.zeroRole == 'line') return _quietLine(block, style);
+        if (block.zeroRole == 'rung') return _rung(block, style);
         if (block.callout?.kind == 'answer') return _RevealAnswer(answer: _callout(block, style));
         return block.demoted ? _prose(block, style) : _callout(block, style, prominent: block.zeroRole == 'objective');
       case _Kind.quiz:
@@ -353,6 +355,49 @@ class Markdown extends StatelessWidget {
         TextSpan(text: 'Where this fits  ', style: small.copyWith(fontWeight: FontWeight.w600)),
         _inline(block.text, small),
       ])),
+    );
+  }
+
+  /// BI26102804: a line element (prior, place, point, link, proof, return, rescore, jargon or book in line form):
+  /// its two-word label in small caps, then the text, one step below body in the secondary colour. No box.
+  Widget _quietLine(_Block block, TextStyle style) {
+    final small = style.copyWith(color: C.text2, fontSize: (style.fontSize ?? 15.5) - 1.5, height: 1.55);
+    return Padding(
+      key: ValueKey('quiet-line:${block.anchor.isNotEmpty ? block.anchor : identityHashCode(block)}'),
+      padding: EdgeInsets.symmetric(vertical: _reading ? 6 : 3),
+      child: Text.rich(TextSpan(children: [
+        if (block.uiLabel.isNotEmpty)
+          TextSpan(
+              text: '${block.uiLabel.toUpperCase()}  ',
+              style: small.copyWith(fontSize: (small.fontSize ?? 14) - 3, fontWeight: FontWeight.w700, letterSpacing: 0.9, color: C.text3)),
+        _inline(block.text, small),
+        if (block.cite.isNotEmpty) TextSpan(text: '  ${block.cite}', style: small.copyWith(fontStyle: FontStyle.italic, color: C.text3)),
+      ])),
+    );
+  }
+
+  /// BI26102804: an APPLY rung (now, week, role): its number, the label in bold, then the body; the rungs of a
+  /// movement are numbered in order so the three read as one sequence.
+  Widget _rung(_Block block, TextStyle style) {
+    return Padding(
+      key: ValueKey('rung-${block.rungIndex}:${block.anchor.isNotEmpty ? block.anchor : identityHashCode(block)}'),
+      padding: EdgeInsets.symmetric(vertical: _reading ? 6 : 3),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 26,
+          height: 26,
+          margin: const EdgeInsets.only(right: 12, top: 1),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: C.callLearn, width: 1.5)),
+          child: Text('${block.rungIndex}', style: style.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: C.callLearn, height: 1)),
+        ),
+        Expanded(
+          child: Text.rich(TextSpan(children: [
+            if (block.uiLabel.isNotEmpty) TextSpan(text: '${block.uiLabel}  ', style: style.copyWith(fontWeight: FontWeight.w700)),
+            _inline(block.text, style),
+          ])),
+        ),
+      ]),
     );
   }
 
@@ -1246,6 +1291,15 @@ class ModuleLink {
 
   @override
   String toString() => 'module:$course/$index${anchor.isEmpty ? '' : '#$anchor'}';
+
+  /// BI26102805: whether a lesson file is the module this link names. A 4.x file carries its number inside the
+  /// name (`20261006_..._module_02_assets_that_pay_v4_0_0.md`); an older one starts with it (`02_mindset.md`). Until
+  /// this, only the second form matched, so every link into a 4.x module did nothing when tapped.
+  bool matchesFile(String file) {
+    final f = file.toLowerCase();
+    if (RegExp('(?:^|[_-])module[_-]?0*${int.parse(index)}(?:[_.-]|\$)').hasMatch(f)) return true;
+    return f.startsWith(index) && (f.length == index.length || !RegExp(r'\d').hasMatch(f[index.length]));
+  }
 }
 
 /// The numbered sections of a module as the reader renders them: `(number, anchor)` per movement and
@@ -1412,7 +1466,60 @@ const _elementKinds = <String, String>{
   'essentials': 'note',
   'check': 'note',
   'return': 'note',
+  // BI26102804: two 4.x ids the table lacked, so they fell through as plain text with their tag showing.
+  'rescore': 'note',
+  'scenarios': 'note',
 };
+
+/// BI26102804: line-kind elements read as a quiet line (small caps label, one step below body, no box).
+const _lineElements = {'prior', 'place', 'point', 'link', 'proof', 'return', 'rescore', 'jargon', 'book'};
+
+/// BI26102804: section-kind elements read as a subheading with their list or table under it, never a callout.
+const _sectionElements = {'pitfalls', 'essentials', 'check', 'expert', 'model', 'scenarios'};
+
+/// BI26102804: the APPLY rungs read as one numbered ladder.
+const _rungElements = {'now', 'week', 'role'};
+
+/// BI26102804: runs after the section and GUARD rules. Line elements become quiet lines; section elements become
+/// a level-3 subheading (their two-word label) followed by their body, if any, and the list or table that follows;
+/// APPLY rungs are numbered in order within their movement; a callout with no body and nothing under it is dropped.
+List<_Block> _quietElements(List<_Block> blocks) {
+  final out = <_Block>[];
+  var rung = 0;
+  for (var i = 0; i < blocks.length; i++) {
+    final b = blocks[i];
+    if (b.kind == _Kind.heading && b.level <= 2) rung = 0;
+    if (b.kind != _Kind.callout || b.zeroRole.isNotEmpty || b.elementId.isEmpty) {
+      if (b.kind == _Kind.callout && b.text.trim().isEmpty && b.zeroRole.isEmpty && b.callout?.kind != 'answer') continue;
+      out.add(b);
+      continue;
+    }
+    final id = b.elementId;
+    if (_sectionElements.contains(id)) {
+      out.add(_Block(_Kind.heading, text: b.uiLabel.isNotEmpty ? b.uiLabel : id, level: 3)
+        ..anchor = b.anchor
+        ..number = b.number);
+      if (b.text.trim().isNotEmpty) out.add(_Block(_Kind.paragraph, text: b.text)..cite = b.cite);
+      continue;
+    }
+    if (_rungElements.contains(id)) {
+      b.zeroRole = 'rung';
+      b.rungIndex = ++rung;
+      b.demoted = false;
+      if (b.text.trim().isNotEmpty || b.uiLabel.isNotEmpty) out.add(b);
+      continue;
+    }
+    if (_lineElements.contains(id)) {
+      b.zeroRole = 'line';
+      b.demoted = false;
+      if (b.text.trim().isNotEmpty) out.add(b);
+      continue;
+    }
+    if (b.text.trim().isEmpty) continue; // no callout is ever drawn empty
+    out.add(b);
+  }
+  return out;
+}
 
 /// `**{prior} Before This:** body`, optionally as a list item (`1. **{now} Two Words:** body`).
 ///
@@ -1845,6 +1952,9 @@ class _Block {
   bool marked = false;
   bool demoted = false;
 
+  /// BI26102804: an APPLY rung's place in its movement's ladder (1, 2, 3).
+  int rungIndex = 0;
+
   /// BI26101804: how section 0 draws this block: `prerequisite` (an italic line), `objective` (the prominent
   /// callout) or `aside` (a small grey note). Empty everywhere else.
   String zeroRole = '';
@@ -2227,6 +2337,7 @@ List<_Block> _parseBlocks(String source) {
   _tagSectionZero(blocks);
   blocks = _applyGuardMovementRule(blocks);
   _oneCalloutPerSection(blocks);
+  blocks = _quietElements(blocks);
   return blocks;
 }
 
