@@ -13,6 +13,8 @@ import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/parity3b_widgets.dart';
 import '../widgets/month_grid.dart';
+import '../widgets/space_header.dart';
+import '../widgets/space_manifest.dart';
 import '../widgets/sub_tabs.dart';
 import '../../util/tab_memory.dart';
 import 'learning_export_stub.dart'
@@ -24,14 +26,6 @@ import 'learning_export_stub.dart'
 /// week/hour grid, renderPlannerCalendar()) is now built here too, following
 /// BT26091023's 5am-first / merged-Rest-row structure from the start.
 enum _CalMode { gregorian, equicycle, planner }
-
-/// BI26101519: the tab order, Equicycle first. A fresh install opens on it.
-const _calModes = [_CalMode.equicycle, _CalMode.gregorian, _CalMode.planner];
-String _calModeLabel(_CalMode m) => switch (m) {
-      _CalMode.equicycle => 'Equicycle',
-      _CalMode.gregorian => 'Gregorian',
-      _CalMode.planner => 'Planner',
-    };
 
 /// BI26100205 (Equicycle 2): the position comes from the cached year table
 /// (util/equicycle.dart), never from arithmetic here. When no table covers
@@ -72,7 +66,6 @@ class CalendarView extends StatefulWidget {
 class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver {
   late DateTime _month;
   DateTime? _selected;
-  _CalMode _mode = _CalMode.equicycle;
   bool _busy = false;
 
   // BN26091025: server-driven cycle theme (GET /api/cycle-theme), keyed by
@@ -108,10 +101,6 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
       final services = AppScope.of(context);
       services.sync.touch(services.store.dates);
       EquicycleYears.instance.ensureLoaded(services.api, services.db);
-      // The last mode chosen on this device wins; a fresh install keeps Equicycle.
-      readTabIndex(services.db, 'calendar', _calModes.length).then((i) {
-        if (mounted && i != null) setState(() => _mode = _calModes[i]);
-      });
     });
   }
 
@@ -211,7 +200,40 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
     final services = AppScope.of(context);
     return Stack(
       children: [
-        SnapshotView(
+        // BI26102890 (Sconl, 30 Oct 2026: "the calendar space, i also want it using the rail"): the three modes are the
+        // rail's destinations (Equicycle, Month, Planner), Overview is the agenda, Activity is laid on by the manifest.
+        SpaceView(
+          space: 'calendar',
+          showSearch: false,
+          tabs: [
+            SpaceTab('Overview', _calendarBody(context, null)),
+            SpaceTab('Equicycle', _calendarBody(context, _CalMode.equicycle)),
+            SpaceTab('Month', _calendarBody(context, _CalMode.gregorian)),
+            SpaceTab('Planner', _calendarBody(context, _CalMode.planner)),
+          ],
+        ),
+        ViewFab(
+          key: const Key('calendar-import-export'),
+          tooltip: 'Import or export',
+          icon: Icons.import_export_rounded,
+          slot: 1,
+          busy: _busy,
+          onPressed: _importExportMenu,
+        ),
+        ViewFab(
+          tooltip: 'Add an event',
+          icon: Icons.add_rounded,
+          onPressed: () => _addEventSheet(context),
+        ),
+      ],
+    );
+  }
+
+  /// One calendar destination: a mode's grid with the selected day's events and the key dates, or (mode null) the
+  /// agenda of the coming two weeks.
+  Widget _calendarBody(BuildContext context, _CalMode? mode) {
+    final services = AppScope.of(context);
+    return SnapshotView(
           snapshot: services.store.calendar,
           builder: (context, data) {
             final events = fmt.lm(fmt.m(data)['events']);
@@ -227,9 +249,9 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _modeAndActionsRow(),
-                const SizedBox(height: 8),
-                if (_mode == _CalMode.gregorian)
+                if (mode == null)
+                  _agenda(byDay)
+                else if (mode == _CalMode.gregorian)
                   Panel(
                     padding: const EdgeInsets.all(8),
                     child: GregorianMonthGrid(
@@ -251,7 +273,7 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
                       },
                     ),
                   )
-                else if (_mode == _CalMode.equicycle)
+                else if (mode == _CalMode.equicycle)
                   Panel(
                     padding: const EdgeInsets.all(8),
                     child: _equicycleGrid(byDay),
@@ -261,7 +283,7 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
                     padding: const EdgeInsets.all(4),
                     child: _plannerGrid(byDay),
                   ),
-                if (_mode != _CalMode.planner) ...[
+                if (mode != null && mode != _CalMode.planner) ...[
                   SectionLabel(_selected == null
                       ? 'Events'
                       : fmt.weekdayDate(_selected!)),
@@ -320,35 +342,32 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
               ],
             );
           },
-        ),
-        ViewFab(
-          key: const Key('calendar-import-export'),
-          tooltip: 'Import or export',
-          icon: Icons.import_export_rounded,
-          slot: 1,
-          busy: _busy,
-          onPressed: _importExportMenu,
-        ),
-        ViewFab(
-          tooltip: 'Add an event',
-          icon: Icons.add_rounded,
-          onPressed: () => _addEventSheet(context),
-        ),
-      ],
-    );
+        );
   }
 
-  /// BI26101810: the tab bar holds the three tabs and nothing else. Import and export live in the secondary FAB.
-  Widget _modeAndActionsRow() {
-    return SubTabsBar(
-      keyPrefix: 'calendar',
-      labels: [for (final m in _calModes) _calModeLabel(m)],
-      index: _calModes.indexOf(_mode),
-      onSelect: (i) {
-        setState(() => _mode = _calModes[i]);
-        writeTabIndex(AppScope.of(context).db, 'calendar', i);
-      },
-    );
+  /// The Overview: every event from today through the next fourteen days, by day.
+  Widget _agenda(Map<String, List<Map<String, dynamic>>> byDay) {
+    final today = DateTime.now();
+    final days = [for (var i = 0; i < 15; i++) DateTime(today.year, today.month, today.day + i)];
+    final rows = <Widget>[];
+    for (final d in days) {
+      final list = byDay[fmt.isoDate(d)] ?? const [];
+      if (list.isEmpty) continue;
+      rows.add(SectionLabel(fmt.weekdayDate(d)));
+      for (final e in list) {
+        rows.add(Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Panel(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Text([fmt.s(e['time']), fmt.s(e['title'])].where((x) => x.isNotEmpty).join('  '), style: T.body2),
+          ),
+        ));
+      }
+    }
+    if (rows.isEmpty) {
+      return const Panel(key: Key('calendar-agenda-empty'), child: Text('Nothing in the next two weeks. Tap + to add an event.'));
+    }
+    return Column(key: const Key('calendar-agenda'), crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
   }
 
   /// One secondary FAB above Add: a small menu with Import and Export.

@@ -34,10 +34,10 @@ void main() {
     return services;
   }
 
-  testWidgets('the tab bar holds exactly three tabs and no action buttons', (t) async {
+  testWidgets('the tab bar holds exactly five tabs and no action buttons', (t) async {
     await pumpCalendar(t);
     final bar = t.widget<TabBar>(find.byKey(const ValueKey('calendar-tabs')));
-    expect(bar.tabs.length, 3);
+    expect(bar.tabs.length, 5);
     expect(find.byTooltip('Import .ics'), findsNothing);
     expect(find.byTooltip('Export .ics'), findsNothing);
     expect(find.descendant(of: find.byKey(const ValueKey('calendar-tabs')), matching: find.byType(IconButton)), findsNothing);
