@@ -31,6 +31,29 @@ void main() {
           httpClient: MockClient((_) => next()),
         )..cache = cache;
 
+    // BI26103095 (30 Oct 2026): on the light fleet hub answers some routes with its own JSON 5xx (an engine that is not
+    // running there, slate being down). That is hub answering, so the server is reachable: no "server unreachable"
+    // banner and no stored copy standing in for it. And a 404 on /api/notifications no longer signs Sconl out.
+    test('hub answering a JSON 5xx is an answer, not an unreachable server', () async {
+      final api = make(MemCache());
+      next = () async => http.Response(jsonEncode({'ok': false, 'error': 'slate is not reachable'}), 503);
+      await expectLater(api.getJson('/api/slate/matrix'), throwsA(isA<ApiException>().having((e) => e.answered, 'answered', isTrue)));
+      expect(api.serverUnreachable, isFalse);
+      next = () async => http.Response('<html>Bad gateway</html>', 502);
+      await expectLater(api.getJson('/api/slate/matrix'), throwsA(isA<ApiException>()));
+      expect(api.serverUnreachable, isTrue, reason: 'a non-JSON gateway page still means the server did not answer');
+    });
+
+    test('a 404 on /api/notifications does not end the session; only /api/state can', () async {
+      var signedOut = 0;
+      final api = make(MemCache())..onAuthFailure = () => signedOut++;
+      next = () async => http.Response(jsonEncode({'error': 'Not found'}), 404);
+      await expectLater(api.getJson('/api/notifications'), throwsA(isA<ApiException>()));
+      expect(signedOut, 0);
+      await expectLater(api.getJson('/api/state'), throwsA(isA<ApiException>()));
+      expect(signedOut, 1);
+    });
+
     test('a good answer is stored, and served when the tunnel has no connector (530)', () async {
       final cache = MemCache();
       final api = make(cache);

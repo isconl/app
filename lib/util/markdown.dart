@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -453,11 +456,8 @@ class Markdown extends StatelessWidget {
           )),
           if (block.cite.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(
-              block.cite,
-              style: T.mono.copyWith(
-                fontSize: 10.5, height: 1.5, color: C.text3),
-            ),
+            // BI26103092 (Sconl, 30 Oct 2026): "even the book citations to use the small blue styling for the credits".
+            _creditLine(block.cite, key: const Key('callout-cite')),
           ],
         ],
       ),
@@ -759,6 +759,16 @@ class Markdown extends StatelessWidget {
       credit = cm.group(1)!.trim();
       caption = caption.substring(0, cm.start).trim();
     }
+    var capturedFrom = captured;
+    if (block.imageCredit.isNotEmpty) {
+      // BI26103092: the figure's own credit line wins, and its trailing "captured <date>" is the captured stamp.
+      credit = block.imageCredit;
+      final cap2 = RegExp(r'[.\s]*\bcaptured\s+([^.]+?)\.?\s*$', caseSensitive: false).firstMatch(credit);
+      if (cap2 != null) {
+        capturedFrom ??= cap2;
+        credit = credit.substring(0, cap2.start).trim();
+      }
+    }
     final file = block.imageUrl.startsWith('_assets/') ? block.imageUrl.substring(8) : block.imageUrl;
     final size = imageSizes[file];
     return _Figure(
@@ -769,8 +779,29 @@ class Markdown extends StatelessWidget {
       path: block.imageUrl,
       caption: caption,
       credit: credit,
-      captured: captured?.group(1)?.trim() ?? '',
+      captured: capturedFrom?.group(1)?.trim() ?? '',
       ratio: size != null && size.width > 0 && size.height > 0 ? size.width / size.height : 16 / 10,
+    );
+  }
+
+  /// BI26103092 (Sconl, 30 Oct 2026: "the credits, i would like them rendered as blue small text, clickable to the
+  /// source where necessary"): small blue type; a `[text](https://...)` in the credit opens the source in the browser.
+  Widget _creditLine(String credit, {Key key = const Key('image-credit')}) {
+    final style = T.tiny.copyWith(color: C.blue, fontSize: 10.5);
+    final link = RegExp(r'\[([^\]]+)\]\((https?://[^)\s]+)\)').firstMatch(credit);
+    if (link == null) return Text(credit, key: key, style: style);
+    final uri = Uri.tryParse(link.group(2)!);
+    return Text.rich(
+      TextSpan(style: style, children: [
+        if (link.start > 0) TextSpan(text: credit.substring(0, link.start)),
+        TextSpan(
+          text: link.group(1),
+          style: style.copyWith(decoration: TextDecoration.underline, decorationColor: C.blue),
+          recognizer: uri == null ? null : (TapGestureRecognizer()..onTap = () => launchUrl(uri, mode: LaunchMode.externalApplication)),
+        ),
+        if (link.end < credit.length) TextSpan(text: credit.substring(link.end)),
+      ]),
+      key: key,
     );
   }
 
@@ -802,13 +833,13 @@ class Markdown extends StatelessWidget {
           borderRadius: BorderRadius.circular(Sz.rMd),
           child: AspectRatio(
             aspectRatio: f.ratio,
-            child: CachedNetworkImage(
+            child: _LessonPicture(
               key: const Key('module-image'),
-              imageUrl: f.url,
+              url: f.url,
               cacheKey: f.cacheKey,
-              fit: BoxFit.contain,
-              placeholder: (_, _) => const ColoredBox(key: Key('image-placeholder'), color: C.surface),
-              errorWidget: (_, _, _) => _imageBroken(f, block.imageUrl),
+              path: f.path,
+              placeholder: const ColoredBox(key: Key('image-placeholder'), color: C.surface),
+              error: _imageBroken(f, block.imageUrl),
             ),
           ),
         );
@@ -830,9 +861,7 @@ class Markdown extends StatelessWidget {
           ],
           if (f.credit.isNotEmpty) ...[
             const SizedBox(height: 2),
-            Text(f.credit,
-                key: const Key('image-credit'),
-                style: T.tiny.copyWith(color: C.text3, fontSize: 10.5)),
+            _creditLine(f.credit),
           ],
           if (f.captured.isNotEmpty) ...[
             const SizedBox(height: 2),
@@ -1419,6 +1448,9 @@ final _callouts = <_Callout>[
       RegExp(r'^\*\*(?:Story|Illustration|Example):?\*\*\s*', caseSensitive: false)),
   _Callout('probe', 'Probe', C.callQuiz, C.callQuizBg,
       RegExp(r'^\*\*Probe:?\*\*\s*', caseSensitive: false)),
+  // CI26103091 / BI26103094 (Sconl, 30 Oct 2026): one practical Health Tip in every medicine module, near its end.
+  _Callout('healthtip', 'Health tip', C.callHealth, C.callHealthBg,
+      RegExp(r'^\*\*(?:Health tip|Health tips):?\*\*\s*', caseSensitive: false)),
   _Callout('fact', 'Fact', C.callFact, C.callFactBg,
       RegExp(r'^\*\*(?:Fun fact|Fact):?\*\*\s*', caseSensitive: false)),
   // BI26100537: the line and rung elements of 4.x (prior, place, point, link, now, week, ...) share
@@ -1442,6 +1474,7 @@ const _elementKinds = <String, String>{
   'illustration': 'story',
   'research': 'research',
   'fact': 'fact',
+  'healthtip': 'healthtip',
   'probe': 'probe',
   'modelanswer': 'answer',
   // BI26101804 / CI26101803: the tags the content retag uses for section 0 and for probe answers.
@@ -1608,6 +1641,8 @@ void _oneCalloutPerSection(List<_Block> blocks) {
       for (var i = start; i < end; i++)
         if (blocks[i].kind == _Kind.callout &&
             blocks[i].callout?.kind != 'answer' &&
+            // BI26103094: a medicine module's Health Tip is always its own callout and never counts as the section's one.
+            blocks[i].callout?.kind != 'healthtip' &&
             blocks[i].zeroRole != 'prerequisite' &&
             blocks[i].zeroRole != 'aside')
           blocks[i],
@@ -1906,15 +1941,72 @@ class _ZoomPageState extends State<_ZoomPage> {
         minScale: 1.0,
         maxScale: 6.0,
         child: Center(
-          child: CachedNetworkImage(
-            imageUrl: widget.figure.url,
+          child: _LessonPicture(
+            url: widget.figure.url,
             cacheKey: widget.figure.cacheKey,
-            fit: BoxFit.contain,
-            errorWidget: (_, _, _) =>
-                const Icon(Icons.image_not_supported_rounded, color: Colors.white54, size: 48),
+            path: widget.figure.path,
+            placeholder: const SizedBox.shrink(),
+            error: const Icon(Icons.image_not_supported_rounded, color: Colors.white54, size: 48),
           ),
         ),
       );
+}
+
+/// BI26103091 (Sconl, 30 Oct 2026: "ensure all the med images show, not the placeholder icon"): a lesson picture.
+/// CachedNetworkImage decodes bitmaps only, so every SVG figure (82 of the medicine track's 122 images) fell into its
+/// error branch and showed the "image not supported" icon. An `.svg` is now fetched through the same device cache (so
+/// the module still reads offline, keyed by asset path, never by the URL with its token) and drawn with flutter_svg;
+/// a bitmap keeps CachedNetworkImage. Bytes, not a file path, so the web build needs no dart:io.
+class _LessonPicture extends StatelessWidget {
+  const _LessonPicture({super.key, required this.url, required this.cacheKey, required this.path,
+      required this.placeholder, required this.error});
+  final String url;
+  final String cacheKey;
+  final String path;
+  final Widget placeholder;
+  final Widget error;
+
+  static bool isSvg(String p) => p.split('?').first.toLowerCase().endsWith('.svg');
+
+  // One fetch per picture for the life of the app, so a rebuild while scrolling never refetches or flickers; a failed
+  // fetch is forgotten so the next build tries again.
+  static final _svgFetches = <String, Future<List<int>>>{};
+
+  static Future<List<int>> _svgBytes(String url, String key) => _svgFetches.putIfAbsent(key, () async {
+        try {
+          final file = await DefaultCacheManager().getSingleFile(url, key: key);
+          return await file.readAsBytes();
+        } catch (_) {
+          _svgFetches.remove(key);
+          rethrow;
+        }
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isSvg(path)) {
+      return CachedNetworkImage(
+        imageUrl: url,
+        cacheKey: cacheKey,
+        fit: BoxFit.contain,
+        placeholder: (_, _) => placeholder,
+        errorWidget: (_, _, _) => error,
+      );
+    }
+    return FutureBuilder<List<int>>(
+      future: _svgBytes(url, cacheKey),
+      builder: (context, snap) {
+        if (snap.hasError) return error;
+        if (!snap.hasData) return placeholder;
+        return SvgPicture.memory(
+          Uint8List.fromList(snap.data!),
+          fit: BoxFit.contain,
+          placeholderBuilder: (_) => placeholder,
+          errorBuilder: (_, _, _) => error,
+        );
+      },
+    );
+  }
 }
 
 class _ChartItem {
@@ -1971,6 +2063,8 @@ class _Block {
   String imageUrl = '';
   String imageAlt = '';
   String imageCaption = '';
+  // BI26103092: the `_Credit: ..._` line under a figure (standard §7), taken in by the figure.
+  String imageCredit = '';
 
   /// BL26091008/FN26091027: raw markdown body of a `## Check yourself` /
   /// `## Open questions` quiz block -- re-parsed and rendered recursively
@@ -2162,10 +2256,32 @@ List<_Block> _parseBlocks(String source) {
       flushPara();
       final alt = _plainMarkers(imgMatch.group(1)!.trim());
       final title = _plainMarkers(imgMatch.group(3)?.trim() ?? '');
-      blocks.add(_Block(_Kind.image)
+      final img = _Block(_Kind.image)
         ..imageAlt = alt
         ..imageCaption = title.isNotEmpty ? title : alt
-        ..imageUrl = imgMatch.group(2)!.trim());
+        ..imageUrl = imgMatch.group(2)!.trim();
+      blocks.add(img);
+      // BI26103092 (standard §7): the italic caption line and the `_Credit: ..._` line under a figure belong to it, so
+      // they are drawn as its caption and its small blue credit, not as loose italic paragraphs.
+      var j = idx + 1;
+      int nextFilled(int k) {
+        while (k < lines.length && lines[k].trim().isEmpty) {
+          k++;
+        }
+        return k;
+      }
+      j = nextFilled(j);
+      final credit = RegExp(r'^_\s*Credit:\s*(.+?)_$', caseSensitive: false);
+      final italic = RegExp(r'^_([^_].*[^_])_$');
+      if (j < lines.length && italic.hasMatch(lines[j].trim()) && !credit.hasMatch(lines[j].trim())) {
+        img.imageCaption = italic.firstMatch(lines[j].trim())!.group(1)!.trim();
+        idx = j;
+        j = nextFilled(j + 1);
+      }
+      if (j < lines.length && credit.hasMatch(lines[j].trim())) {
+        img.imageCredit = credit.firstMatch(lines[j].trim())!.group(1)!.trim();
+        idx = j;
+      }
       idx++;
       continue;
     }

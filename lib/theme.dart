@@ -44,6 +44,9 @@ class C {
   static const violet = TokenColors.violet;
   static const violetBg = TokenColors.violetBg;
   static const callLearn = TokenColors.callLearn;
+  // CI26103091 / BI26103094: the Health Tip callout of the medicine modules (Sconl, 30 Oct 2026).
+  static const callHealth = TokenColors.greenBright;
+  static const callHealthBg = TokenColors.greenBg2;
   static const callLearnBg = TokenColors.callLearnBg;
   static const callJargon = TokenColors.callJargon;
   static const callJargonBg = TokenColors.callJargonBg;

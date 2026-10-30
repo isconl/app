@@ -19,10 +19,13 @@ import '../util/server_clock.dart';
 /// (hub as the one entry point, auth order, /api/nav, errors, offline outbox).
 /// A change to how this client talks to hub changes that document first.
 class ApiException implements Exception {
-  ApiException(this.status, this.message, {this.authSuspect = false});
+  ApiException(this.status, this.message, {this.authSuspect = false, this.answered = false});
   final int status;
   final String message;
   final bool authSuspect;
+  /// BI26103095: hub itself answered (a JSON error body), so the server is reachable even though this one request
+  /// failed, for instance an engine that is not running on the light fleet. Only a missing answer means unreachable.
+  final bool answered;
   @override
   String toString() => 'ApiException($status): $message';
 }
@@ -82,7 +85,7 @@ class ApiClient {
   static bool isUnreachable(Object e) =>
       e is OfflineException ||
       (e is ApiException &&
-          (e.status >= 500 ||
+          ((e.status >= 500 && !e.answered) ||
               (e.status == 0 && e.message == 'Request timed out') ||
               (e.status == 400 && e.message.toLowerCase().contains('refused to parse'))));
 
@@ -221,7 +224,9 @@ class ApiClient {
       // The server 404s on bad auth. Distinguish "session dead" (core route)
       // from a genuinely unknown path by the route prefix.
       final suspect = token.isNotEmpty && path.startsWith('/api');
-      if (suspect && (path == '/api/state' || path == '/api/notifications')) {
+      // BI26103095: only /api/state, which hub itself owns, can prove a dead session. /api/notifications belongs to an
+      // engine, and on a fleet without it a 404 signed Sconl out on every open (30 Oct 2026).
+      if (suspect && path == '/api/state') {
         onAuthFailure?.call();
       }
       throw ApiException(404, 'Not found (or session expired)',
@@ -231,7 +236,17 @@ class ApiClient {
       throw ApiException(429, _errorFrom(res.body, 'Locked out, retry later'));
     }
     if (res.statusCode >= 500) {
-      throw ApiException(res.statusCode, 'Server error ${res.statusCode}');
+      // BI26103095: a JSON body is hub's own answer (an engine down or not deployed): the server is there. Cloudflare's
+      // 502/530 pages and a dead tunnel are not JSON, so they still read as unreachable.
+      final hubAnswered = (() {
+        try {
+          return jsonDecode(res.body) is Map;
+        } catch (_) {
+          return false;
+        }
+      })();
+      throw ApiException(res.statusCode, hubAnswered ? _errorFrom(res.body, 'Server error ${res.statusCode}') : 'Server error ${res.statusCode}',
+          answered: hubAnswered);
     }
     dynamic decoded;
     try {
