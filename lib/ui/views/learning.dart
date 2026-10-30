@@ -1256,6 +1256,123 @@ String moduleSubtitle(Map<String, dynamic> lesson) {
   return '${first.substring(0, 79).trimRight()}…';
 }
 
+@visibleForTesting
+/// BI26102806: module meta line showing progress state, minutes, offline state,
+/// version & reviewed date, and subjects, from the manifest and /api/learning/index.
+String? moduleMetaLine({
+  required Map<String, dynamic> lesson,
+  Map<String, dynamic>? manifest,
+  ModuleStatus? moduleStatus,
+}) {
+  final parts = <String>[];
+
+  // 1. Progress state (not started, reading with percent, done)
+  final rawStatus = fmt.s(lesson['status'] ?? manifest?['status']).trim().toLowerCase();
+  final rawLastOpened = fmt.s(lesson['lastOpenedAt'] ?? lesson['last_opened_at'] ?? lesson['lastOpened'] ?? manifest?['lastOpenedAt'] ?? manifest?['lastOpened']).trim();
+  final effectiveStatus = rawStatus.isNotEmpty ? rawStatus : (rawLastOpened.isNotEmpty ? 'opened' : '');
+
+  if (effectiveStatus.isNotEmpty) {
+    if (effectiveStatus == 'done') {
+      parts.add('done');
+    } else if (effectiveStatus == 'learning' || effectiveStatus == 'opened' || effectiveStatus == 'in progress') {
+      final rawPct = lesson['progressPct'] ?? lesson['scroll_pct'] ?? lesson['fraction'] ?? lesson['percent'] ??
+                     manifest?['progressPct'] ?? manifest?['scroll_pct'] ?? manifest?['fraction'] ?? manifest?['percent'];
+      if (rawPct != null) {
+        final numVal = fmt.d(rawPct);
+        final pct = (numVal <= 1.0 && numVal > 0 && rawPct is double) ? (numVal * 100).round() : numVal.round();
+        if (pct > 0) {
+          parts.add('reading $pct%');
+        } else {
+          parts.add('reading');
+        }
+      } else {
+        parts.add('reading');
+      }
+    } else if (effectiveStatus == 'new' || effectiveStatus == 'not started') {
+      parts.add('not started');
+    }
+  }
+
+  // 2. Minutes (where missing or <= 0, show nothing - never '0 min')
+  final rawMinutes = lesson['minutes'] ?? lesson['MINUTES'] ?? manifest?['minutes'] ?? manifest?['MINUTES'];
+  if (rawMinutes != null) {
+    if (rawMinutes is num) {
+      final m = rawMinutes.toInt();
+      if (m > 0) parts.add('$m min');
+    } else {
+      final s = fmt.s(rawMinutes).trim();
+      if (s.isNotEmpty && s != '0' && s != '0 min') {
+        if (s.endsWith('min') || s.endsWith('mins')) {
+          parts.add(s);
+        } else {
+          final parsed = int.tryParse(s);
+          if (parsed != null && parsed > 0) {
+            parts.add('$parsed min');
+          } else if (parsed == null) {
+            parts.add(s);
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Offline state (on device, updated, not downloaded)
+  final rawOffline = fmt.s(lesson['offline'] ?? lesson['offlineState'] ?? manifest?['offline'] ?? manifest?['offlineState']).trim().toLowerCase();
+  if (rawOffline.isNotEmpty) {
+    if (rawOffline == 'on device' || rawOffline == 'current' || rawOffline == 'downloaded') {
+      parts.add('on device');
+    } else if (rawOffline == 'updated' || rawOffline == 'stale') {
+      parts.add('updated');
+    } else if (rawOffline == 'not downloaded' || rawOffline == 'absent') {
+      parts.add('not downloaded');
+    } else {
+      parts.add(rawOffline);
+    }
+  } else if (moduleStatus != null && (manifest != null && (manifest.containsKey('offline') || manifest.containsKey('offlineState') || manifest.containsKey('rev')))) {
+    switch (moduleStatus.state) {
+      case ModuleState.current:
+      case ModuleState.unversioned:
+        parts.add('on device');
+        break;
+      case ModuleState.stale:
+        parts.add('updated');
+        break;
+      case ModuleState.absent:
+        parts.add('not downloaded');
+        break;
+    }
+  }
+
+  // 4. Version and reviewed date
+  final rawVersion = fmt.s(lesson['version'] ?? lesson['VERSION'] ?? manifest?['version'] ?? manifest?['VERSION']).trim();
+  if (rawVersion.isNotEmpty) {
+    final vStr = rawVersion.toLowerCase().startsWith('v') ? rawVersion : 'v$rawVersion';
+    parts.add(vStr);
+  }
+
+  final rawReviewed = fmt.s(lesson['reviewedAt'] ?? lesson['reviewed_at'] ?? lesson['REVIEWED_AT'] ?? manifest?['reviewedAt'] ?? manifest?['reviewed_at'] ?? manifest?['REVIEWED_AT']).trim();
+  if (rawReviewed.isNotEmpty) {
+    final dStr = fmt.reviewedDate(rawReviewed);
+    final revStr = dStr.toLowerCase().startsWith('reviewed') ? dStr : 'reviewed $dStr';
+    parts.add(revStr);
+  }
+
+  // 5. Subjects (standard A14, SUBJECTS in learning/modules_meta.tsv)
+  final rawSubjects = lesson['subjects'] ?? lesson['SUBJECTS'] ?? manifest?['subjects'] ?? manifest?['SUBJECTS'];
+  if (rawSubjects != null) {
+    if (rawSubjects is List) {
+      final list = rawSubjects.map(fmt.s).where((s) => s.trim().isNotEmpty).toList();
+      if (list.isNotEmpty) parts.add(list.join(', '));
+    } else {
+      final s = fmt.s(rawSubjects).trim();
+      if (s.isNotEmpty) parts.add(s);
+    }
+  }
+
+  if (parts.isEmpty) return null;
+  return parts.join(' · ');
+}
+
 class LessonRow extends StatelessWidget {
   const LessonRow({
     super.key,
@@ -1298,6 +1415,12 @@ class LessonRow extends StatelessWidget {
     final numVal = pos != null ? fmt.i(pos) : index + 1;
     final numStr = numVal.toString().padLeft(2, '0');
     final subtitle = moduleSubtitle(lesson);
+    final m = lib?.manifestEntry(courseId, file);
+    final meta = moduleMetaLine(
+      lesson: lesson,
+      manifest: m,
+      moduleStatus: st,
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -1373,6 +1496,21 @@ class LessonRow extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: T.small.copyWith(color: C.text3),
+                        ),
+                      ),
+                    // BI26102806: module meta line
+                    if (meta != null && meta.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          meta,
+                          key: const Key('module-meta'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: T.small.copyWith(
+                            color: C.text3,
+                            fontSize: (T.small.fontSize ?? 13) - 1,
+                          ),
                         ),
                       ),
                     // BI26100325: how far through an unfinished module.

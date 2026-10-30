@@ -87,6 +87,13 @@ class ModuleLibrary extends ChangeNotifier {
   /// Every module the agent knows about, whether or not it is on the device.
   int get knownCount => _manifest.length;
 
+  /// The manifest entry for one module, straight from the agent's `/api/learning/manifest`.
+  Map<String, dynamic>? manifestEntry(String course, String file) =>
+      _manifest[keyOf(course, file)];
+
+  @visibleForTesting
+  void setManifestForTesting(dynamic res) => _applyManifest(res);
+
   /// The agent's narration state for a module, straight from the manifest:
   /// { available, rev, stale, bytes, at }, or null when the manifest has not
   /// been fetched. Null and {available:false} both mean "no audio to play";
