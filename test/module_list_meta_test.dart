@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:isconl/app_scope.dart';
-import 'package:isconl/data/modules.dart';
 import 'package:isconl/ui/views/learning.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
