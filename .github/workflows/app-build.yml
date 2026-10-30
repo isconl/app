@@ -1,0 +1,257 @@
+# Builds, signs, versions and releases the iSconl client application.
+#
+# This branch was called `apk` until 3 August 2026, when it stopped being
+# Android-only. The client is one Flutter codebase targeting Android, Windows
+# and Linux (macOS deferred, iOS dropped - no Apple account). See
+# docs/adr-001-app-branch-rename.md on the dev branch.
+#
+# THE RELEASE TAG PREFIX IS STILL `apk-v` AND MUST STAY THAT WAY. Every phone
+# that already has the app looks for `apk-v*` releases to find its own update.
+# Changing the prefix would silently break the update path on a device that
+# cannot be reached to fix it. New platforms attach their artefacts to the same
+# release rather than earning a new tag scheme.
+#
+# Triggers:
+#  - push to dev, staging or main (code changes). The branch decides which
+#    digit moves (CLAUDE.md s24): dev = patch, staging = minor, main = major.
+#    The pusher bumps before pushing (`node tool/bump_version.js <branch>`) and
+#    the `version` job refuses the run if it did not. CI makes NO commits, so
+#    it never races a session that is committing to the same branch.
+#  - workflow_dispatch (ARCHITECT's manual cue)
+#  - repository_dispatch type "app-build" (also accepts the legacy
+#    "apk-build" type so any already-installed trigger keeps working)
+#
+# Every run: check the version moved -> analyze -> test (once, on Android) ->
+# build per platform (dev: Android only; staging, main, dispatch: all three)
+# (icons regenerated first, adopting branding/icon.png if present) -> publish
+# GitHub Release apk-vX.Y.Z with every platform artefact attached.
+# The app's "Check for update" reads these releases.
+
+name: Build app
+
+on:
+  push:
+    branches: [dev, staging, main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '_next/**'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [app-build, apk-build]
+
+# One group per ref, so a dev build never waits on or cancels a staging or main build. On dev a newer push cancels the
+# older run still building (BI26100604, Actions minutes): the pusher bumps the version before pushing and CI makes no commits,
+# so a cancelled run costs nothing but its draft release, which the next run's different version never reuses.
+concurrency:
+  group: app-build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+
+permissions:
+  contents: write
+
+jobs:
+  # Version is bumped exactly once, by one job, and shared with the matrix.
+  # Bumping inside the matrix would race three runners against one pubspec.yaml.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      date: ${{ steps.read.outputs.date }}
+    steps:
+      - name: Checkout app repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check the version moved the digit this branch owns
+        run: node tool/check_version.js "${{ github.ref_name }}"
+
+      - name: Read version
+        id: read
+        run: |
+          echo "version=$(node tool/bump_version.js --print)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      # Created here, exactly once, before any build runs. Three matrix jobs
+      # racing to create-or-upload the same release is how you get two releases
+      # or a lost artefact. The agent skips `apk-v*` releases that carry no
+      # .apk, so this empty release is invisible to the phone until Android
+      # finishes uploading into it.
+      - name: Open the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: apk-v${{ steps.read.outputs.version }}
+        run: |
+          NOTES='Automated build from isconl/app ${{ github.ref_name }}. Android installs over the previous version and data is preserved, because every build is signed with the same key - in-app: Settings -> Check for update. Windows and Linux artefacts are attached on staging and main builds (dev builds are Android only).'
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --target "${{ github.sha }}" \
+              --title "iSconl v${{ steps.read.outputs.version }}" \
+              --draft \
+              --notes "$NOTES"
+          fi
+
+  build:
+    needs: version
+    # Actions minutes (8 Oct 2026, Sconl: "we are running low on build
+    # minutes"): a dev push builds Android only, because the phone's update
+    # path is the one thing a dev release must deliver. Windows (billed at 2x)
+    # and Linux desktop builds run on staging, main and manual dispatch.
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON((github.event_name == 'push' && github.ref_name == 'dev') && '[{"platform":"android","runner":"ubuntu-latest"}]' || '[{"platform":"android","runner":"ubuntu-latest"},{"platform":"windows","runner":"windows-latest"},{"platform":"linux","runner":"ubuntu-latest"}]') }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      # The exact commit that triggered the run, so every artefact carries the
+      # version the release is tagged with.
+      - name: Checkout app repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up JDK 17
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.8
+          cache: true
+
+      # flutter build linux needs GTK headers; the runner does not ship them.
+      - name: Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libsecret-1-dev
+
+      - name: Decode signing keystore
+        if: matrix.platform == 'android'
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_B64" ]; then
+            echo "::error::ANDROID_KEYSTORE_B64 secret missing - releases must be signed"
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+      - name: Regenerate launcher icons
+        if: matrix.platform == 'android'
+        run: node tool/icon_gen.js
+
+      # One Dart codebase: analyze and test once, on the Android job, rather
+      # than three times. A failure there still stops the release (verify
+      # needs the .apk).
+      - name: Analyze
+        if: matrix.platform == 'android'
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        if: matrix.platform == 'android'
+        run: flutter test
+
+      - name: Build Android APK
+        if: matrix.platform == 'android'
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: flutter build apk --release
+
+      - name: Build Windows
+        if: matrix.platform == 'windows'
+        run: flutter build windows --release
+
+      - name: Build Linux
+        if: matrix.platform == 'linux'
+        run: flutter build linux --release
+
+      # One naming convention across every platform, per ARCHITECT's file rule:
+      # YYYYMMDD_isconl_vX.Y.Z[_platform].ext. Android keeps the historical
+      # unsuffixed name because the in-app updater matches on `.apk`.
+      - name: Name Android artefact
+        if: matrix.platform == 'android'
+        shell: bash
+        run: |
+          NAME="${{ needs.version.outputs.date }}_isconl_v${{ needs.version.outputs.version }}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$NAME"
+          echo "ARTEFACT=$NAME" >> "$GITHUB_ENV"
+
+      - name: Name Windows artefact
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          NAME="${{ needs.version.outputs.date }}_isconl_v${{ needs.version.outputs.version }}_windows_x64.zip"
+          (cd build/windows/x64/runner/Release && 7z a -tzip "$GITHUB_WORKSPACE/$NAME" ./*)
+          echo "ARTEFACT=$NAME" >> "$GITHUB_ENV"
+
+      - name: Name Linux artefact
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          NAME="${{ needs.version.outputs.date }}_isconl_v${{ needs.version.outputs.version }}_linux_x64.tar.gz"
+          tar -czf "$NAME" -C build/linux/x64/release/bundle .
+          echo "ARTEFACT=$NAME" >> "$GITHUB_ENV"
+
+      # The release already exists (opened by the version job), so every matrix
+      # job only uploads. --clobber makes a re-run idempotent instead of failing
+      # on a name clash.
+      - name: Upload artefact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: apk-v${{ needs.version.outputs.version }}
+        run: gh release upload "$TAG" "$ARTEFACT" --clobber
+
+  # BI26100126: the release is opened as a DRAFT and published only here, after the
+  # APK is confirmed attached. A failed build leaves a draft, never an empty
+  # "latest" release that hides the real one.
+  publish:
+    needs: [version, verify]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: apk-v${{ needs.version.outputs.version }}
+        run: gh release edit "$TAG" --draft=false --latest
+
+  # The update path on an installed phone is unfixable remotely, so it gets an
+  # explicit assertion rather than an assumption. If the APK is missing, this
+  # fails the run loudly instead of leaving a half-published release behind.
+  verify:
+    needs: [version, build]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert the Android artefact reached the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: apk-v${{ needs.version.outputs.version }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name' || true)
+          echo "Attached to $TAG:"; echo "$ASSETS"
+          if ! echo "$ASSETS" | grep -qE '\.apk$'; then
+            echo "::error::No .apk on $TAG - the phone has nothing to update to."
+            exit 1
+          fi
+          echo "$ASSETS" | grep -qE '_windows_x64\.zip$' \
+            || echo "::warning::No Windows artefact on $TAG."
+          echo "$ASSETS" | grep -qE '_linux_x64\.tar\.gz$' \
+            || echo "::warning::No Linux artefact on $TAG."
