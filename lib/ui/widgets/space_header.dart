@@ -7,6 +7,7 @@ import '../../data/db.dart';
 import '../../theme.dart';
 import '../../util/tab_memory.dart';
 import 'common.dart';
+import 'space_manifest.dart';
 import 'sub_tabs.dart';
 
 /// BI26101802: the header Study set the pattern for, as one widget every sub-tab space wears: a search entry, then
@@ -51,6 +52,20 @@ class SpaceNavMode {
 /// BI26102802: the rail is icon-only, so every destination label in the app has its own icon here, in one table, and
 /// a test fails when a space gains a label this table does not know. [SpaceTab.icon] overrides it for one space.
 const Map<String, IconData> spaceTabIcons = {
+  // BI26102890: the five-destination list (space_manifest.dart). Activity is slot 5 in every space.
+  'Activity': Icons.history_rounded,
+  'Notices': Icons.notifications_rounded,
+  'Register': Icons.view_list_rounded,
+  'Equicycle': Icons.blur_circular_rounded,
+  'Month': Icons.calendar_month_rounded,
+  'Planner': Icons.view_week_rounded,
+  'Practices': Icons.workspaces_rounded,
+  'Platforms': Icons.layers_rounded,
+  'Focus': Icons.center_focus_strong_rounded,
+  'Assets': Icons.account_balance_rounded,
+  'Shared': Icons.share_rounded,
+  'Hosts': Icons.computer_rounded,
+  'Security': Icons.shield_rounded,
   // Hub, Compass
   'Now': Icons.bolt_rounded,
   'Today': Icons.today_rounded,
@@ -219,9 +234,14 @@ class SpaceView extends StatefulWidget {
 }
 
 class _SpaceViewState extends State<SpaceView> {
+  // BI26102890: the space's own destinations laid onto its five slots (space_manifest.dart).
+  List<SpaceTab> get _tabs => fiveDestinations(widget.space, widget.tabs);
   late int _tab = widget.initialTab;
   int _restored = 0;
   bool _read = false;
+
+  int get _railIndex => (_tab == 0 && isPlannedDestination(_tabs[0])) ? firstRealDestination(_tabs) : _tab.clamp(0, _tabs.length - 1);
+  int get _tabsIndex => _tab.clamp(0, widget.tabs.length - 1);
 
   @override
   void initState() {
@@ -237,7 +257,7 @@ class _SpaceViewState extends State<SpaceView> {
 
   void _onRequest() {
     final t = widget.controller?.requested;
-    if (t == null || t < 0 || t >= widget.tabs.length || !mounted) return;
+    if (t == null || t < 0 || !mounted) return;
     setState(() {
       _tab = t;
       _restored++;
@@ -250,7 +270,7 @@ class _SpaceViewState extends State<SpaceView> {
     if (_read) return;
     _read = true;
     try {
-      readTabIndex(AppScope.of(context).db, widget.space, widget.tabs.length).then((saved) {
+      readTabIndex(AppScope.of(context).db, widget.space, _tabs.length).then((saved) {
         if (mounted && saved != null && saved != _tab) {
           setState(() {
             _tab = saved;
@@ -312,8 +332,8 @@ class _SpaceViewState extends State<SpaceView> {
                 ? SpaceRailBody(
                     key: ValueKey('${widget.space}-rail-view-$_restored'),
                     space: widget.space,
-                    tabs: widget.tabs,
-                    index: _tab.clamp(0, widget.tabs.length - 1),
+                    tabs: _tabs,
+                    index: _railIndex,
                     onSelect: (i) {
                       setState(() => _tab = i);
                       _remember(i);
@@ -323,7 +343,7 @@ class _SpaceViewState extends State<SpaceView> {
                     key: ValueKey('${widget.space}-view-$_restored'),
                     keyPrefix: widget.space,
                     labels: [for (final t in widget.tabs) t.label],
-                    initialIndex: _tab,
+                    initialIndex: _tabsIndex,
                     onChanged: (i) {
                       _tab = i;
                       _remember(i);

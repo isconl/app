@@ -13,6 +13,7 @@ import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 import '../widgets/parity3b_widgets.dart';
 import '../widgets/month_grid.dart';
+import '../widgets/space_header.dart';
 import '../widgets/sub_tabs.dart';
 import '../../util/tab_memory.dart';
 import 'learning_export_stub.dart'
@@ -209,132 +210,63 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
-    return Stack(
-      children: [
-        SnapshotView(
-          snapshot: services.store.calendar,
-          builder: (context, data) {
-            final events = fmt.lm(fmt.m(data)['events']);
-            final byDay = <String, List<Map<String, dynamic>>>{};
-            for (final e in events) {
-              final day = fmt.s(e['date']);
-              if (day.isNotEmpty) byDay.putIfAbsent(day, () => []).add(e);
-            }
-            final selKey =
-                _selected == null ? '' : fmt.isoDate(_selected!);
-            final dayEvents = byDay[selKey] ?? const [];
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _modeAndActionsRow(),
-                const SizedBox(height: 8),
-                if (_mode == _CalMode.gregorian)
-                  Panel(
-                    padding: const EdgeInsets.all(8),
-                    child: GregorianMonthGrid(
-                      month: _month,
-                      today: DateTime.now(),
-                      selected: _selected,
-                      eventDays: byDay.keys.toSet(),
-                      onSelect: (d) => setState(() {
-                        _selected = d;
-                        if (d.month != _month.month) _month = DateTime(d.year, d.month);
-                      }),
-                      onMonth: (delta) => setState(() => _month = DateTime(_month.year, _month.month + delta)),
-                      onToday: () {
-                        final now = DateTime.now();
-                        setState(() {
-                          _month = DateTime(now.year, now.month);
-                          _selected = DateTime(now.year, now.month, now.day);
-                        });
-                      },
-                    ),
-                  )
-                else if (_mode == _CalMode.equicycle)
-                  Panel(
-                    padding: const EdgeInsets.all(8),
-                    child: _equicycleGrid(byDay),
-                  )
-                else
-                  Panel(
-                    padding: const EdgeInsets.all(4),
-                    child: _plannerGrid(byDay),
-                  ),
-                if (_mode != _CalMode.planner) ...[
-                  SectionLabel(_selected == null
-                      ? 'Events'
-                      : fmt.weekdayDate(_selected!)),
-                  if (dayEvents.isEmpty)
-                    const Panel(
-                        child:
-                            Text('No events this day. Tap + to add one.'))
-                  else
-                    ...dayEvents.map((e) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Panel(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 3,
-                                  height: 30,
-                                  decoration: BoxDecoration(
-                                    color: fmt.s(e['source']) == 'microsoft'
-                                        ? C.cyan
-                                        : C.green,
-                                    borderRadius: BorderRadius.circular(2),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(fmt.s(e['title']), style: T.body2),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        [
-                                          if (fmt.s(e['time']).isNotEmpty)
-                                            fmt.s(e['time']),
-                                          if (fmt
-                                              .s(e['location'])
-                                              .isNotEmpty)
-                                            fmt.s(e['location']),
-                                          if (fmt.s(e['category']).isNotEmpty)
-                                            fmt.s(e['category']),
-                                        ].join(' · '),
-                                        style: T.monoSmall,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )),
+    return ValueListenableBuilder<SpaceNav>(
+      valueListenable: SpaceNavMode.mode,
+      builder: (context, navMode, _) {
+        return Stack(
+          children: [
+            // BI26102890 (Sconl, 30 Oct 2026: "the calendar space, i also want it using the rail"): the three modes are the
+            // rail's destinations (Equicycle, Month, Planner), Overview is the agenda, Activity is laid on by the manifest.
+            if (navMode == SpaceNav.rail)
+              SpaceView(
+                space: 'calendar',
+                showSearch: false,
+                tabs: [
+                  SpaceTab('Overview', _calendarBody(context, null)),
+                  SpaceTab('Equicycle', _calendarBody(context, _CalMode.equicycle)),
+                  SpaceTab('Gregorian', _calendarBody(context, _CalMode.gregorian)),
+                  SpaceTab('Planner', _calendarBody(context, _CalMode.planner)),
                 ],
-                _KeyDates(onAdd: () => _addDateSheet(context)),
-              ],
-            );
-          },
-        ),
-        ViewFab(
-          key: const Key('calendar-import-export'),
-          tooltip: 'Import or export',
-          icon: Icons.import_export_rounded,
-          slot: 1,
-          busy: _busy,
-          onPressed: _importExportMenu,
-        ),
-        ViewFab(
-          tooltip: 'Add an event',
-          icon: Icons.add_rounded,
-          onPressed: () => _addEventSheet(context),
-        ),
-      ],
+              )
+            else
+              SnapshotView(
+                snapshot: services.store.calendar,
+                builder: (context, data) {
+                  final events = fmt.lm(fmt.m(data)['events']);
+                  final byDay = <String, List<Map<String, dynamic>>>{};
+                  for (final e in events) {
+                    final day = fmt.s(e['date']);
+                    if (day.isNotEmpty) byDay.putIfAbsent(day, () => []).add(e);
+                  }
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _modeAndActionsRow(),
+                        const SizedBox(height: 8),
+                        _calendarGridAndDetails(context, _mode, byDay),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ViewFab(
+              key: const Key('calendar-import-export'),
+              tooltip: 'Import or export',
+              icon: Icons.import_export_rounded,
+              slot: 1,
+              busy: _busy,
+              onPressed: _importExportMenu,
+            ),
+            ViewFab(
+              tooltip: 'Add an event',
+              icon: Icons.add_rounded,
+              onPressed: () => _addEventSheet(context),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -349,6 +281,157 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
         writeTabIndex(AppScope.of(context).db, 'calendar', i);
       },
     );
+  }
+
+  /// One calendar destination: a mode's grid with the selected day's events and the key dates, or (mode null) the
+  /// agenda of the coming two weeks.
+  Widget _calendarBody(BuildContext context, _CalMode? mode) {
+    final services = AppScope.of(context);
+    return SnapshotView(
+      snapshot: services.store.calendar,
+      builder: (context, data) {
+        final events = fmt.lm(fmt.m(data)['events']);
+        final byDay = <String, List<Map<String, dynamic>>>{};
+        for (final e in events) {
+          final day = fmt.s(e['date']);
+          if (day.isNotEmpty) byDay.putIfAbsent(day, () => []).add(e);
+        }
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (mode == null) _agenda(byDay) else _calendarGridAndDetails(context, mode, byDay),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _calendarGridAndDetails(
+      BuildContext context, _CalMode mode, Map<String, List<Map<String, dynamic>>> byDay) {
+    final selKey = _selected == null ? '' : fmt.isoDate(_selected!);
+    final dayEvents = byDay[selKey] ?? const [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (mode == _CalMode.gregorian)
+          Panel(
+            padding: const EdgeInsets.all(8),
+            child: GregorianMonthGrid(
+              month: _month,
+              today: DateTime.now(),
+              selected: _selected,
+              eventDays: byDay.keys.toSet(),
+              onSelect: (d) => setState(() {
+                _selected = d;
+                if (d.month != _month.month) _month = DateTime(d.year, d.month);
+              }),
+              onMonth: (delta) => setState(() => _month = DateTime(_month.year, _month.month + delta)),
+              onToday: () {
+                final now = DateTime.now();
+                setState(() {
+                  _month = DateTime(now.year, now.month);
+                  _selected = DateTime(now.year, now.month, now.day);
+                });
+              },
+            ),
+          )
+        else if (mode == _CalMode.equicycle)
+          Panel(
+            padding: const EdgeInsets.all(8),
+            child: _equicycleGrid(byDay),
+          )
+        else
+          Panel(
+            padding: const EdgeInsets.all(4),
+            child: _plannerGrid(byDay),
+          ),
+        if (mode != _CalMode.planner) ...[
+          SectionLabel(_selected == null
+              ? 'Events'
+              : fmt.weekdayDate(_selected!)),
+          if (dayEvents.isEmpty)
+            const Panel(
+                child:
+                    Text('No events this day. Tap + to add one.'))
+          else
+            ...dayEvents.map((e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Panel(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 3,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: fmt.s(e['source']) == 'microsoft'
+                                ? C.cyan
+                                : C.green,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Text(fmt.s(e['title']), style: T.body2),
+                              const SizedBox(height: 2),
+                              Text(
+                                [
+                                  if (fmt.s(e['time']).isNotEmpty)
+                                    fmt.s(e['time']),
+                                  if (fmt
+                                      .s(e['location'])
+                                      .isNotEmpty)
+                                    fmt.s(e['location']),
+                                  if (fmt.s(e['category']).isNotEmpty)
+                                    fmt.s(e['category']),
+                                ].join(' · '),
+                                style: T.monoSmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )),
+        ],
+        _KeyDates(onAdd: () => _addDateSheet(context)),
+      ],
+    );
+  }
+
+  /// The Overview: every event from today through the next fourteen days, by day.
+  Widget _agenda(Map<String, List<Map<String, dynamic>>> byDay) {
+    final today = DateTime.now();
+    final days = [for (var i = 0; i < 15; i++) DateTime(today.year, today.month, today.day + i)];
+    final rows = <Widget>[];
+    for (final d in days) {
+      final list = byDay[fmt.isoDate(d)] ?? const [];
+      if (list.isEmpty) continue;
+      rows.add(SectionLabel(fmt.weekdayDate(d)));
+      for (final e in list) {
+        rows.add(Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Panel(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Text([fmt.s(e['time']), fmt.s(e['title'])].where((x) => x.isNotEmpty).join('  '), style: T.body2),
+          ),
+        ));
+      }
+    }
+    if (rows.isEmpty) {
+      return const Panel(key: Key('calendar-agenda-empty'), child: Text('Nothing in the next two weeks. Tap + to add an event.'));
+    }
+    return Column(key: const Key('calendar-agenda'), crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
   }
 
   /// One secondary FAB above Add: a small menu with Import and Export.
