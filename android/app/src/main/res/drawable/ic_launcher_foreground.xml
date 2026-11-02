@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Vector replacement for the old 432px-max ic_launcher_foreground.png, which
+     is what was pixelating on the splash screen (Android's SplashScreen API
+     shows the launcher icon by default; nothing in this app customizes it
+     separately). Geometry matches lib/ui/widgets/brand.dart's BrandGeometry
+     exactly (256-unit canvas, ring centreline r=85 w=42, node at (196,77)
+     r=30, gap 8), measured against the shipped PNG to confirm identical scale
+     and centring before replacing it: this changes resolution, not design. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <!-- ring, with the node's hole punched out via evenOdd -->
+  <path
+      android:fillType="evenOdd"
+      android:fillColor="#7D8590"
+      android:pathData="M28.624,54.000 A25.376,25.376 0 1,0 79.376,54.000 A25.376,25.376 0 1,0 28.624,54.000 Z
+                         M38.678,54.000 A15.322,15.322 0 1,0 69.322,54.000 A15.322,15.322 0 1,0 38.678,54.000 Z
+                         M61.182,41.791 A9.097,9.097 0 1,0 79.376,41.791 A9.097,9.097 0 1,0 61.182,41.791 Z" />
+  <!-- node -->
+  <path
+      android:fillColor="#3FB950"
+      android:pathData="M63.097,41.791 A7.182,7.182 0 1,0 77.461,41.791 A7.182,7.182 0 1,0 63.097,41.791 Z" />
+</vector>
