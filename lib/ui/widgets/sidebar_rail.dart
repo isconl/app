@@ -71,7 +71,7 @@ final List<NavGroup> navGroups = [
         () => const BufferView(compose: true)),
   ]),
   NavGroup('Personal', [
-    NavItem('finance', Icons.account_balance_wallet_rounded, 'Ledger', () => const FinanceView()),
+    NavItem('finance', Icons.account_balance_wallet_rounded, 'Flot', () => const FinanceView()),
     NavItem('rhythm', Icons.local_fire_department_rounded, 'Rhythm', () => const RhythmView()),
     NavItem('journal', Icons.auto_stories_rounded, 'Journal', () => const JournalView()),
     NavItem('learning', Icons.school_rounded, 'Study', () => const LearningView()),

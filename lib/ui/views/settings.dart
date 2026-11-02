@@ -620,7 +620,7 @@ class _SmsCardState extends State<SmsCard> {
                   ? 'Reading M-Pesa messages only. Every movement becomes a '
                     'transaction, and money moving to or from someone in your '
                     'circle also becomes a touchpoint.'
-                  : 'Grant permission and every M-Pesa message becomes a ledger '
+                  : 'Grant permission and every M-Pesa message becomes a Flot '
                     'entry automatically. Only messages from M-PESA are read - '
                     'your conversations are never touched, and the app cannot '
                     'send an SMS at all.',

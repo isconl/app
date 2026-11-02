@@ -21,7 +21,7 @@ class AuditView extends StatelessWidget {
           return const EmptyState(
             'No audit entries',
             'Every externally-visible action the agent takes is logged '
-                'to a hash-chained ledger.',
+                'to a hash-chained log.',
             icon: Icons.link_rounded,
           );
         }

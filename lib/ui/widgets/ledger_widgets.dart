@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
 import '../../services/ledger_tools.dart';
@@ -276,7 +276,7 @@ class _IncomeTabState extends State<IncomeTab> with _Loads<IncomeTab> {
       FieldSpec('recurs', 'Recurs', type: 'select', value: 'monthly', options: ['monthly', 'weekly', 'once']),
       FieldSpec('day', 'Day it usually lands', type: 'number', hint: 'Monthly streams only. Late streams get flagged.'),
       FieldSpec('source', 'Source'),
-      FieldSpec('match', 'Match word', hint: 'How ledger entries are recognised as this stream.'),
+      FieldSpec('match', 'Match word', hint: 'How Flot entries are recognised as this stream.'),
     ]);
     if (v == null) return;
     if (v['name']!.isEmpty) {

@@ -90,7 +90,7 @@ void main() {
       asked++;
       return asked > 1;
     })));
-    expect(find.text('The ledger is private'), findsOneWidget);
+    expect(find.text('Flot is private'), findsOneWidget);
     expect(find.textContaining('KES'), findsNothing);
     expect(api.summaryCalls, 0);
     await t.tap(find.byKey(const Key('ledger-unlock')));

@@ -266,7 +266,7 @@ class _ShellState extends State<Shell> {
   List<_SubTab> get _personalSubs => [
     _SubTab('Rhythm',    RhythmView(onOpenSub: _switchSub)),
     const _SubTab('Study',  LearningView()),
-    const _SubTab('Ledger',     FinanceView()),
+    const _SubTab('Flot',     FinanceView()),
     const _SubTab('Codex',   CodexView()),
   ];
 
@@ -968,10 +968,10 @@ class MenuSheet extends StatelessWidget {
               () => go(const RhythmView(), 'Rhythm')),
           _item(ctx, Icons.school_rounded, 'Study',
               () => go(const LearningView(), 'Study')),
-          _item(ctx, Icons.account_balance_wallet_rounded, 'Ledger',
-              () => go(const FinanceView(), 'Ledger')),
-          _item(ctx, Icons.edit_note_rounded, 'Ledger tools',
-              () => go(const LedgerToolsScreen(), 'Ledger tools')),
+          _item(ctx, Icons.account_balance_wallet_rounded, 'Flot',
+              () => go(const FinanceView(), 'Flot')),
+          _item(ctx, Icons.edit_note_rounded, 'Flot tools',
+              () => go(const LedgerToolsScreen(), 'Flot tools')),
           // BI26100207: Journal and Ideas are one item, Codex, each still on its own route.
           _item(ctx, Icons.auto_stories_rounded, 'Codex',
               () => go(const CodexView(), 'Codex'),
@@ -1176,8 +1176,8 @@ class SecondaryScreen extends StatelessWidget {
     'corporate' => (const CorporateView(), 'Corporate'),
     'rhythm' => (const RhythmView(), 'Rhythm'),
     'study' || 'learning' => (const LearningView(), 'Study'),
-    'ledger-tools' => (const LedgerToolsScreen(), 'Ledger tools'),
-    'holdings' || 'finance' || 'ledger' =>(const FinanceView(), 'Ledger'),
+    'ledger-tools' || 'flot-tools' => (const LedgerToolsScreen(), 'Flot tools'),
+    'holdings' || 'finance' || 'ledger' || 'flot' =>(const FinanceView(), 'Flot'),
     'codex' => (const CodexView(), 'Codex'),
     'identity' => (const IdentityView(), 'Identity'),
     'readiness' => (const ReadinessHost(), 'Readiness'),
