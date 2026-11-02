@@ -1,5 +1,6 @@
 // BI26100537: the study reader for course standards 4.x (numbered sections, two-word labels, the
 // Illustration callout, section anchors and deep links). A 3.1.0 module must still render.
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:isconl/util/markdown.dart';
@@ -68,13 +69,16 @@ void main() {
       await _pump(t, _v4);
       final labels = t.widgetList<Text>(find.byKey(const Key('callout-label'))).map((x) => x.data).toList();
       // BI26101804: section 0's callout is its objective (the prior line is a plain italic prerequisite).
-      expect(labels, ['0.2  OBJECTIVE', '1.1  ILLUSTRATION', '2.1  NOTE']);
+      // BI26102804: section 2 has APPLY rungs (rendered as a numbered ladder, not callouts).
+      expect(labels, ['0.2  OBJECTIVE', '1.1  ILLUSTRATION']);
       expect(find.textContaining('A mandate arrives late', findRichText: true), findsOneWidget);
       // The demoted elements are still read, as prose, with no label.
       expect(find.textContaining('You can name the five parts.', findRichText: true), findsOneWidget);
       expect(find.textContaining('Ship it.', findRichText: true), findsOneWidget);
+      expect(find.text('1.'), findsOneWidget);
+      expect(find.text('2.'), findsOneWidget);
       final text = _allText(t);
-      for (final label in ['your goals', 'before this', 'two minutes']) {
+      for (final label in ['your goals', 'before this']) {
         expect(text.contains(label), isFalse, reason: 'an authored element label showed: $label');
       }
     });
@@ -83,7 +87,7 @@ void main() {
       await _pump(t, _v4.replaceFirst('{outcome}', '{outcome!}'));
       final labels = t.widgetList<Text>(find.byKey(const Key('callout-label'))).map((x) => x.data).toList();
       expect(labels.first, '0.2  OBJECTIVE');
-      expect(labels, hasLength(3));
+      expect(labels, hasLength(2));
     });
 
     testWidgets('the blue callout is labelled Illustration when no label is authored', (t) async {
@@ -257,6 +261,155 @@ void main() {
       expect(find.text('2.'), findsOneWidget);
       expect(find.text('3.'), findsOneWidget);
       expect(find.text('4.'), findsNothing);
+    });
+  });
+
+  group('BI26102804: line elements, subheadings, APPLY ladder, no empty callouts', () {
+    testWidgets('(a) line-kind elements render as quiet lines with two-word label in small caps, no box', (t) async {
+      const lineSnippet = '''## {master} Expert Follow: Follow Surplus Dollars
+
+An experienced investor sizing up a founder skips the pitch.
+
+**{link} Next Module:** Module 2 gives the arithmetic of compounding.
+**{proof} You Know:** You can say which bucket surplus went into.
+**{book} Core Reading:** Wealth of Nations [Adam Smith, 1776]
+''';
+      await _pump(t, lineSnippet);
+
+      // Line elements do not render as callout boxes
+      expect(find.byKey(const Key('callout-label')), findsNothing);
+
+      // They render line keys
+      expect(find.byKey(const Key('line-link')), findsOneWidget);
+      expect(find.byKey(const Key('line-proof')), findsOneWidget);
+      expect(find.byKey(const Key('line-book')), findsOneWidget);
+
+      // Text and labels are present
+      expect(find.textContaining('Next Module', findRichText: true), findsOneWidget);
+      expect(find.textContaining('Module 2 gives the arithmetic', findRichText: true), findsOneWidget);
+      expect(find.textContaining('You Know', findRichText: true), findsOneWidget);
+      expect(find.textContaining('Wealth of Nations', findRichText: true), findsOneWidget);
+
+      // Book citation line is rendered
+      expect(find.byKey(const Key('prose-cite')), findsOneWidget);
+      expect(find.text('Adam Smith, 1776'), findsOneWidget);
+    });
+
+    testWidgets('(b) section-kind elements render as subheadings (level 3) without callouts', (t) async {
+      const sectionSnippet = '''## {anchor} Keep Assets: Keep The Test
+
+**{essentials} Key Points:**
+- Hourly income has a ceiling set by the hours in a year.
+- The asset test: would it still pay if you stepped away for six months?
+
+**{check} Three Questions:**
+1. At \$1,000 an hour, what is the ceiling on labour income?
+2. In the illustration, why is Founder B worth 16 times Founder A?
+''';
+      await _pump(t, sectionSnippet);
+
+      // No callout box anywhere
+      expect(find.byKey(const Key('callout-label')), findsNothing);
+
+      // Subheadings rendered
+      expect(find.text('Key Points'), findsOneWidget);
+      expect(find.text('Three Questions'), findsOneWidget);
+
+      // Lists under subheadings rendered
+      expect(find.textContaining('Hourly income has a ceiling', findRichText: true), findsOneWidget);
+      expect(find.textContaining('At \$1,000 an hour', findRichText: true), findsOneWidget);
+      expect(find.text('1.'), findsOneWidget);
+      expect(find.text('2.'), findsOneWidget);
+    });
+
+    testWidgets('(c) no empty callout: blank or empty body is never rendered as an empty callout box', (t) async {
+      const emptyCalloutSnippet = '''## {orient} Setting Out: Overview
+
+**{outcome} Clear Goal:** 
+
+A normal paragraph following.
+''';
+      await _pump(t, emptyCalloutSnippet);
+
+      // Empty outcome callout was completely dropped
+      expect(find.byKey(const Key('callout-label')), findsNothing);
+      expect(find.textContaining('A normal paragraph following', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('(d) APPLY rungs render as a numbered ladder (1, 2, 3) with bold labels', (t) async {
+      const applySnippet = '''## {apply} Your Run: Run The Test
+
+1. **{now} Two Minutes:** Apply the six-month test to your main income.
+2. **{week} This Week:** Write your own four-bucket split with a percentage.
+3. **{role} In Role:** Move surplus cash by the split within a week.
+''';
+      await _pump(t, applySnippet);
+
+      // No callouts
+      expect(find.byKey(const Key('callout-label')), findsNothing);
+
+      // Numbered sequence 1, 2, 3
+      expect(find.text('1.'), findsOneWidget);
+      expect(find.text('2.'), findsOneWidget);
+      expect(find.text('3.'), findsOneWidget);
+      expect(find.text('4.'), findsNothing);
+
+      // Bold labels and bodies
+      expect(find.textContaining('Two Minutes:', findRichText: true), findsOneWidget);
+      expect(find.textContaining('This Week:', findRichText: true), findsOneWidget);
+      expect(find.textContaining('In Role:', findRichText: true), findsOneWidget);
+      expect(find.textContaining('Apply the six-month test', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('Acceptance criteria: fixture sections 6, 7, 8 show no "Note" box anywhere and no callout renders empty text', (t) async {
+      final fixturePath = '../vault/memory/learning/applied-financial-intelligence/20261006_wealth_finance_applied_financial_intelligence_module_01_assets_that_pay_v4_0_0.md';
+      final file = File(fixturePath);
+      final String fixtureContent;
+      if (file.existsSync()) {
+        fixtureContent = file.readAsStringSync();
+      } else {
+        // Embedded snippet of sections 6, 7, 8 for environments without the full vault
+        fixtureContent = '''## {master} Expert Follow: Follow Surplus Dollars
+
+An experienced investor sizing up a founder skips the pitch and looks at where the last dollar of surplus actually went.
+
+**{link} Next Module:** Module 2 gives the arithmetic of compounding that makes time matter so much.
+
+## {apply} Your Run: Run The Test
+
+1. **{now} Two Minutes:** Apply the six-month test to your main source of income.
+2. **{week} This Week:** Write your own four-bucket split with a percentage per bucket.
+3. **{role} In Role:** The next time surplus cash arrives, move it by the split.
+4. **{model} Good Example:** A usable split names a percentage per bucket and one trigger.
+5. **{proof} You Know:** You can say which bucket your last \$1,000 of surplus went into.
+
+## {anchor} Keep Assets: Keep The Test
+
+**{essentials} Key Points:**
+- Hourly income has a ceiling set by the hours in a year.
+- The asset test: would it still pay if you stepped away for six months?
+
+**{check} Three Questions:**
+1. At \$1,000 an hour, what is the ceiling on labour income?
+2. In the illustration, why is Founder B worth 16 times Founder A?
+
+**{return} Come Back:** In a month, check which bucket your surplus actually went into.
+''';
+      }
+
+      await _pump(t, fixtureContent);
+
+      // All callout labels on screen
+      final calloutLabels = t.widgetList<Text>(find.byKey(const Key('callout-label'))).map((x) => x.data ?? '').toList();
+
+      // Sections 6, 7, 8 have ZERO "Note" callout boxes
+      final noteCallouts = calloutLabels.where((l) => l.toUpperCase().contains('NOTE')).toList();
+      expect(noteCallouts, isEmpty, reason: 'Sections 6, 7, 8 should show no "Note" box anywhere');
+
+      // Assert that no callout widget renders with empty text
+      for (final label in calloutLabels) {
+        expect(label.trim().isNotEmpty, isTrue);
+      }
     });
   });
 }

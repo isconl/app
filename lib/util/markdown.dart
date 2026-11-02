@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show FontFeature;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -176,7 +177,7 @@ class Markdown extends StatelessWidget {
         );
         // BI26101106: a heading shows the authored text only. The two-word label is gone; the
         // computed number stays as a small muted mark.
-        final eyebrow = block.number;
+        final eyebrow = block.level <= 2 ? block.number : '';
         return Padding(
           padding: EdgeInsets.only(top: top, bottom: bottom),
           child: eyebrow.isEmpty
@@ -259,10 +260,15 @@ class Markdown extends StatelessWidget {
           ),
         );
       case _Kind.callout:
+        if (block.text.trim().isEmpty) return null;
         if (block.zeroRole == 'prerequisite') return _prerequisite(block, style);
         if (block.zeroRole == 'aside') return _aside(block);
         if (block.callout?.kind == 'answer') return _RevealAnswer(answer: _callout(block, style));
         return block.demoted ? _prose(block, style) : _callout(block, style, prominent: block.zeroRole == 'objective');
+      case _Kind.line:
+        if (block.zeroRole == 'prerequisite') return _prerequisite(block, style);
+        if (block.zeroRole == 'aside') return _aside(block);
+        return _lineElement(block, style);
       case _Kind.quiz:
         return _quizCallout(block, style);
       case _Kind.table:
@@ -356,6 +362,43 @@ class Markdown extends StatelessWidget {
     );
   }
 
+  /// BI26102804: line elements (prior, place, point, link, proof, return, rescore, jargon/book line form)
+  /// render as a small-font line (one step below body, C.text2), the two-word label in small caps
+  /// before it, no box.
+  Widget _lineElement(_Block block, TextStyle style) {
+    if (block.text.trim().isEmpty && block.uiLabel.isEmpty) return const SizedBox.shrink();
+    final lineStyle = style.copyWith(
+      fontSize: _reading ? 14.5 : 12.5,
+      height: 1.55 + (_reading ? ReaderPrefs.instance.lineBoost : 0),
+      color: C.text2,
+    );
+    final labelText = block.uiLabel.isNotEmpty ? block.uiLabel : block.elementId;
+    return Padding(
+      key: Key('line-${block.elementId}'),
+      padding: EdgeInsets.symmetric(vertical: _reading ? 6.0 : 3.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text.rich(
+            TextSpan(children: [
+              if (labelText.isNotEmpty)
+                TextSpan(
+                  text: block.text.trim().isEmpty ? labelText : '$labelText  ',
+                  style: lineStyle.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: const [FontFeature.enable('smcp')],
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              if (block.text.trim().isNotEmpty) _inline(block.text, lineStyle),
+            ]),
+          ),
+          if (block.cite.isNotEmpty) _citeLine(block.cite),
+        ],
+      ),
+    );
+  }
+
   /// One callout: coloured background, left strip line, label above the body.
   ///
   /// Same shape for all five so the eye learns it once; only the colour and the
@@ -363,6 +406,7 @@ class Markdown extends StatelessWidget {
   /// would set it apart from the prose, and a callout is part of the reading,
   /// not an aside beside it.
   Widget _callout(_Block block, TextStyle style, {bool prominent = false}) {
+    if (block.text.trim().isEmpty) return const SizedBox.shrink();
     final c = block.callout!;
     final pad = (_reading ? 14.0 : 10.0) + (prominent ? 3 : 0);
     return Container(
@@ -1329,7 +1373,7 @@ class MarkdownAnchors {
   }
 }
 
-enum _Kind { paragraph, heading, code, quote, rule, listItem, table, callout, chart, map, equation, image, quiz }
+enum _Kind { paragraph, heading, code, quote, rule, listItem, table, callout, chart, map, equation, image, quiz, line }
 
 /// The five lesson callouts.
 class _Callout {
@@ -1340,6 +1384,33 @@ class _Callout {
   final Color background;
   final RegExp pattern;
 }
+
+const _lineElementIds = <String>{
+  'prior',
+  'place',
+  'point',
+  'link',
+  'proof',
+  'return',
+  'rescore',
+  'jargon',
+  'book',
+};
+
+const _sectionElementIds = <String>{
+  'pitfalls',
+  'essentials',
+  'check',
+  'expert',
+  'model',
+  'scenarios',
+};
+
+const _applyRungIds = <String, int>{
+  'now': 1,
+  'week': 2,
+  'role': 3,
+};
 
 final _callouts = <_Callout>[
   _Callout('learn', 'Objective', C.callLearn, C.callLearnBg,
@@ -1435,7 +1506,7 @@ void _numberBlocks(List<_Block> blocks) {
       j = 0;
       b.number = '$k.0';
       b.anchor = v4 ? '${b.movementId}-$k' : 'section-$k';
-    } else if (b.kind == _Kind.callout && b.elementId.isNotEmpty && k >= 0) {
+    } else if (b.elementId.isNotEmpty && k >= 0) {
       j++;
       b.number = '$k.$j';
       b.anchor = '${b.elementId}-$k-$j';
@@ -1465,7 +1536,7 @@ void _tagSectionZero(List<_Block> blocks) {
   final label = RegExp(r'^\*\*[^*]{1,40}?\*\*\s*');
   for (var i = from; i < to; i++) {
     final b = blocks[i];
-    if (b.kind == _Kind.callout) {
+    if (b.kind == _Kind.callout || b.kind == _Kind.line) {
       final id = b.elementId;
       final kind = b.callout?.kind ?? '';
       if (id == 'prior' || id == 'prerequisite' || (kind == 'note' && b.number == '0.1')) {
@@ -1551,7 +1622,7 @@ List<_Block> _transformGuardSection(List<_Block> section, {String movementNumber
   for (final b in section) {
     if (b.kind == _Kind.callout && (b.elementId == 'failure' || b.callout?.kind == 'watch')) {
       failureBlocks.add(b);
-    } else if (b.kind == _Kind.callout && (b.elementId == 'pitfalls' || b.callout?.kind == 'pitfalls' || b.uiLabel.toLowerCase().contains('pitfall'))) {
+    } else if (b.elementId == 'pitfalls' || b.uiLabel.toLowerCase().contains('pitfall')) {
       pitfallsBlock = b;
     } else if (b.kind == _Kind.listItem) {
       pitfallItems.add(b);
@@ -1585,7 +1656,7 @@ List<_Block> _transformGuardSection(List<_Block> section, {String movementNumber
     remainingItems.add(li);
   }
 
-  if (pitfallsBlock != null && pitfallsBlock.text.trim().isNotEmpty) {
+  if (pitfallsBlock != null && pitfallsBlock.text.trim().isNotEmpty && pitfallsBlock.text.trim() != pitfallsBlock.uiLabel.trim()) {
     final text = _ensureBoldLabel(pitfallsBlock.text, pitfallsBlock.uiLabel);
     final li = _Block(_Kind.listItem, text: text, ordered: true, index: counter++)
       ..anchor = pitfallsBlock.anchor
@@ -1642,7 +1713,7 @@ List<_Block> _transformGuardSection(List<_Block> section, {String movementNumber
 
 List<_Block> _applyGuardMovementRule(List<_Block> blocks) {
   final hasAnyH2 = blocks.any((b) => b.kind == _Kind.heading && b.level == 2);
-  if (!hasAnyH2 && blocks.any((b) => b.kind == _Kind.callout && (b.elementId == 'failure' || b.elementId == 'pitfalls' || b.callout?.kind == 'watch'))) {
+  if (!hasAnyH2 && blocks.any((b) => b.elementId == 'failure' || b.elementId == 'pitfalls' || (b.kind == _Kind.callout && b.callout?.kind == 'watch'))) {
     return _transformGuardSection(blocks);
   }
 
@@ -2115,28 +2186,84 @@ List<_Block> _parseBlocks(String source) {
       continue;
     }
 
-    // BI26100537: a 4.x element line, `**{id} Two Words:** body`, also as a list item (APPLY rungs).
+    // BI26100537 / BI26102804: a 4.x element line, `**{id} Two Words:** body`, also as a list item (APPLY rungs).
+    final prefixMatch = RegExp(r'^\s*(\d+)[.)]\s+').firstMatch(line);
+    final prefixNum = prefixMatch != null ? int.tryParse(prefixMatch.group(1)!) : null;
     final element = _elementLine.firstMatch(trimmed.replaceFirst(RegExp(r'^\s*(?:\d+[.)]|[-*+])\s+'), ''));
-    if (element != null && _elementKinds.containsKey(element.group(1))) {
-      flushPara();
-      final base = _callouts.firstWhere((c) => c.kind == _elementKinds[element.group(1)]);
+    if (element != null) {
+      final id = element.group(1)!;
+      final marked = element.group(2) == '!';
+      final uiLabel = element.group(3)!;
       var body = element.group(4)!.trim();
-      var cite = '';
-      if (base.kind == 'book' || base.kind == 'quote' || base.kind == 'research') {
-        final m = RegExp(r'\[([^\]]{4,})\]\s*$').firstMatch(body);
-        if (m != null) {
-          cite = m.group(1)!;
-          body = body.substring(0, m.start).trim();
+
+      // (a) Line-kind elements: prior, place, point, link, proof, return, rescore, jargon, book
+      if (_lineElementIds.contains(id)) {
+        flushPara();
+        var cite = '';
+        if (id == 'book' || id == 'research') {
+          final m = RegExp(r'\[([^\]]{4,})\]\s*$').firstMatch(body);
+          if (m != null) {
+            cite = m.group(1)!;
+            body = body.substring(0, m.start).trim();
+          }
         }
+        blocks.add(_Block(_Kind.line, text: body)
+          ..cite = cite
+          ..elementId = id
+          ..marked = marked
+          ..uiLabel = uiLabel);
+        idx++;
+        continue;
       }
-      blocks.add(_Block(_Kind.callout, text: body)
-        ..callout = base
-        ..cite = cite
-        ..elementId = element.group(1)!
-        ..marked = element.group(2) == '!'
-        ..uiLabel = element.group(3)!);
-      idx++;
-      continue;
+
+      // (b) Section-kind elements: pitfalls, essentials, check, expert, model, scenarios
+      if (_sectionElementIds.contains(id)) {
+        flushPara();
+        blocks.add(_Block(_Kind.heading, text: uiLabel, level: 3)
+          ..elementId = id
+          ..marked = marked
+          ..uiLabel = uiLabel);
+        if (body.isNotEmpty) {
+          blocks.add(_Block(_Kind.paragraph, text: body));
+        }
+        idx++;
+        continue;
+      }
+
+      // (d) The APPLY rungs: now, week, role
+      if (_applyRungIds.containsKey(id)) {
+        flushPara();
+        final rungIndex = prefixNum ?? _applyRungIds[id]!;
+        final text = _ensureBoldLabel(body, uiLabel);
+        blocks.add(_Block(_Kind.listItem, text: text, ordered: true, index: rungIndex)
+          ..elementId = id
+          ..marked = marked
+          ..uiLabel = uiLabel);
+        idx++;
+        continue;
+      }
+
+      // Other callout-kind elements: outcome, illustration, research, fact, probe, modelanswer, failure, ...
+      if (_elementKinds.containsKey(id)) {
+        flushPara();
+        final base = _callouts.firstWhere((c) => c.kind == _elementKinds[id]);
+        var cite = '';
+        if (base.kind == 'book' || base.kind == 'quote' || base.kind == 'research') {
+          final m = RegExp(r'\[([^\]]{4,})\]\s*$').firstMatch(body);
+          if (m != null) {
+            cite = m.group(1)!;
+            body = body.substring(0, m.start).trim();
+          }
+        }
+        blocks.add(_Block(_Kind.callout, text: body)
+          ..callout = base
+          ..cite = cite
+          ..elementId = id
+          ..marked = marked
+          ..uiLabel = uiLabel);
+        idx++;
+        continue;
+      }
     }
 
     final heading = RegExp(r'^(#{1,6})\s+(.*)$').firstMatch(trimmed);
