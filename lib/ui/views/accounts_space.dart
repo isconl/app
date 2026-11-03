@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
@@ -8,7 +10,7 @@ import '../widgets/space_header.dart';
 
 /// BI26102401: the Accounts space in Systems. The shared search entry above exactly three tabs: Addresses (every email
 /// address ever used, old and throwaway included), Sign-ups (what each address is signed up to) and AI seats (Claude and
-/// agy accounts with live usage from slate). Passwords, codes and keys are never stored; only the Bitwarden item name is.
+/// agy accounts with live usage from slate, ranked by when each can work again, BI26110301). Passwords, codes and keys are never stored; only the Bitwarden item name is.
 class AccountsSpace extends StatefulWidget {
   const AccountsSpace({super.key, this.api, this.clock, this.initialTab = 0});
 
@@ -399,27 +401,147 @@ class _SignUpsTabState extends State<_SignUpsTab> {
 
 // ── AI seats ────────────────────────────────────────────────────────────────
 
-class _SeatsTab extends StatelessWidget {
+/// BI26110301: every seat, ranked by pulse: free now at the top, then no reading, then partly free, then waiting
+/// (soonest reset first, so a seat climbs as its reset nears). The list re-ranks every minute. The reset button on the
+/// right says "this seat is spent": its pools reset a full window (168 h) from now and it drops to the bottom; a long
+/// press sets the hours exactly (for a reading like "Refreshes in 97h 43m").
+class _SeatsTab extends StatefulWidget {
   const _SeatsTab({super.key, required this.api, required this.now});
   final AccountsApi api;
   final DateTime Function() now;
+  @override
+  State<_SeatsTab> createState() => _SeatsTabState();
+}
+
+class _SeatsTabState extends State<_SeatsTab> {
+  List<AiSeat>? _seats;
+  Object? _error;
+  Timer? _tick;
+  String? _busy;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await widget.api.seats();
+      if (mounted) {
+        setState(() {
+          _seats = s;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = _seats == null ? e : null);
+    }
+  }
 
   String _pct(double? v) => v == null ? 'no reading' : '${v.round()}%';
 
+  Future<void> _reset(BuildContext context, AiSeat s, {double? hours}) async {
+    setState(() => _busy = s.account);
+    try {
+      final list = await widget.api.resetSeat(s.account, hours: hours);
+      if (!mounted || !context.mounted) return;
+      setState(() => _seats = list);
+      final h = hours ?? s.windowH;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${s.account} resets in ${h == h.roundToDouble() ? h.round() : h} h. Moved down.'),
+        action: SnackBarAction(label: 'Undo', onPressed: () async {
+          await widget.api.restoreSeat(s);
+          await _load();
+        }),
+      ));
+    } on AccountsException catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = null);
+    }
+  }
+
+  /// "97h 43m", "97.5", "97" -> hours.
+  static double? parseHours(String t) {
+    final s = t.trim().toLowerCase();
+    final hm = RegExp(r'^(\d+)\s*h(?:\s*(\d+)\s*m)?$').firstMatch(s);
+    if (hm != null) return int.parse(hm.group(1)!) + (hm.group(2) == null ? 0 : int.parse(hm.group(2)!) / 60);
+    final n = double.tryParse(s);
+    return n == null || n < 0 || n > 744 ? null : n;
+  }
+
+  Future<void> _resetHours(BuildContext context, AiSeat s) async {
+    final ctl = TextEditingController(text: s.windowH.round().toString());
+    final h = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Reset ${s.account} in'),
+        content: TextField(
+          key: const Key('seat-hours'),
+          controller: ctl,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Hours, or "97h 43m"'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(key: const Key('seat-hours-save'), onPressed: () => Navigator.pop(ctx, parseHours(ctl.text)), child: const Text('Set')),
+        ],
+      ),
+    );
+    if (h != null && context.mounted) await _reset(context, s, hours: h);
+  }
+
+  Color _dot(String status) => switch (status) { 'available' => C.green, 'partial' => C.amber, 'waiting' => C.red, _ => C.text3 };
+
   @override
-  Widget build(BuildContext context) => _Loader<List<AiSeat>>(
-        load: api.seats,
-        builder: (ctx, seats) => seats.isEmpty
-            ? const EmptyState('No AI seats', 'Seats appear when slate reports an account.', icon: Icons.smart_toy_rounded)
-            : ListView(children: [
-                for (final s in seats)
-                  _card(key: Key('seat-${s.account}'), [
-                    Text('${s.account} (${s.provider})', style: T.body.copyWith(fontWeight: FontWeight.w700)),
-                    Text([s.address, s.plan].where((x) => x.isNotEmpty).join(' · '), style: T.small.copyWith(color: C.text3)),
-                    if (s.paidBy.isNotEmpty) Text('Paid by ${s.paidBy}', style: T.small),
-                    Text('5-hour ${_pct(s.fiveHourPct)} · 7-day ${_pct(s.sevenDayPct)}', style: T.body2),
-                    if (s.machine.isNotEmpty || s.sessionsToday > 0) Text('${s.machine.isEmpty ? '' : '${s.machine} · '}${s.sessionsToday} sessions today', style: T.small),
-                  ]),
+  Widget build(BuildContext context) {
+    final seats = _seats;
+    if (seats == null) {
+      return _error == null ? const Center(child: CircularProgressIndicator()) : EmptyState('Could not load', '$_error', icon: Icons.cloud_off_rounded);
+    }
+    if (seats.isEmpty) return const EmptyState('No AI seats', 'Seats appear when slate reports an account.', icon: Icons.smart_toy_rounded);
+    final now = widget.now();
+    final free = seats.where((s) => s.status == 'available').length;
+    return ListView(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Text('$free of ${seats.length} free now. Tap ↻ when a seat runs out; hold it to set the hours.',
+            key: const Key('seats-summary'), style: T.small.copyWith(color: C.text2)),
+      ),
+      for (final s in seats)
+        _card(key: Key('seat-${s.account}'), [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(padding: const EdgeInsets.only(top: 6, right: 8), child: StatusDot(_dot(s.status), glow: s.status == 'available')),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${s.account} (${s.provider})', style: T.body.copyWith(fontWeight: FontWeight.w700)),
+                Text(seatQuotaLine(s, now), key: Key('seat-quota-${s.account}'), style: T.body2),
+                if ([s.address, s.plan].any((x) => x.isNotEmpty))
+                  Text([if (s.address != s.account) s.address, s.plan].where((x) => x.isNotEmpty).join(' · '), style: T.small.copyWith(color: C.text3)),
+                if (s.paidBy.isNotEmpty) Text('Paid by ${s.paidBy}', style: T.small),
+                if (s.fiveHourPct != null || s.sevenDayPct != null) Text('5-hour ${_pct(s.fiveHourPct)} · 7-day ${_pct(s.sevenDayPct)}', style: T.small),
+                if (s.machine.isNotEmpty || s.sessionsToday > 0) Text('${s.machine.isEmpty ? '' : '${s.machine} · '}${s.sessionsToday} sessions today', style: T.small),
               ]),
-      );
+            ),
+            GestureDetector(
+              onLongPress: _busy == null ? () => _resetHours(context, s) : null,
+              child: IconButton(
+                key: Key('seat-reset-${s.account}'),
+                tooltip: 'Spent: reset in ${s.windowH.round()} h (hold to set hours)',
+                icon: _busy == s.account ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.restart_alt_rounded),
+                onPressed: _busy == null ? () => _reset(context, s) : null,
+              ),
+            ),
+          ]),
+        ]),
+    ]);
+  }
 }

@@ -158,13 +158,38 @@ class AiSeat {
     this.sevenDayResets,
     this.machine = '',
     this.sessionsToday = 0,
+    this.resetsAt,
+    this.geminiResetsAt,
+    this.windowH = 168,
+    this.status = 'unknown',
+    this.nextFreeAt,
+    this.allFreeAt,
+    this.rank = 0,
+    this.resetSource = '',
   });
   final String account, provider, address, paidBy, plan, machine;
   final double? fiveHourPct, sevenDayPct;
   final DateTime? fiveHourResets, sevenDayResets;
   final int sessionsToday;
 
+  /// BI26110301: when each quota pool resets (main: Claude and GPT, or a Claude seat's week; Gemini: agy's Gemini
+  /// group), the window in hours, and pulse's ranking: status is available, unknown, partial or waiting.
+  final DateTime? resetsAt, geminiResetsAt, nextFreeAt, allFreeAt;
+  final double windowH;
+  final String status, resetSource;
+  final int rank;
+
+  bool get isAgy => provider == 'agy';
+
   static AiSeat from(Map<String, dynamic> m) => AiSeat(
+        resetsAt: AccountAddress._d(m['resets_at']),
+        geminiResetsAt: AccountAddress._d(m['gemini_resets_at']),
+        windowH: m['window_h'] == null ? 168 : fmt.d(m['window_h']),
+        status: fmt.s(m['status']).isEmpty ? 'unknown' : fmt.s(m['status']),
+        nextFreeAt: AccountAddress._d(m['next_free_at']),
+        allFreeAt: AccountAddress._d(m['all_free_at']),
+        rank: fmt.i(m['rank']),
+        resetSource: fmt.s(m['reset_source']),
         account: fmt.s(m['account']),
         provider: fmt.s(m['provider']),
         address: fmt.s(m['address']),
@@ -177,6 +202,33 @@ class AiSeat {
         machine: fmt.s(m['machine']),
         sessionsToday: fmt.i(m['sessions_today']),
       );
+}
+
+/// "2d 4h", "3h 20m", "12m": how long until [at], from [now]. Past or null reads "now".
+String untilLabel(DateTime? at, DateTime now) {
+  if (at == null || !at.isAfter(now)) return 'now';
+  final d = at.difference(now);
+  if (d.inDays >= 1) return '${d.inDays}d ${d.inHours % 24}h';
+  if (d.inHours >= 1) return '${d.inHours}h ${d.inMinutes % 60}m';
+  return '${d.inMinutes.clamp(1, 59)}m';
+}
+
+/// "Thu 15:38", local time.
+String whenLabel(DateTime at) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  final l = at.toLocal();
+  return '${days[l.weekday - 1]} ${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}';
+}
+
+/// BI26110301: the one line under a seat that says when it can work again.
+String seatQuotaLine(AiSeat s, DateTime now) {
+  String pool(String name, DateTime? at) => at == null ? '' : (at.isAfter(now) ? '$name in ${untilLabel(at, now)} (${whenLabel(at)})' : '$name free');
+  final parts = [
+    pool(s.isAgy ? 'Claude/GPT' : 'Week', s.resetsAt),
+    if (s.isAgy) pool('Gemini', s.geminiResetsAt),
+  ].where((p) => p.isNotEmpty).toList();
+  if (parts.isEmpty) return 'No reset time yet';
+  return parts.join(' · ');
 }
 
 /// Warns on an address that is the only recovery route for [threshold] or more others.
@@ -388,6 +440,13 @@ abstract class AccountsApi {
   Future<List<SignUp>> signUps();
   Future<void> addSignUp(SignUp s);
   Future<List<AiSeat>> seats();
+
+  /// BI26110301: the reset button. The seat's pools reset [hours] from now (null: its window, 168 h); answers the
+  /// seats re-ranked by pulse.
+  Future<List<AiSeat>> resetSeat(String account, {double? hours});
+
+  /// Puts a seat's reset times back exactly (the Undo after a reset).
+  Future<void> restoreSeat(AiSeat s);
   Future<int> importSignUps(List<SignUp> rows);
   Future<ScanResult> scanMail();
   Future<List<SignUpSuggestion>> suggestions();
@@ -431,6 +490,23 @@ class HttpAccountsApi implements AccountsApi {
 
   @override
   Future<List<AiSeat>> seats() async => [for (final m in fmt.lm((await _go(() => api.getJson('/api/accounts/seats')))['items'])) AiSeat.from(m)];
+
+  @override
+  Future<List<AiSeat>> resetSeat(String account, {double? hours}) async {
+    final m = await _go(() => api.postJson('/api/accounts/seats/reset', {'account': account, if (hours != null) 'hours': hours}));
+    return [for (final x in fmt.lm(m['items'])) AiSeat.from(x)];
+  }
+
+  @override
+  Future<void> restoreSeat(AiSeat s) async {
+    await _go(() => api.postJson('/api/accounts/seats', {
+          'seat': {
+            'account': s.account, 'provider': s.provider, 'address': s.address, 'paid_by': s.paidBy, 'plan': s.plan,
+            'resets_at': s.resetsAt?.toUtc().toIso8601String() ?? '', 'gemini_resets_at': s.geminiResetsAt?.toUtc().toIso8601String() ?? '',
+            'reset_source': s.resetSource.isEmpty ? 'undo' : s.resetSource,
+          },
+        }));
+  }
 
   @override
   Future<int> importSignUps(List<SignUp> rows) async =>
@@ -499,6 +575,28 @@ class FakeAccountsApi implements AccountsApi {
   Future<void> addSignUp(SignUp s) async => _signUps.add(s);
   @override
   Future<List<AiSeat>> seats() async => List.of(_seats);
+
+  /// The fake's clock for resets; tests set it.
+  DateTime Function() clock = DateTime.now;
+
+  /// Not pulse's ranking, only enough of it for widget tests: a reset seat goes last.
+  @override
+  Future<List<AiSeat>> resetSeat(String account, {double? hours}) async {
+    final i = _seats.indexWhere((s) => s.account == account);
+    final s = _seats.removeAt(i);
+    final at = clock().add(Duration(minutes: ((hours ?? s.windowH) * 60).round()));
+    _seats.add(AiSeat(
+        account: s.account, provider: s.provider, address: s.address, paidBy: s.paidBy, plan: s.plan, windowH: s.windowH,
+        resetsAt: at, geminiResetsAt: s.isAgy ? at : null, status: 'waiting', nextFreeAt: at, allFreeAt: at, resetSource: 'button'));
+    return List.of(_seats);
+  }
+
+  @override
+  Future<void> restoreSeat(AiSeat s) async {
+    _seats.removeWhere((x) => x.account == s.account);
+    _seats.insert(0, s);
+  }
+
   @override
   Future<int> importSignUps(List<SignUp> rows) async {
     _signUps.addAll(rows);

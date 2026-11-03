@@ -95,6 +95,40 @@ void main() {
     await teardown(tester);
   });
 
+  // BI26110301: ranked seats with reset times, and the reset button sends a seat to the bottom.
+  testWidgets('the AI seats tab shows when each seat frees up, and reset moves a seat to the bottom', (tester) async {
+    final api = FakeAccountsApi(seats: [
+      AiSeat(account: 'free@x.com', provider: 'agy', status: 'available', resetsAt: now.subtract(const Duration(hours: 3)), geminiResetsAt: now.subtract(const Duration(hours: 2))),
+      AiSeat(account: 'soon@x.com', provider: 'agy', status: 'waiting', resetsAt: now.add(const Duration(hours: 5, minutes: 20)), geminiResetsAt: now.add(const Duration(hours: 30))),
+    ])
+      ..clock = () => now;
+    await pump(tester, api);
+    await tester.tap(find.text('AI seats'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.textContaining('1 of 2 free now'), findsOneWidget);
+    expect(find.textContaining('Claude/GPT free · Gemini free'), findsOneWidget);
+    expect(find.textContaining('Claude/GPT in 5h 20m'), findsOneWidget);
+    expect(find.textContaining('Gemini in 1d 6h'), findsOneWidget);
+    double y(String a) => tester.getTopLeft(find.byKey(Key('seat-$a'))).dy;
+    expect(y('free@x.com') < y('soon@x.com'), isTrue);
+
+    await tester.tap(find.byKey(const Key('seat-reset-free@x.com')));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(y('soon@x.com') < y('free@x.com'), isTrue);
+    expect(find.textContaining('Claude/GPT in 7d 0h'), findsOneWidget);
+    expect(find.textContaining('resets in 168 h'), findsOneWidget);
+    await teardown(tester);
+  });
+
+  test('the countdown reads days and hours, and a past reset reads now', () {
+    expect(untilLabel(now.add(const Duration(hours: 97, minutes: 43)), now), '4d 1h');
+    expect(untilLabel(now.subtract(const Duration(minutes: 1)), now), 'now');
+  });
+
   // BI26102402: suggestions from mail headers, and the optional breach check.
   final acme = SignUpSuggestion(id: 'acme-com-me-x-com', service: 'Acme', domain: 'acme.com', address: 'me@x.com', firstMail: DateTime(2026, 6, 1), lastMail: DateTime(2026, 9, 1), paid: true, count: 2);
   final zed = SignUpSuggestion(id: 'zed-co-uk-me-x-com', service: 'Zed', domain: 'zed.co.uk', address: 'me@x.com', lastMail: DateTime(2025, 1, 3), count: 1);
