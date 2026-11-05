@@ -69,7 +69,7 @@ void main() {
       final labels = t.widgetList<Text>(find.byKey(const Key('callout-label'))).map((x) => x.data).toList();
       // BI26101804: section 0's callout is its objective (the prior line is a plain italic prerequisite).
       // BI26102804: APPLY's rungs are a numbered ladder, not a Note box.
-      expect(labels, ['0.2  OBJECTIVE', '1.1  ILLUSTRATION']);
+      expect(labels, ['0.2  OBJECTIVE', '1.1  ILLUSTRATION · EXAMPLE']);
       expect(find.textContaining('A mandate arrives late', findRichText: true), findsOneWidget);
       // The demoted elements are still read, as prose, with no label.
       expect(find.textContaining('You can name the five parts.', findRichText: true), findsOneWidget);
@@ -91,8 +91,8 @@ void main() {
     testWidgets('the blue callout is labelled Illustration when no label is authored', (t) async {
       await _pump(t, _v31);
       final labels = t.widgetList<Text>(find.byKey(const Key('callout-label'))).map((x) => x.data).toList();
-      expect(labels, contains('ILLUSTRATION'));
-      expect(labels.any((l) => l!.contains('STORY')), isFalse);
+      // PI26103090 (Sconl, 30 Oct and 5 Nov 2026): the header now names the sort.
+      expect(labels, contains('ILLUSTRATION · STORY'));
     });
 
     testWidgets('a 3.1.0 module still renders: its headings stay, numbered, and nothing breaks', (t) async {

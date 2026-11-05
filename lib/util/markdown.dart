@@ -432,8 +432,8 @@ class Markdown extends StatelessWidget {
         children: [
           Text(
             // BI26101106: the authored two-word label is hidden; the callout carries its number and
-            // the standard name of its kind.
-            [block.number, c.label.toUpperCase()]
+            // the standard name of its kind. PI26103090: an illustration also names what sort it is.
+            [block.number, c.label.toUpperCase() + (block.calloutType.isEmpty ? '' : ' · ${block.calloutType}')]
                 .where((s) => s.isNotEmpty)
                 .join('  '),
             key: const Key('callout-label'),
@@ -445,6 +445,20 @@ class Markdown extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 5),
+          // PI26103090 (Sconl, 5 Nov 2026): "real names not used" and the like are a small note, not part of the copy.
+          if (block.calloutNote.isNotEmpty) ...[
+            Text(
+              block.calloutNote,
+              key: const Key('callout-note'),
+              style: style.copyWith(
+                color: C.text3,
+                fontSize: (_reading ? 12 : 11),
+                height: 1.4,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
           Text.rich(_inline(
             block.text,
             style.copyWith(
@@ -1554,6 +1568,102 @@ List<_Block> _quietElements(List<_Block> blocks) {
   return out;
 }
 
+/// PI26103090: an older illustration marker with its note in brackets, `**Story (fictional composite):** body`.
+final _bracketedIllustration = RegExp(r'^\*\*(Illustration|Story|Example)\s*\(([^)]*)\):?\*\*:?\s*(.*)$', caseSensitive: false);
+final _openBracketedIllustration = RegExp(r'^\*\*(Illustration|Story|Example)\s*\([^)]*$', caseSensitive: false);
+
+/// PI26103090: does this line start something new, or does it carry on a hard-wrapped callout? 245 of the library's
+/// illustrations wrap, and only their first line reached the box, which cut the callout off mid-sentence.
+bool _endsCalloutBody(String line) {
+  final t = line.trim();
+  if (t.isEmpty) return true;
+  if (RegExp(r'^(#{1,6}\s|\||!\[|>|<|```|\*\*\{|[-*+]\s|\d+[.)]\s|([-*_])\s*\2\s*\2)').hasMatch(t)) return true;
+  return _matchCallout(t) != null || _bracketedIllustration.hasMatch(t);
+}
+
+/// The callout's own line and any lines that carry it on. Returns the text and the index of the next line to read.
+(String, int) _withContinuation(List<String> lines, int start, String first) {
+  var text = first;
+  var next = start + 1;
+  while (next < lines.length && !_endsCalloutBody(lines[next])) {
+    text = '$text ${lines[next].trim()}';
+    next++;
+  }
+  return (text, next);
+}
+
+/// The sorts of illustration, and how an older label or bracket note maps onto them.
+const illustrationKinds = {
+  'real story': 'STORY',
+  'true story': 'STORY',
+  'case study': 'CASE STUDY',
+  'worked example': 'WORKED EXAMPLE',
+  'invented scenario': 'SCENARIO',
+  'plain analogy': 'ANALOGY',
+};
+
+/// Sort for the header. A library-standard label is taken as written. Older labels are read for a telling word, then
+/// the copy itself decides, so every existing lesson shows a sort before it is rewritten.
+String illustrationKindFor(String label, String bracket, String body) {
+  final l = label.trim().toLowerCase();
+  if (illustrationKinds.containsKey(l)) return illustrationKinds[l]!;
+  final hint = '$l $bracket'.toLowerCase();
+  if (hint.contains('worked') || hint.contains('sum') || hint.contains('numbers')) return 'WORKED EXAMPLE';
+  if (hint.contains('case')) return 'CASE STUDY';
+  if (hint.contains('scenario') || hint.contains('hypothetical')) return 'SCENARIO';
+  if (hint.contains('analogy')) return 'ANALOGY';
+  if (hint.contains('story') || hint.contains('composite') || hint.contains('record')) return 'STORY';
+  if (hint.contains('example')) return 'EXAMPLE';
+  if (RegExp(r'\b(patient|clinic|ward|hospital|nurse|doctor|surgeon|paramedic|casualty)\b', caseSensitive: false).hasMatch(body)) {
+    return 'CASE STUDY';
+  }
+  if (RegExp(r'\d').allMatches(body).length >= 8 && RegExp(r'[=×÷%]|\btimes\b|\bdivided\b').hasMatch(body)) return 'WORKED EXAMPLE';
+  return 'EXAMPLE';
+}
+
+final _disclosure = RegExp(
+    r'real names?|\bnames?\b.*\b(invented|changed|not real)|invented|fictional|hypothetical|composite|made[- ]up|not a real|no real|illustrative',
+    caseSensitive: false);
+
+String _sentenceCase(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+/// The bold word of an older `**Story:**` line.
+String _matchLabel(String line) => RegExp(r'^\*\*([^:*]+)').firstMatch(line)?.group(1) ?? '';
+
+/// Takes "ILLUSTRATION" out of an illustration's copy and lifts its opening disclosure into a small note. Handles
+/// every opening the library holds: `_Invented case._ Text` (standard 4.8.0), `ILLUSTRATION. Text`,
+/// `ILLUSTRATION, an invented case. Text`, `All names and details are invented. Text`.
+({String note, String text}) splitIllustrationCopy(String raw, {String note = ''}) {
+  var s = raw.trim();
+  var found = note.trim();
+  final em = RegExp(r'^(?:_([^_]{3,200})_|\*([^*]{3,200})\*)\s+').firstMatch(s);
+  if (em != null && found.isEmpty) {
+    found = (em.group(1) ?? em.group(2))!.trim();
+    s = s.substring(em.end);
+  }
+  final lead = RegExp(r'^[*_]{0,2}ILLUSTRATION\b[*_]{0,2}\s*([,:.\-]?)\s*').firstMatch(s);
+  if (lead != null) {
+    s = s.substring(lead.end);
+    if (lead.group(1) == ',') {
+      final end = RegExp(r'^[^.!?]*[.!?]\s*').firstMatch(s);
+      if (end != null && found.isEmpty) {
+        found = end.group(0)!.trim();
+        s = s.substring(end.end);
+      }
+    }
+  }
+  if (found.isEmpty) {
+    final first = RegExp(r'^[^.!?]*[.!?]\s*').firstMatch(s);
+    if (first != null && first.end < s.length && first.group(0)!.length <= 140 && _disclosure.hasMatch(first.group(0)!)) {
+      found = first.group(0)!.trim();
+      s = s.substring(first.end);
+    }
+  }
+  found = found.replaceAll(RegExp(r',?\s*headed ILLUSTRATION'), '').replaceAll(RegExp(r'\bILLUSTRATION\b,?\s*'), '').trim();
+  s = s.replaceAll(RegExp(r'\bILLUSTRATION\b[,:.]?\s*'), '').trim();
+  return (note: _sentenceCase(found), text: _sentenceCase(s));
+}
+
 /// `**{prior} Before This:** body`, optionally as a list item (`1. **{now} Two Words:** body`).
 ///
 /// BI26101106: `{id!}` marks the element that is its section's one callout.
@@ -2033,6 +2143,10 @@ class _Block {
   _Callout? callout;
   String cite = '';
 
+  /// PI26103090: an illustration's sort for its header (`CASE STUDY`), and its small disclosure line.
+  String calloutType = '';
+  String calloutNote = '';
+
   /// BI26100537 (standard 4.x): the canonical id of a movement or element (never shown), the authored
   /// two-word label (shown), and the computed number and anchor.
   String movementId = '';
@@ -2346,8 +2460,21 @@ List<_Block> _parseBlocks(String source) {
     if (element != null && _elementKinds.containsKey(element.group(1))) {
       flushPara();
       final base = _callouts.firstWhere((c) => c.kind == _elementKinds[element.group(1)]);
-      var body = element.group(4)!.trim();
+      final (whole, nextLine) = _withContinuation(lines, idx, element.group(4)!.trim());
+      var body = whole.trim();
       var cite = '';
+      if (element.group(1) == 'illustration') {
+        final split = splitIllustrationCopy(body);
+        blocks.add(_Block(_Kind.callout, text: split.text)
+          ..callout = base
+          ..elementId = 'illustration'
+          ..marked = element.group(2) == '!'
+          ..uiLabel = element.group(3)!
+          ..calloutNote = split.note
+          ..calloutType = illustrationKindFor(element.group(3)!, '', split.text));
+        idx = nextLine;
+        continue;
+      }
       if (base.kind == 'book' || base.kind == 'quote' || base.kind == 'research') {
         final m = RegExp(r'\[([^\]]{4,})\]\s*$').firstMatch(body);
         if (m != null) {
@@ -2361,7 +2488,28 @@ List<_Block> _parseBlocks(String source) {
         ..elementId = element.group(1)!
         ..marked = element.group(2) == '!'
         ..uiLabel = element.group(3)!);
-      idx++;
+      idx = nextLine;
+      continue;
+    }
+
+    // PI26103090: the older `**Story (fictional composite):** body`, whose marker may itself wrap onto the next line.
+    var bracketLine = trimmed;
+    var bracketNext = idx + 1;
+    if (_openBracketedIllustration.hasMatch(bracketLine) && bracketNext < lines.length) {
+      bracketLine = '$bracketLine ${lines[bracketNext].trim()}';
+      bracketNext++;
+    }
+    final bracketed = _bracketedIllustration.firstMatch(bracketLine);
+    if (bracketed != null) {
+      flushPara();
+      final (whole, nextLine) = _withContinuation(lines, bracketNext - 1, bracketed.group(3)!.trim());
+      final bracket = bracketed.group(2)!.trim();
+      final split = splitIllustrationCopy(whole, note: bracket);
+      blocks.add(_Block(_Kind.callout, text: split.text)
+        ..callout = _callouts.firstWhere((c) => c.kind == 'story')
+        ..calloutNote = split.note
+        ..calloutType = illustrationKindFor('', bracket, split.text));
+      idx = nextLine;
       continue;
     }
 
@@ -2387,8 +2535,18 @@ List<_Block> _parseBlocks(String source) {
     final callout = _matchCallout(trimmed);
     if (callout != null) {
       flushPara();
-      var body = trimmed.replaceFirst(callout.pattern, '').trim();
+      final (whole, nextLine) = _withContinuation(lines, idx, trimmed.replaceFirst(callout.pattern, '').trim());
+      var body = whole.trim();
       var cite = '';
+      if (callout.kind == 'story') {
+        final split = splitIllustrationCopy(body);
+        blocks.add(_Block(_Kind.callout, text: split.text)
+          ..callout = callout
+          ..calloutNote = split.note
+          ..calloutType = illustrationKindFor(_matchLabel(trimmed), '', split.text));
+        idx = nextLine;
+        continue;
+      }
       if (callout.kind == 'book' || callout.kind == 'quote') {
         // A trailing [Author, Title, Year, chapter] is the part that makes a
         // book callout checkable rather than decorative, so it gets its own line.
@@ -2401,7 +2559,7 @@ List<_Block> _parseBlocks(String source) {
       blocks.add(_Block(_Kind.callout, text: body)
         ..callout = callout
         ..cite = cite);
-      idx++;
+      idx = nextLine;
       continue;
     }
 

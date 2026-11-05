@@ -14,6 +14,15 @@ String? frontmatterVersion(String content) {
   return v?.group(1);
 }
 
+/// The version a module's list row should show. The server's value when it is one, else the version in the file name
+/// (`..._v4_0_0.md`). BI26110592: the register's blank placeholder `-` reached the app as the version of all 1,096
+/// modules, and each one read "standard unknown".
+String? moduleListVersion(String? served, String file) {
+  if (parseStandard(served) != null) return served;
+  final m = RegExp(r'_v(\d+)_(\d+)_(\d+)\.md$').firstMatch(file);
+  return m == null ? null : '${m.group(1)}.${m.group(2)}.${m.group(3)}';
+}
+
 /// `3.1.0` or `4.5` as (major, minor), or null when it is not a version.
 ({int major, int minor})? parseStandard(String? v) {
   final m = RegExp(r'^\s*v?(\d+)\.(\d+)').firstMatch(v ?? '');

@@ -1344,7 +1344,7 @@ String? moduleMetaLine({
   }
 
   // 4. Version and reviewed date
-  final rawVersion = fmt.s(lesson['version'] ?? lesson['VERSION'] ?? manifest?['version'] ?? manifest?['VERSION']).trim();
+  final rawVersion = (moduleListVersion(fmt.s(lesson['version'] ?? lesson['VERSION'] ?? manifest?['version'] ?? manifest?['VERSION']).trim(), fmt.s(lesson['file'])) ?? '').trim();
   if (rawVersion.isNotEmpty) {
     final vStr = rawVersion.toLowerCase().startsWith('v') ? rawVersion : 'v$rawVersion';
     parts.add(vStr);
@@ -1442,7 +1442,7 @@ class LessonRow extends StatelessWidget {
               reviewedAt: fmt.s(lesson['reviewedAt'] ??
                   lesson['reviewed_at'] ??
                   lesson['REVIEWED_AT']),
-              version: fmt.s(lesson['version'] ?? lesson['VERSION']),
+              version: moduleListVersion(fmt.s(lesson['version'] ?? lesson['VERSION']), file) ?? '',
             ),
           ),
         ),
@@ -1524,9 +1524,7 @@ class LessonRow extends StatelessWidget {
                       builder: (context, _) => CourseStandard.instance.showOnList
                           ? StandardTagLine(
                               compact: true,
-                              version: fmt.s(lesson['version'] ?? lesson['VERSION']).isEmpty
-                                  ? null
-                                  : fmt.s(lesson['version'] ?? lesson['VERSION']),
+                              version: moduleListVersion(fmt.s(lesson['version'] ?? lesson['VERSION']), file),
                             )
                           : const SizedBox.shrink(),
                     ),
