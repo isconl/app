@@ -94,7 +94,7 @@ void main() {
   testWidgets('the image is cached by asset path, never by the URL with its token', (t) async {
     await pumpMd(t, '![A ridge](_assets/ridge.png "Ridge")\n');
     final img = t.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
-    expect(img.cacheKey, 'asset:c/ridge.png');
+    expect(img.cacheKey, 'asset2:c/ridge.png');
     expect(img.cacheKey!.contains('secret-token'), isFalse);
   });
 

@@ -109,6 +109,24 @@ void main() {
       expect(t.widget<Text>(find.byKey(const Key('callout-note'))).data, contains('hypothetical numbers'));
     });
 
+    testWidgets('a demoted illustration keeps its disclosure, in front of the copy', (t) async {
+      await _pump(t, '**{research} First One:** Comes first, so it is the callout.\n\n**{illustration} Case Study:** ILLUSTRATION. All names are invented. Wanjiru is 58.\n');
+      expect(_rendered(t), contains('All names are invented. Wanjiru is 58.'));
+      expect(_rendered(t), isNot(contains('ILLUSTRATION.')));
+    });
+
+    test('a figure that fails says why', () {
+      expect(figureFailureReason(Exception('HttpExceptionWithStatus: 404 url')), contains('sign out and back in'));
+      expect(figureFailureReason(Exception('Invalid statusCode: 530')), contains('HTTP 530'));
+      expect(figureFailureReason(Exception('SocketException')), contains('connection'));
+    });
+
+    test('a stored error page is not taken for an SVG', () {
+      expect(looksLikeSvg('<?xml version="1.0"?><svg viewBox="0 0 1 1"/>'.codeUnits), isTrue);
+      expect(looksLikeSvg('{"error":"Not Found"}'.codeUnits), isFalse);
+      expect(looksLikeSvg('<!doctype html><html></html>'.codeUnits), isFalse);
+    });
+
     testWidgets('a table after the callout stays out of the box and is still drawn', (t) async {
       await _pump(t, '**{illustration} Mode Table:** The beds swap.\n| Step | Bed A |\n|---|---|\n| 1 | On |\n');
       expect(_rendered(t), contains('The beds swap.'));

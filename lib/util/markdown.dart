@@ -788,7 +788,8 @@ class Markdown extends StatelessWidget {
     return _Figure(
       url: _resolveImageUrl(block.imageUrl),
       cacheKey: courseId.isNotEmpty && block.imageUrl.startsWith('_assets/')
-          ? 'asset:$courseId/$file'
+          // BI26110592: a new namespace, so a bad file stored on a phone by an older build is not trusted for 30 days.
+          ? 'asset2:$courseId/$file'
           : block.imageUrl,
       path: block.imageUrl,
       caption: caption,
@@ -819,7 +820,8 @@ class Markdown extends StatelessWidget {
     );
   }
 
-  Widget _imageBroken(_Figure f, String fallback) => Container(
+  /// BI26110592: a figure that fails says why, in words, so the next report names the cause.
+  Widget _imageBroken(_Figure f, String fallback, [Object? reason]) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: C.surface,
@@ -829,8 +831,12 @@ class Markdown extends StatelessWidget {
         child: Row(children: [
           const Icon(Icons.image_not_supported_rounded, size: 20, color: C.text3),
           const SizedBox(width: 8),
-          Expanded(child: Text(f.caption.isNotEmpty ? f.caption : fallback,
-              style: T.small.copyWith(color: C.text3))),
+          Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(f.caption.isNotEmpty ? f.caption : fallback, style: T.small.copyWith(color: C.text3)),
+            if (reason != null)
+              Text(figureFailureReason(reason), key: const Key('image-failure-reason'), style: T.tiny.copyWith(color: C.amber)),
+          ])),
         ]),
       );
 
@@ -853,7 +859,7 @@ class Markdown extends StatelessWidget {
               cacheKey: f.cacheKey,
               path: f.path,
               placeholder: const ColoredBox(key: Key('image-placeholder'), color: C.surface),
-              error: _imageBroken(f, block.imageUrl),
+              error: (reason) => _imageBroken(f, block.imageUrl, reason),
             ),
           ),
         );
@@ -1763,7 +1769,13 @@ void _oneCalloutPerSection(List<_Block> blocks) {
     final objective = inSection.where((b) => b.zeroRole == 'objective').toList();
     final keep = marked.isNotEmpty || objective.isNotEmpty ? {...marked, ...objective} : {inSection.first};
     for (final b in inSection) {
-      if (!keep.contains(b)) b.demoted = true;
+      if (keep.contains(b)) continue;
+      b.demoted = true;
+      // PI26103090: prose has no small note line, and a disclosure must never be lost, so it goes back in front of the copy.
+      if (b.calloutNote.isNotEmpty) {
+        b.text = '${b.calloutNote} ${b.text}';
+        b.calloutNote = '';
+      }
     }
   }
 
@@ -2056,7 +2068,7 @@ class _ZoomPageState extends State<_ZoomPage> {
             cacheKey: widget.figure.cacheKey,
             path: widget.figure.path,
             placeholder: const SizedBox.shrink(),
-            error: const Icon(Icons.image_not_supported_rounded, color: Colors.white54, size: 48),
+            error: (_) => const Icon(Icons.image_not_supported_rounded, color: Colors.white54, size: 48),
           ),
         ),
       );
@@ -2067,6 +2079,31 @@ class _ZoomPageState extends State<_ZoomPage> {
 /// error branch and showed the "image not supported" icon. An `.svg` is now fetched through the same device cache (so
 /// the module still reads offline, keyed by asset path, never by the URL with its token) and drawn with flutter_svg;
 /// a bitmap keeps CachedNetworkImage. Bytes, not a file path, so the web build needs no dart:io.
+///
+/// BI26110592: a stored file that will not draw is thrown away, so the next open fetches it again, and the failure says
+/// why. On a signed-out session hub answers 404 to images while stored lessons still open, which looks like a broken image.
+String figureFailureReason(Object reason) {
+  final text = reason.toString();
+  final status = RegExp(r'\b([45]\d\d)\b').firstMatch(text)?.group(1);
+  if (status == '404' || status == '401' || status == '403') {
+    return 'Could not load this image (HTTP $status). If every image fails, sign out and back in.';
+  }
+  if (status != null) return 'Could not load this image: the server answered HTTP $status.';
+  if (reason is _NotASvg) return 'This image file was damaged and has been cleared. Reopen the module to fetch it again.';
+  return 'Could not load this image. Check your connection, then reopen the module.';
+}
+
+class _NotASvg implements Exception {
+  @override
+  String toString() => 'the stored file is not an SVG';
+}
+
+/// Whether bytes can be an SVG at all: a stored error page or a truncated file is not.
+bool looksLikeSvg(List<int> bytes) {
+  final head = String.fromCharCodes(bytes.take(2048)).toLowerCase();
+  return head.contains('<svg');
+}
+
 class _LessonPicture extends StatelessWidget {
   const _LessonPicture({super.key, required this.url, required this.cacheKey, required this.path,
       required this.placeholder, required this.error});
@@ -2074,7 +2111,7 @@ class _LessonPicture extends StatelessWidget {
   final String cacheKey;
   final String path;
   final Widget placeholder;
-  final Widget error;
+  final Widget Function(Object? reason) error;
 
   static bool isSvg(String p) => p.split('?').first.toLowerCase().endsWith('.svg');
 
@@ -2085,7 +2122,12 @@ class _LessonPicture extends StatelessWidget {
   static Future<List<int>> _svgBytes(String url, String key) => _svgFetches.putIfAbsent(key, () async {
         try {
           final file = await DefaultCacheManager().getSingleFile(url, key: key);
-          return await file.readAsBytes();
+          final bytes = await file.readAsBytes();
+          if (!looksLikeSvg(bytes)) {
+            await DefaultCacheManager().removeFile(key);
+            throw _NotASvg();
+          }
+          return bytes;
         } catch (_) {
           _svgFetches.remove(key);
           rethrow;
@@ -2100,19 +2142,23 @@ class _LessonPicture extends StatelessWidget {
         cacheKey: cacheKey,
         fit: BoxFit.contain,
         placeholder: (_, _) => placeholder,
-        errorWidget: (_, _, _) => error,
+        errorWidget: (_, _, reason) {
+          // A file that downloaded but will not decode would otherwise fail on this phone for 30 days.
+          CachedNetworkImage.evictFromCache(url, cacheKey: cacheKey);
+          return error(reason);
+        },
       );
     }
     return FutureBuilder<List<int>>(
       future: _svgBytes(url, cacheKey),
       builder: (context, snap) {
-        if (snap.hasError) return error;
+        if (snap.hasError) return error(snap.error);
         if (!snap.hasData) return placeholder;
         return SvgPicture.memory(
           Uint8List.fromList(snap.data!),
           fit: BoxFit.contain,
           placeholderBuilder: (_) => placeholder,
-          errorBuilder: (_, _, _) => error,
+          errorBuilder: (_, reason, _) => error(reason),
         );
       },
     );
