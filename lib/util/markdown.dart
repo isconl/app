@@ -468,6 +468,10 @@ class Markdown extends StatelessWidget {
               fontStyle: c.kind == 'quote' ? FontStyle.italic : null,
             ),
           )),
+          if (block.attachedTable != null) ...[
+            const SizedBox(height: 8),
+            _table(block.attachedTable!, style),
+          ],
           if (block.cite.isNotEmpty) ...[
             const SizedBox(height: 6),
             // BI26103092 (Sconl, 30 Oct 2026): "even the book citations to use the small blue styling for the credits".
@@ -1606,6 +1610,7 @@ const illustrationKinds = {
   'worked example': 'WORKED EXAMPLE',
   'invented scenario': 'SCENARIO',
   'plain analogy': 'ANALOGY',
+  'quick table': 'AT A GLANCE',
 };
 
 /// Sort for the header. A library-standard label is taken as written. Older labels are read for a telling word, then
@@ -2192,6 +2197,7 @@ class _Block {
   /// PI26103090: an illustration's sort for its header (`CASE STUDY`), and its small disclosure line.
   String calloutType = '';
   String calloutNote = '';
+  _Block? attachedTable;
 
   /// BI26100537 (standard 4.x): the canonical id of a movement or element (never shown), the authored
   /// two-word label (shown), and the computed number and anchor.
@@ -2658,7 +2664,24 @@ List<_Block> _parseBlocks(String source) {
   blocks = _applyGuardMovementRule(blocks);
   _oneCalloutPerSection(blocks);
   blocks = _quietElements(blocks);
-  return blocks;
+  return _tablesIntoIllustrations(blocks);
+}
+
+/// PI26103090: 72 medicine and bme illustrations are a one-line caption with the table floating outside the box. The
+/// callout holds the whole example, so a table straight after an illustration is drawn inside it.
+List<_Block> _tablesIntoIllustrations(List<_Block> blocks) {
+  final out = <_Block>[];
+  for (var i = 0; i < blocks.length; i++) {
+    final b = blocks[i];
+    out.add(b);
+    final isIllustration = b.kind == _Kind.callout && b.callout?.kind == 'story' && !b.demoted;
+    if (isIllustration && i + 1 < blocks.length && blocks[i + 1].kind == _Kind.table) {
+      b.attachedTable = blocks[i + 1];
+      if (b.calloutType == 'EXAMPLE') b.calloutType = 'AT A GLANCE';
+      i++;
+    }
+  }
+  return out;
 }
 
 /// Captions and alt text are plain strings, so a glossary marker there

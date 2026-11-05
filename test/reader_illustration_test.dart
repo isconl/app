@@ -127,10 +127,22 @@ void main() {
       expect(looksLikeSvg('<!doctype html><html></html>'.codeUnits), isFalse);
     });
 
-    testWidgets('a table after the callout stays out of the box and is still drawn', (t) async {
-      await _pump(t, '**{illustration} Mode Table:** The beds swap.\n| Step | Bed A |\n|---|---|\n| 1 | On |\n');
-      expect(_rendered(t), contains('The beds swap.'));
+    testWidgets('a table straight after an illustration is drawn inside its box', (t) async {
+      await _pump(t, '**{illustration} Quick Table:** the pressure swing cycle.\n\n| Step | Bed A |\n|---|---|\n| One | On |\n\nCommentary after.\n');
+      expect(_label(t), contains('ILLUSTRATION · AT A GLANCE'));
+      final box = find.ancestor(of: find.text('Step'), matching: find.byType(Container));
+      expect(box, findsWidgets);
+      final labelBox = find.ancestor(of: find.byKey(const Key('callout-label')).last, matching: find.byType(Column)).first;
+      expect(find.descendant(of: labelBox, matching: find.text('Step')), findsOneWidget, reason: 'the table sits in the callout');
+      expect(find.descendant(of: labelBox, matching: find.textContaining('Commentary', findRichText: true)), findsNothing);
+      expect(_rendered(t), contains('The pressure swing cycle.'));
+      expect(_rendered(t), contains('Commentary after.'));
       expect(_rendered(t), isNot(contains('| Step')));
+    });
+
+    testWidgets('a table with an older label still goes in the box, as a glance', (t) async {
+      await _pump(t, '**{illustration} Timing Rule:** spike timing as a table.\n\n| Order | Effect |\n|---|---|\n| A | B |\n');
+      expect(_label(t), contains('AT A GLANCE'));
     });
   });
 }
