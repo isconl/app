@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same geometry as ic_launcher_foreground.xml, single colour for Android
+     13+ themed icons: the system applies its own tint over this shape. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <path
+      android:fillType="evenOdd"
+      android:fillColor="#FFFFFF"
+      android:pathData="M28.624,54.000 A25.376,25.376 0 1,0 79.376,54.000 A25.376,25.376 0 1,0 28.624,54.000 Z
+                         M38.678,54.000 A15.322,15.322 0 1,0 69.322,54.000 A15.322,15.322 0 1,0 38.678,54.000 Z
+                         M61.182,41.791 A9.097,9.097 0 1,0 79.376,41.791 A9.097,9.097 0 1,0 61.182,41.791 Z" />
+  <path
+      android:fillColor="#FFFFFF"
+      android:pathData="M63.097,41.791 A7.182,7.182 0 1,0 77.461,41.791 A7.182,7.182 0 1,0 63.097,41.791 Z" />
+</vector>
