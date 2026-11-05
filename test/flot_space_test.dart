@@ -141,7 +141,7 @@ void main() {
     });
 
     test('sidebar rail personal group includes Flot and not Ledger', () {
-      final personalGroup = navGroups.firstWhere((g) => g.title == 'Personal');
+      final personalGroup = navGroups.firstWhere((g) => g.label == 'Personal');
       final labels = personalGroup.items.map((item) => item.label).toList();
 
       expect(labels, contains('Flot'));
@@ -157,7 +157,7 @@ void main() {
         theme: buildTheme(),
         home: Scaffold(
           body: PersonalDashboard(
-            blocks: const BlocksProgress(3, 12, 'Innovator'),
+            blocks: BlocksProgress(3, 12, 'Innovator'),
             habits: const [],
             netWorth: 125000,
             currency: 'KES',
@@ -165,7 +165,8 @@ void main() {
           ),
         ),
       ));
-      await t.pumpAndSettle();
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
 
       expect(find.text('FLOT'), findsOneWidget);
       expect(find.text('LEDGER'), findsNothing);
@@ -181,7 +182,8 @@ void main() {
           ),
         ),
       ));
-      await t.pumpAndSettle();
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
 
       expect(find.text('Flot is private'), findsOneWidget);
       expect(find.text('The ledger is private'), findsNothing);
@@ -192,19 +194,22 @@ void main() {
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
 
-      final services = await buildTestServices();
+      final services = (await t.runAsync(() => buildTestServices()))!;
 
       await t.pumpWidget(MaterialApp(
         theme: buildTheme(),
         home: AppScope(
           services: services,
-          child: const Scaffold(body: SettingsView()),
+          child: const Scaffold(body: SmsCard()),
         ),
       ));
-      await t.pumpAndSettle();
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
 
       expect(find.textContaining('becomes a Flot entry automatically'), findsOneWidget);
       expect(find.textContaining('becomes a ledger entry automatically'), findsNothing);
+      await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(seconds: 1));
     });
   });
 }
