@@ -1,0 +1,212 @@
+{
+  "today": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "now",       "label": "Now",          "icon": "bolt",           "route": "now" },
+    { "key": "today",     "label": "Today",        "icon": "today",          "route": "today" },
+    { "key": "services",  "label": "Services",     "icon": "dns",            "route": "services" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "tasks": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "command",   "label": "Command",      "icon": "terminal",       "route": "command" },
+    { "key": "tasks",     "label": "Tasks",        "icon": "task_alt",       "route": "tasks" },
+    { "key": "register",  "label": "Register",     "icon": "list_alt",       "route": "register" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "calendar": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "month",     "label": "Month",        "icon": "calendar_month", "route": "month" },
+    { "key": "events",    "label": "Events",       "icon": "event",          "route": "events" },
+    { "key": "import",    "label": "Import",       "icon": "download",       "route": "import" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "planning": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "now",       "label": "Now",          "icon": "center_focus_strong", "route": "now" },
+    { "key": "next",      "label": "Next",         "icon": "skip_next",      "route": "next" },
+    { "key": "later",     "label": "Later",        "icon": "schedule",       "route": "later" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "notifications": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "unread",    "label": "Unread",       "icon": "mark_email_unread", "route": "unread" },
+    { "key": "all",       "label": "All",          "icon": "notifications",  "route": "all" },
+    { "key": "settings",  "label": "Settings",     "icon": "tune",           "route": "settings" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "inbox": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "threads",   "label": "Threads",      "icon": "forum",          "route": "threads" },
+    { "key": "unknown",   "label": "Unknown",      "icon": "help_outline",   "route": "unknown" },
+    { "key": "snoozed",   "label": "Snoozed",      "icon": "snooze",         "route": "snoozed" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "cover": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "rooms",     "label": "Rooms",        "icon": "chat",           "route": "rooms" },
+    { "key": "contacts",  "label": "Contacts",     "icon": "contacts",       "route": "contacts" },
+    { "key": "settings",  "label": "Settings",     "icon": "tune",           "route": "settings" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "deck": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "studio",    "label": "Studio",       "icon": "dashboard",      "route": "studio" },
+    { "key": "drafts",    "label": "Drafts",       "icon": "edit_note",      "route": "drafts" },
+    { "key": "published", "label": "Published",    "icon": "check_circle",   "route": "published" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "teams": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "orgs",      "label": "Orgs",         "icon": "corporate_fare", "route": "orgs" },
+    { "key": "people",    "label": "People",       "icon": "people",         "route": "people" },
+    { "key": "board",     "label": "Board",        "icon": "view_kanban",    "route": "board" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "tools": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "kanban",    "label": "Kanban",       "icon": "view_kanban",    "route": "kanban" },
+    { "key": "buffer",    "label": "Buffer",       "icon": "share",          "route": "buffer" },
+    { "key": "github",    "label": "GitHub",       "icon": "code",           "route": "github" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "practice": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "documents", "label": "Documents",    "icon": "description",    "route": "documents" },
+    { "key": "practices", "label": "Practices",    "icon": "hub",            "route": "practices" },
+    { "key": "leads",     "label": "Leads",        "icon": "people",         "route": "leads" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "corporate": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "engagements","label": "Engagements", "icon": "handshake",      "route": "engagements" },
+    { "key": "documents", "label": "Documents",    "icon": "description",    "route": "documents" },
+    { "key": "compliance","label": "Compliance",   "icon": "verified",       "route": "compliance" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "projects": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "catalogue", "label": "Catalogue",    "icon": "inventory_2",    "route": "catalogue" },
+    { "key": "roadmap",   "label": "Roadmap",      "icon": "map",            "route": "roadmap" },
+    { "key": "releases",  "label": "Releases",     "icon": "new_releases",   "route": "releases" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "rhythm": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "day",       "label": "Day",          "icon": "today",          "route": "day" },
+    { "key": "blocks",    "label": "Blocks",       "icon": "view_agenda",    "route": "blocks" },
+    { "key": "habits",    "label": "Habits",       "icon": "repeat",         "route": "habits" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "identity": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "profile",   "label": "Profile",      "icon": "person",         "route": "profile" },
+    { "key": "archetypes","label": "Archetypes",   "icon": "psychology",     "route": "archetypes" },
+    { "key": "decisions", "label": "Decisions",    "icon": "gavel",          "route": "decisions" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "finance": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "transactions","label":"Transactions","icon": "receipt_long",   "route": "transactions" },
+    { "key": "goals",     "label": "Goals",        "icon": "flag",           "route": "goals" },
+    { "key": "plan",      "label": "Plan",         "icon": "savings",        "route": "plan" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "learning": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "campus",    "label": "Campus",       "icon": "school",         "route": "campus" },
+    { "key": "tracks",    "label": "Tracks",       "icon": "library_books",  "route": "tracks" },
+    { "key": "notes",     "label": "Notes",        "icon": "note",           "route": "notes" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "codex": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "journal",   "label": "Journal",      "icon": "auto_stories",   "route": "journal" },
+    { "key": "ideas",     "label": "Ideas",        "icon": "lightbulb",      "route": "ideas" },
+    { "key": "scans",     "label": "Scans",        "icon": "qr_code_scanner","route": "scans" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "circle": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "people",    "label": "People",       "icon": "people",         "route": "people" },
+    { "key": "threads",   "label": "Threads",      "icon": "forum",          "route": "threads" },
+    { "key": "events",    "label": "Events",       "icon": "event",          "route": "events" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "contacts": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "all",       "label": "All",          "icon": "contacts",       "route": "all" },
+    { "key": "groups",    "label": "Groups",       "icon": "group_work",     "route": "groups" },
+    { "key": "recent",    "label": "Recent",       "icon": "schedule",       "route": "recent" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "ops": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "status",    "label": "Status",       "icon": "dns",            "route": "status" },
+    { "key": "stats",     "label": "Stats",        "icon": "monitoring",     "route": "stats" },
+    { "key": "incidents", "label": "Incidents",    "icon": "warning",        "route": "incidents" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "files": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "browse",    "label": "Browse",       "icon": "folder_open",    "route": "browse" },
+    { "key": "recent",    "label": "Recent",       "icon": "schedule",       "route": "recent" },
+    { "key": "device",    "label": "Device",       "icon": "smartphone",     "route": "device" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "media": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "library",   "label": "Library",      "icon": "library_music",  "route": "library" },
+    { "key": "recordings","label": "Recordings",   "icon": "mic",            "route": "recordings" },
+    { "key": "queue",     "label": "Queue",        "icon": "queue_music",    "route": "queue" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "tenants": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "list",      "label": "List",         "icon": "list",           "route": "list" },
+    { "key": "config",    "label": "Config",       "icon": "settings",       "route": "config" },
+    { "key": "audit",     "label": "Audit",        "icon": "policy",         "route": "audit" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "backlog": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "open",      "label": "Open",         "icon": "radio_button_unchecked", "route": "open" },
+    { "key": "shelved",   "label": "Shelved",      "icon": "inventory",      "route": "shelved" },
+    { "key": "done",      "label": "Done",         "icon": "check_circle",   "route": "done" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "audit": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "events",    "label": "Events",       "icon": "event_note",     "route": "events" },
+    { "key": "access",    "label": "Access",       "icon": "vpn_key",        "route": "access" },
+    { "key": "changes",   "label": "Changes",      "icon": "track_changes",  "route": "changes" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "isconl": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "fleet",     "label": "Fleet",        "icon": "dns",            "route": "fleet" },
+    { "key": "engines",   "label": "Engines",      "icon": "settings",       "route": "engines" },
+    { "key": "spaces",    "label": "Spaces",       "icon": "apps",           "route": "spaces" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "xkeel": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "slate",     "label": "Slate",        "icon": "task_alt",       "route": "slate" },
+    { "key": "deck",      "label": "Deck",         "icon": "layers",         "route": "deck" },
+    { "key": "services",  "label": "Services",     "icon": "miscellaneous_services", "route": "services" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "qprow": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "leaflet",   "label": "Leaflet",      "icon": "eco",            "route": "leaflet" },
+    { "key": "vela",      "label": "Vela",         "icon": "public",         "route": "vela" },
+    { "key": "press",     "label": "Press",        "icon": "newspaper",      "route": "press" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ],
+  "settings": [
+    { "key": "overview",  "label": "Overview",     "icon": "grid_view",      "route": "overview" },
+    { "key": "general",   "label": "General",      "icon": "tune",           "route": "general" },
+    { "key": "accounts",  "label": "Accounts",     "icon": "manage_accounts","route": "accounts" },
+    { "key": "about",     "label": "About",        "icon": "info",           "route": "about" },
+    { "key": "activity",  "label": "Activity",     "icon": "history",        "route": "activity" }
+  ]
+}
