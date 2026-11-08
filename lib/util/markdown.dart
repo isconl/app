@@ -86,8 +86,11 @@ class Markdown extends StatelessWidget {
             ? T.body.copyWith(
                 fontSize: 15.5, height: 1.72 + ReaderPrefs.instance.lineBoost, color: C.text, letterSpacing: 0.1)
             : T.body2.copyWith(color: C.text, height: 1.55));
-    final blocks = _parseBlocks(source);
+    final changeNotes = <ChangeNote>[];
+    final blocks = _parseBlocks(source, changeNotes);
     final figures = _figuresOf(blocks);
+    // Sconl, 8 Nov 2026: a module's dated change notes sit just above its first movement, folded into one pill.
+    var notesPlaced = changeNotes.isEmpty;
     final children = <Widget>[];
     final movements = <String>[];
     final words = <int>[];
@@ -98,6 +101,13 @@ class Markdown extends StatelessWidget {
           first: i == 0, lead: i > 0 && blocks[i - 1].kind == _Kind.heading, figures: figures);
       if (w == null) continue;
       final b = blocks[i];
+      if (!notesPlaced && b.kind == _Kind.heading && b.level == 2) {
+        notesPlaced = true;
+        w = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(padding: EdgeInsets.only(top: _reading ? 6 : 2, bottom: _reading ? 4 : 2), child: ChangeNotesPill(notes: changeNotes)),
+          w,
+        ]);
+      }
       // BI26101804: a probe followed by its answer is one unit: the probe, then a Reveal answer button that opens the
       // answer in place. The answer is never drawn as a second callout.
       if (b.kind == _Kind.callout && b.callout?.kind == 'probe' && i + 1 < blocks.length &&
@@ -141,6 +151,8 @@ class Markdown extends StatelessWidget {
               )));
     }
     anchors?._describe(movements, words, anchorIndex);
+    // A module with change notes and no movement heading still shows them, at the top.
+    if (!notesPlaced) children.insert(0, ChangeNotesPill(notes: changeNotes));
     if (children.isEmpty) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
   }
@@ -1358,7 +1370,7 @@ class ModuleLink {
 /// The numbered sections of a module as the reader renders them: `(number, anchor)` per movement and
 /// labelled element, in reading order. Exposed so the checker and tests resolve anchors the same way.
 List<({String number, String anchor})> moduleSections(String source) =>
-    [for (final b in _parseBlocks(source)) if (b.anchor.isNotEmpty) (number: b.number, anchor: b.anchor)];
+    [for (final b in _parseBlocks(source, <ChangeNote>[])) if (b.anchor.isNotEmpty) (number: b.number, anchor: b.anchor)];
 
 class MarkdownAnchors {
   final Map<int, GlobalKey> _keys = {};
@@ -2325,7 +2337,7 @@ String _gridTablesToPipe(String text) {
   return out.join('\n');
 }
 
-List<_Block> _parseBlocks(String source) {
+List<_Block> _parseBlocks(String source, [List<ChangeNote>? changeNotes]) {
   final lines = normalizeModuleSource(source).split('\n');
   var blocks = <_Block>[];
   var idx = 0;
@@ -2333,8 +2345,16 @@ List<_Block> _parseBlocks(String source) {
 
   void flushPara() {
     if (para.isNotEmpty) {
-      blocks.add(_Block(_Kind.paragraph, text: para.join(' ')));
+      final text = para.join(' ');
       para.clear();
+      // Sconl, 8 Nov 2026: `_Changed <date>: what. Why: why._` is a change note. It leaves the copy and is drawn
+      // once, as the pill above the first movement; a reader without that support still shows it as an italic line.
+      final note = parseChangeNote(text);
+      if (note != null) {
+        changeNotes?.add(note);
+        if (changeNotes != null) return;
+      }
+      blocks.add(_Block(_Kind.paragraph, text: text));
     }
   }
 
@@ -2716,4 +2736,140 @@ List<String> _splitRow(String row) {
   }
   cells.add(cur.toString().trim());
   return cells;
+}
+
+
+/// Sconl, 8 Nov 2026: "within the copy do mention what has changed since previous versions with a note on why".
+/// A module carries one italic paragraph per revision, written `_Changed 8 November 2026: what changed. Why: why._`.
+/// The reader lifts each one out of the copy and folds them into one quiet pill above the first movement.
+class ChangeNote {
+  const ChangeNote(this.date, this.what, this.why);
+  final String date;
+  final String what;
+  final String why;
+
+  /// "8 November 2026" -> "8 Nov 2026"; anything else is returned as written.
+  String get shortDate {
+    final m = RegExp(r'^(\d{1,2}) ([A-Za-z]+) (\d{4})$').firstMatch(date);
+    if (m == null) return date;
+    final month = m.group(2)!;
+    return '${m.group(1)} ${month.length > 3 ? month.substring(0, 3) : month} ${m.group(3)}';
+  }
+
+  /// Sort key, newest first; an unreadable date sorts last.
+  int get sortKey {
+    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    final m = RegExp(r'^(\d{1,2}) ([A-Za-z]{3})[A-Za-z]* (\d{4})$').firstMatch(date);
+    if (m == null) return 0;
+    final mi = months.indexOf(m.group(2)!.toLowerCase());
+    if (mi < 0) return 0;
+    return int.parse(m.group(3)!) * 10000 + (mi + 1) * 100 + int.parse(m.group(1)!);
+  }
+}
+
+final _changeNotePattern = RegExp(r'^\s*[_*]Changed (\d{1,2} [A-Za-z]+ \d{4}):\s*([\s\S]+?)[_*]\s*$');
+final _changeWhy = RegExp(r'\s+Why:\s+');
+
+/// Reads one paragraph's text as a change note, or returns null.
+ChangeNote? parseChangeNote(String text) {
+  final m = _changeNotePattern.firstMatch(text);
+  if (m == null) return null;
+  final body = m.group(2)!.trim();
+  final split = _changeWhy.firstMatch(body);
+  if (split == null) return ChangeNote(m.group(1)!, body, '');
+  return ChangeNote(m.group(1)!, body.substring(0, split.start).trim(), body.substring(split.end).trim());
+}
+
+/// Every change note in a module source, newest first.
+List<ChangeNote> changeNotesOf(String source) {
+  final notes = <ChangeNote>[];
+  _parseBlocks(source, notes);
+  notes.sort((a, b) => b.sortKey.compareTo(a.sortKey));
+  return notes;
+}
+
+/// The folded change notes: "Updated 8 Nov 2026 · What changed", opening in place to what changed and why for each
+/// revision, newest first. Quiet by design: one line until the reader asks, never a callout competing with the lesson.
+class ChangeNotesPill extends StatefulWidget {
+  const ChangeNotesPill({super.key, required this.notes});
+  final List<ChangeNote> notes;
+
+  @override
+  State<ChangeNotesPill> createState() => _ChangeNotesPillState();
+}
+
+class _ChangeNotesPillState extends State<ChangeNotesPill> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final notes = [...widget.notes]..sort((a, b) => b.sortKey.compareTo(a.sortKey));
+    if (notes.isEmpty) return const SizedBox.shrink();
+    final newest = notes.first;
+    final more = notes.length > 1 ? ' · ${notes.length} revisions' : '';
+    final label = T.tiny.copyWith(color: C.text3, fontWeight: FontWeight.w700, letterSpacing: 0.9);
+    final body = T.small.copyWith(color: C.text2, height: 1.5);
+    return Semantics(
+      button: true,
+      expanded: _open,
+      label: 'Updated ${newest.shortDate}. ${_open ? 'Hide' : 'Show'} what changed',
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topLeft,
+        child: Container(
+          decoration: BoxDecoration(
+            color: _open ? C.bgRaised : Colors.transparent,
+            border: Border.all(color: C.border),
+            borderRadius: BorderRadius.circular(_open ? Sz.rMd : 999),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            InkWell(
+              key: const ValueKey('change-notes-toggle'),
+              borderRadius: BorderRadius.circular(999),
+              onTap: () => setState(() => _open = !_open),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 7, height: 7, decoration: const BoxDecoration(color: C.amber, shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  Text('Updated ${newest.shortDate}', style: T.small.copyWith(color: C.text, fontWeight: FontWeight.w600)),
+                  Flexible(
+                    child: Text(' · What changed$more',
+                        overflow: TextOverflow.ellipsis, style: T.small.copyWith(color: C.text3)),
+                  ),
+                  const SizedBox(width: 4),
+                  AnimatedRotation(
+                    turns: _open ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: const Icon(Icons.expand_more_rounded, size: 18, color: C.text3),
+                  ),
+                ]),
+              ),
+            ),
+            if (_open)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 2, 14, 12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  for (var i = 0; i < notes.length; i++) ...[
+                    if (i > 0) const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1, color: C.border)),
+                    if (notes.length > 1) Text(notes[i].shortDate.toUpperCase(), style: label.copyWith(color: C.amber)),
+                    if (notes.length > 1) const SizedBox(height: 6),
+                    Text('WHAT CHANGED', style: label),
+                    const SizedBox(height: 3),
+                    Text(notes[i].what, style: body),
+                    if (notes[i].why.isNotEmpty) ...[
+                      const SizedBox(height: 9),
+                      Text('WHY', style: label),
+                      const SizedBox(height: 3),
+                      Text(notes[i].why, style: body),
+                    ],
+                  ],
+                ]),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
 }
