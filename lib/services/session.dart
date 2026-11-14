@@ -1,4 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:crypto/crypto.dart' show sha256;
+import 'package:flutter/services.dart' show PlatformException;
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -282,6 +288,53 @@ class SessionService extends ChangeNotifier {
         return null;
       }
       return (map['error'] as String?) ?? 'Incorrect PIN';
+    } on ApiException catch (e) {
+      return e.message;
+    } on OfflineException {
+      return 'No connection - check network or server URL';
+    }
+  }
+
+  /// PI26111401: whether this device can sign in with Acexoft ID. Android and iOS open the sign-in in the system
+  /// browser's own tab, which shares its id.acexoft.com sign-in, so a person already signed in anywhere in the estate
+  /// gets one tap ("Continue as") instead of a new sign-in.
+  static bool get acexoftSupported =>
+      !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
+
+  /// The app's own link scheme, registered in AndroidManifest.xml (RFC 8252 private-use scheme).
+  static const acexoftScheme = 'com.sconl.isconl';
+
+  /// PI26111401: sign in with Acexoft ID. A PKCE verifier stays in this method; hub sends back only a single-use code
+  /// through [acexoftScheme], and the code and verifier are traded for the session over POST, so nothing that can
+  /// open the account travels in a URL. [openBrowser] is for tests. Returns null on success, or a plain message.
+  Future<String?> loginAcexoft({Future<String> Function(String url, String scheme)? openBrowser}) async {
+    final rnd = Random.secure();
+    final verifier = base64UrlEncode(List<int>.generate(48, (_) => rnd.nextInt(256))).replaceAll('=', '');
+    final challenge = base64UrlEncode(sha256.convert(ascii.encode(verifier)).bytes).replaceAll('=', '');
+    var base = serverUrl.trim();
+    if (base.endsWith('/')) base = base.substring(0, base.length - 1);
+    final url = '$base/auth/guard/start?app_challenge=$challenge';
+    String result;
+    try {
+      result = await (openBrowser ??
+          (u, scheme) => FlutterWebAuth2.authenticate(url: u, callbackUrlScheme: scheme))(url, acexoftScheme);
+    } on PlatformException catch (e) {
+      return e.code == 'CANCELED' ? 'Sign-in was cancelled.' : 'Could not open the Acexoft ID sign-in.';
+    } catch (_) {
+      return 'Could not open the Acexoft ID sign-in.';
+    }
+    final q = Uri.tryParse(result)?.queryParameters ?? const <String, String>{};
+    if ((q['error'] ?? '').isNotEmpty) return q['error'];
+    final code = q['code'] ?? '';
+    if (code.isEmpty) return 'That sign-in could not be completed. Try again.';
+    try {
+      final res = await api.postJson('/auth/guard/app-exchange', {'code': code, 'verifier': verifier}, cold: true);
+      final map = res is Map ? res.cast<String, dynamic>() : <String, dynamic>{};
+      if (map['success'] == true && map['token'] is String) {
+        await _adopt(map['token'] as String);
+        return null;
+      }
+      return (map['error'] as String?) ?? 'That sign-in could not be completed. Try again.';
     } on ApiException catch (e) {
       return e.message;
     } on OfflineException {

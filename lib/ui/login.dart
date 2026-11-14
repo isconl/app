@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
+import '../services/session.dart' show SessionService;
 import '../main.dart' show BrandMark;
 import 'widgets/brand.dart' show BrandMotion;
 import '../theme.dart';
@@ -35,6 +36,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _editServer = false;
   // BI26100204: the server has a passkey and this phone can use it, so the button is offered first.
   bool _passkeyOffered = false;
+  // PI26111401: the server signs in with Acexoft ID and this is a phone, so that comes first.
+  bool _acexoftOffered = false;
   String? _error;
   Timer? _tick;
   int _secondsLeft = 30;
@@ -81,6 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() {
         _passkeyOffered = passkey;
+        _acexoftOffered = methods['guard'] == true && SessionService.acexoftSupported;
         _totpAvailable = methods['totp'] == true;
         _useToken = methods['totp'] != true;
         _waking = false;
@@ -162,6 +166,27 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// PI26111401: one tap when the phone's browser is already signed in to the estate; otherwise Acexoft ID's own
+  /// sign-in. A failure leaves every other way in on screen with a plain message.
+  Future<void> _submitAcexoft() async {
+    if (_submitting) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final err = await AppScope.of(context).session.loginAcexoft();
+    if (!mounted) return;
+    setState(() {
+      _submitting = false;
+      _error = err;
+    });
+    if (err == null) {
+      widget.onAuthenticated?.call();
+    } else {
+      HapticFeedback.heavyImpact();
+    }
+  }
+
   Future<void> _submitToken() async {
     final token = _token.text.trim();
     if (_submitting || token.isEmpty) return;
@@ -231,6 +256,24 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ] else ...[
+                    if (_acexoftOffered && !_usePin) ...[
+                      SizedBox(
+                        height: 50,
+                        child: FilledButton.icon(
+                          key: const Key('login-acexoft'),
+                          onPressed: _submitting ? null : _submitAcexoft,
+                          icon: const Icon(Icons.verified_user_rounded, size: 18),
+                          label: _submitting ? const MiniSpinner() : const Text('Continue with Acexoft ID'),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Uses the account you are already signed in with across the estate.',
+                        style: T.tiny.copyWith(color: C.text3),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     if (_passkeyOffered && !_usePin) ...[
                       FilledButton.icon(
                         key: const Key('login-passkey'),
