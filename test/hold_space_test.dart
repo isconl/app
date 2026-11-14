@@ -35,7 +35,14 @@ void main() {
     await api.mkdir('sconl/Crate/Media');
     await api.mkdir('sconl/Crate/Media/Audio');
     await api.mkdir('sconl/Crate/_unsorted');
-    for (final e in {'sconl/Crate/Media/Audio/memo.m4a': 30, 'sconl/Crate/notes.txt': 12, 'sconl/Crate/_unsorted/IMG 7.JPG': 50}.entries) {
+    await api.mkdir('sconl/audio-recordings');
+    for (final e in {
+      'sconl/Crate/Media/Audio/memo.m4a': 30,
+      'sconl/Crate/notes.txt': 12,
+      'sconl/Crate/_unsorted/IMG 7.JPG': 50,
+      'sconl/audio-recordings/track_large.m4a': 200,
+      'sconl/audio-recordings/track_small.m4a': 80,
+    }.entries) {
       final s = await api.beginUpload(e.key, e.value, '');
       await api.sendChunk(s.id, 0, _b(e.value));
       await api.finishUpload(s.id);
@@ -179,6 +186,82 @@ void main() {
     await settle(t);
     expect(api.exists('sconl/Crate/_unsorted/IMG 7.JPG'), isFalse);
     expect(api.search('img_7').then((r) => r.single.path), completion(contains('Media/Photos/')));
+    await end(t);
+  });
+
+  testWidgets('BI26102801: storage overview shows headline, split bar, legend, toggle, and header meter', (t) async {
+    await pump(t);
+    expect(find.byKey(const Key('hold-header-meter')), findsOneWidget);
+    await t.tap(find.text('Overview'));
+    await settle(t);
+
+    expect(find.byKey(const Key('storage-headline')), findsOneWidget);
+    expect(find.byKey(const Key('storage-split-bar')), findsOneWidget);
+    expect(find.byKey(const Key('storage-legend')), findsOneWidget);
+    expect(find.byKey(const Key('storage-toggle')), findsOneWidget);
+    expect(find.byKey(const Key('hold-free-up-space')), findsOneWidget);
+    expect(find.byKey(const Key('hold-plan-storage')), findsOneWidget);
+
+    // Switch toggle to Product, then Type
+    await t.tap(find.text('Product'));
+    await settle(t);
+    expect(find.text('uploads'), findsWidgets);
+
+    await t.tap(find.text('Type'));
+    await settle(t);
+    expect(find.text('audio'), findsWidgets);
+
+    await end(t);
+  });
+
+  testWidgets('BI26102801: tapping Recordings segment opens Review the largest, files sorted descending, delete with Undo', (t) async {
+    await pump(t);
+    await t.tap(find.text('Overview'));
+    await settle(t);
+
+    // Tap Recordings legend row
+    await t.tap(find.byKey(const Key('legend-row-Recordings')));
+    await settle(t);
+
+    expect(find.byKey(const Key('review-largest-title')), findsOneWidget);
+    expect(find.descendant(of: find.byType(DraggableScrollableSheet), matching: find.text('track_large.m4a')), findsOneWidget);
+    expect(find.descendant(of: find.byType(DraggableScrollableSheet), matching: find.text('track_small.m4a')), findsOneWidget);
+
+    // Delete track_large.m4a
+    await t.tap(find.byKey(const Key('review-delete-track_large.m4a')));
+    await settle(t);
+
+    expect(api.isTrashed('sconl/audio-recordings/track_large.m4a'), isTrue);
+    expect(find.descendant(of: find.byType(DraggableScrollableSheet), matching: find.text('track_large.m4a')), findsNothing);
+
+    // Undo delete
+    await t.tap(find.text('Undo'));
+    await settle(t);
+
+    expect(api.isTrashed('sconl/audio-recordings/track_large.m4a'), isFalse);
+    await end(t);
+  });
+
+  testWidgets('BI26102801: Free up space sheet opens suggestions and empty trash cleans up', (t) async {
+    await pump(t);
+    // Put something in trash
+    await api.delete('sconl/Crate/notes.txt');
+
+    await t.tap(find.text('Overview'));
+    await settle(t);
+
+    await t.tap(find.byKey(const Key('hold-free-up-space')));
+    await settle(t);
+
+    expect(find.byKey(const Key('free-up-space-title')), findsOneWidget);
+    expect(find.byKey(const Key('suggestion-clean-trash')), findsOneWidget);
+
+    await t.tap(find.byKey(const Key('suggestion-clean-trash')));
+    await settle(t);
+
+    expect(api.isTrashed('sconl/Crate/notes.txt'), isFalse);
+    expect(api.exists('sconl/Crate/notes.txt'), isFalse);
+
     await end(t);
   });
 }

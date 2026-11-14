@@ -28,8 +28,8 @@ import '../util/fmt.dart' as fmt;
 
 /// One file or folder in hold.
 class HoldEntry {
-  const HoldEntry({required this.path, required this.name, required this.isFolder, this.size = 0, this.modified, this.mime = '', this.trashed = false});
-  final String path, name, mime;
+  const HoldEntry({required this.path, required this.name, required this.isFolder, this.size = 0, this.modified, this.mime = '', this.trashed = false, this.source = 'uploads'});
+  final String path, name, mime, source;
   final bool isFolder, trashed;
   final int size;
   final DateTime? modified;
@@ -66,8 +66,128 @@ class HoldEntry {
       modified: ms > 0 ? DateTime.fromMillisecondsSinceEpoch(ms * (ms < 100000000000 ? 1000 : 1)) : null,
       mime: fmt.s(m['mime']),
       trashed: fmt.b(m['trashed']),
+      source: fmt.s(m['source']).isNotEmpty ? fmt.s(m['source']) : (fmt.s(m['provenance']).isNotEmpty ? fmt.s(m['provenance']) : 'uploads'),
     );
   }
+}
+
+/// Binary units formatted as GB, MB, KB, B with one decimal place the way Drive does.
+String fmtStorageBytes(int bytes) {
+  if (bytes <= 0) return '0 B';
+  const kb = 1024;
+  const mb = 1024 * kb;
+  const gb = 1024 * mb;
+  if (bytes >= gb) {
+    return '${(bytes / gb).toStringAsFixed(1)} GB';
+  }
+  if (bytes >= mb) {
+    return '${(bytes / mb).toStringAsFixed(1)} MB';
+  }
+  if (bytes >= kb) {
+    return '${(bytes / kb).toStringAsFixed(1)} KB';
+  }
+  return '$bytes B';
+}
+
+/// One breakdown segment: folder, product or file kind.
+class HoldUsageSegment {
+  const HoldUsageSegment({
+    required this.key,
+    required this.label,
+    required this.bytes,
+    this.files = 0,
+    this.path,
+  });
+  final String key;
+  final String label;
+  final int bytes;
+  final int files;
+  final String? path;
+
+  static HoldUsageSegment from(Map<String, dynamic> m) {
+    final p = fmt.s(m['path']);
+    final src = fmt.s(m['source']);
+    final typ = fmt.s(m['type']);
+    final lbl = fmt.s(m['label']);
+    final key = p.isNotEmpty ? p : (src.isNotEmpty ? src : typ);
+    final label = lbl.isNotEmpty ? lbl : (src.isNotEmpty ? src : (typ.isNotEmpty ? typ : (p.contains('/') ? p.split('/').last : p)));
+    return HoldUsageSegment(
+      key: key,
+      label: label.isEmpty ? 'Files' : label,
+      bytes: fmt.i(m['bytes']),
+      files: fmt.i(m['files']),
+      path: p.isNotEmpty ? p : null,
+    );
+  }
+}
+
+/// BI26102801 / BH26102801: tenant storage usage and breakdown.
+class HoldUsage {
+  const HoldUsage({
+    required this.quotaBytes,
+    required this.usedBytes,
+    this.versionsBytes = 0,
+    this.trashBytes = 0,
+    this.byFolder = const [],
+    this.bySource = const [],
+    this.byType = const [],
+    this.computedAt,
+  });
+  final int quotaBytes;
+  final int usedBytes;
+  final int versionsBytes;
+  final int trashBytes;
+  final List<HoldUsageSegment> byFolder;
+  final List<HoldUsageSegment> bySource;
+  final List<HoldUsageSegment> byType;
+  final DateTime? computedAt;
+
+  int get totalUsed => usedBytes + versionsBytes + trashBytes;
+  double get fraction => quotaBytes > 0 ? (totalUsed / quotaBytes).clamp(0.0, 1.0) : 0.0;
+
+  static HoldUsage from(Map<String, dynamic> m) {
+    final ca = fmt.i(m['computed_at']);
+    return HoldUsage(
+      quotaBytes: fmt.i(m['quota_bytes']) > 0 ? fmt.i(m['quota_bytes']) : 15 * 1024 * 1024 * 1024,
+      usedBytes: fmt.i(m['used_bytes']),
+      versionsBytes: fmt.i(m['versions_bytes']),
+      trashBytes: fmt.i(m['trash_bytes']),
+      byFolder: [for (final x in fmt.lm(m['by_folder'])) HoldUsageSegment.from(x)],
+      bySource: [for (final x in fmt.lm(m['by_source'])) HoldUsageSegment.from(x)],
+      byType: [for (final x in fmt.lm(m['by_type'])) HoldUsageSegment.from(x)],
+      computedAt: ca > 0 ? DateTime.fromMillisecondsSinceEpoch(ca * 1000) : null,
+    );
+  }
+}
+
+/// A space clean-up suggestion: empty trash, old versions, duplicates, untouched.
+class HoldSuggestion {
+  const HoldSuggestion({
+    required this.id,
+    required this.kind,
+    required this.title,
+    required this.description,
+    required this.bytes,
+    this.count = 0,
+    this.filePaths = const [],
+  });
+  final String id;
+  final String kind;
+  final String title;
+  final String description;
+  final int bytes;
+  final int count;
+  final List<String> filePaths;
+
+  static HoldSuggestion from(Map<String, dynamic> m) => HoldSuggestion(
+    id: fmt.s(m['id']).isNotEmpty ? fmt.s(m['id']) : fmt.s(m['kind']),
+    kind: fmt.s(m['kind']),
+    title: fmt.s(m['title']),
+    description: fmt.s(m['description']),
+    bytes: fmt.i(m['bytes']),
+    count: fmt.i(m['count']),
+    filePaths: [for (final s in fmt.l(m['file_paths'])) fmt.s(s)],
+  );
 }
 
 class HoldPage {
@@ -117,6 +237,10 @@ abstract class HoldApi {
   Future<HoldUploadSession> beginUpload(String path, int size, String hash);
   Future<int> sendChunk(String id, int offset, Uint8List data);
   Future<HoldEntry> finishUpload(String id);
+  Future<HoldUsage> usage({bool refresh = false});
+  Future<List<HoldEntry>> largestFiles({String? folder, String? source, String? type, int limit = 20});
+  Future<List<HoldSuggestion>> suggestions();
+  Future<int> emptyTrash();
 }
 
 /// "photo.jpg" taken -> "photo (2).jpg"; never overwrites (BH26101801: conflicts keep both, with a suffix).
@@ -267,6 +391,38 @@ class HttpHoldApi implements HoldApi {
 
   @override
   Future<HoldEntry> finishUpload(String id) async => HoldEntry.from(fmt.m((await _post('upload/finish', {'id': id}))['entry']));
+
+  @override
+  Future<HoldUsage> usage({bool refresh = false}) async {
+    final r = await _get('usage', {if (refresh) 'refresh': 'true'});
+    return HoldUsage.from(r);
+  }
+
+  @override
+  Future<List<HoldEntry>> largestFiles({String? folder, String? source, String? type, int limit = 20}) async {
+    final p = <String, String>{
+      'sort': 'size',
+      'dir': 'desc',
+      'limit': '$limit',
+      if (folder != null && folder.isNotEmpty) 'folder': folder,
+      if (source != null && source.isNotEmpty) 'source': source,
+      if (type != null && type.isNotEmpty) 'type': type,
+    };
+    final r = await _get('files', p);
+    return [for (final m in fmt.lm(r['items'])) HoldEntry.from(m)];
+  }
+
+  @override
+  Future<List<HoldSuggestion>> suggestions() async {
+    final r = await _get('usage/suggestions', {});
+    return [for (final m in fmt.lm(r['suggestions'])) HoldSuggestion.from(m)];
+  }
+
+  @override
+  Future<int> emptyTrash() async {
+    final r = await _post('trash/empty', {});
+    return fmt.i(r['freed_bytes']);
+  }
 }
 
 /// An in-memory hold, for tests and for building the space before BH26102001 lands. [failNextChunks] makes the next n
@@ -287,9 +443,15 @@ class FakeHoldApi implements HoldApi {
   final Map<String, DateTime> _modified = {};
   final Set<String> _trash = {};
   final Map<String, ({String path, int size, BytesBuilder data})> _uploads = {};
+  final Map<String, String> _sources = {};
+  int versionsBytes = 0;
   int failNextChunks = 0;
   int chunkCalls = 0;
   int _seq = 0;
+
+  void setSource(String path, String source) {
+    _sources[path] = source;
+  }
 
   Uint8List? bytesOf(String path) => _files[path];
   bool exists(String path) => _files.containsKey(path) || _folders.contains(path);
@@ -301,7 +463,13 @@ class FakeHoldApi implements HoldApi {
   HoldEntry _entry(String path) {
     final isFolder = _folders.contains(path);
     return HoldEntry(
-        path: path, name: _name(path), isFolder: isFolder, size: isFolder ? 0 : _files[path]!.length, modified: _modified[path], trashed: _trash.contains(path));
+        path: path,
+        name: _name(path),
+        isFolder: isFolder,
+        size: isFolder ? 0 : _files[path]!.length,
+        modified: _modified[path],
+        trashed: _trash.contains(path),
+        source: _sources[path] ?? 'uploads');
   }
 
   Iterable<String> get _all => [..._folders, ..._files.keys];
@@ -431,5 +599,136 @@ class FakeHoldApi implements HoldApi {
     _files[u.path] = u.data.toBytes();
     _modified[u.path] = DateTime.now();
     return _entry(u.path);
+  }
+
+  @override
+  Future<HoldUsage> usage({bool refresh = false}) async {
+    final nonTrashed = [for (final p in _files.keys) if (!_trash.contains(p)) p];
+    final used = nonTrashed.fold<int>(0, (acc, p) => acc + _files[p]!.length);
+    final trash = [for (final p in _files.keys) if (_trash.contains(p)) p].fold<int>(0, (acc, p) => acc + _files[p]!.length);
+
+    // Group by folder
+    final folderMap = <String, ({String label, int bytes, int files})>{};
+    for (final p in nonTrashed) {
+      final size = _files[p]!.length;
+      final seg = _classifyFolder(p);
+      final cur = folderMap[seg.path] ?? (label: seg.label, bytes: 0, files: 0);
+      folderMap[seg.path] = (label: cur.label, bytes: cur.bytes + size, files: cur.files + 1);
+    }
+    final byFolder = [
+      for (final e in folderMap.entries)
+        HoldUsageSegment(key: e.key, label: e.value.label, bytes: e.value.bytes, files: e.value.files, path: e.key)
+    ]..sort((a, b) => b.bytes.compareTo(a.bytes));
+
+    // Group by source
+    final sourceMap = <String, ({int bytes, int files})>{};
+    for (final p in nonTrashed) {
+      final size = _files[p]!.length;
+      final src = _sources[p] ?? 'uploads';
+      final cur = sourceMap[src] ?? (bytes: 0, files: 0);
+      sourceMap[src] = (bytes: cur.bytes + size, files: cur.files + 1);
+    }
+    final bySource = [
+      for (final e in sourceMap.entries)
+        HoldUsageSegment(key: e.key, label: e.key, bytes: e.value.bytes, files: e.value.files)
+    ]..sort((a, b) => b.bytes.compareTo(a.bytes));
+
+    // Group by type
+    final typeMap = <String, ({int bytes, int files})>{};
+    for (final p in nonTrashed) {
+      final size = _files[p]!.length;
+      final k = _entry(p).kind;
+      final cur = typeMap[k] ?? (bytes: 0, files: 0);
+      typeMap[k] = (bytes: cur.bytes + size, files: cur.files + 1);
+    }
+    final byType = [
+      for (final e in typeMap.entries)
+        HoldUsageSegment(key: e.key, label: e.key, bytes: e.value.bytes, files: e.value.files)
+    ]..sort((a, b) => b.bytes.compareTo(a.bytes));
+
+    return HoldUsage(
+      quotaBytes: 15 * 1024 * 1024 * 1024,
+      usedBytes: used,
+      versionsBytes: versionsBytes,
+      trashBytes: trash,
+      byFolder: byFolder,
+      bySource: bySource,
+      byType: byType,
+      computedAt: DateTime.now(),
+    );
+  }
+
+  ({String path, String label}) _classifyFolder(String p) {
+    final lower = p.toLowerCase();
+    if (lower.contains('audio-recordings')) return (path: 'audio-recordings', label: 'Recordings');
+    if (lower.contains('voice-notes')) return (path: 'voice-notes', label: 'Voice notes');
+    if (lower.contains('learning-audio') || lower.contains('study-audio')) return (path: 'learning-audio', label: 'Study audio');
+    if (lower.contains('photos')) return (path: 'Media/Photos', label: 'Photos');
+    if (lower.contains('documents')) return (path: 'Documents', label: 'Documents');
+    final parts = p.split('/');
+    if (parts.length <= 2) return (path: '', label: 'Loose files');
+    return (path: parts[1], label: parts[1]);
+  }
+
+  @override
+  Future<List<HoldEntry>> largestFiles({String? folder, String? source, String? type, int limit = 20}) async {
+    final matched = <HoldEntry>[];
+    for (final p in _files.keys) {
+      if (_trash.contains(p)) continue;
+      if (folder != null && folder.isNotEmpty) {
+        final f = _classifyFolder(p);
+        if (!p.contains(folder) && f.path != folder) continue;
+      }
+      if (source != null && source.isNotEmpty) {
+        if ((_sources[p] ?? 'uploads') != source) continue;
+      }
+      if (type != null && type.isNotEmpty) {
+        if (_entry(p).kind != type) continue;
+      }
+      matched.add(_entry(p));
+    }
+    matched.sort((a, b) => b.size.compareTo(a.size));
+    return matched.take(limit).toList();
+  }
+
+  @override
+  Future<List<HoldSuggestion>> suggestions() async {
+    final list = <HoldSuggestion>[];
+    final trashFiles = [for (final p in _files.keys) if (_trash.contains(p)) p];
+    if (trashFiles.isNotEmpty) {
+      final bytes = trashFiles.fold<int>(0, (acc, p) => acc + _files[p]!.length);
+      list.add(HoldSuggestion(
+        id: 'trash',
+        kind: 'trash',
+        title: 'Empty trash',
+        description: 'Remove ${trashFiles.length} files currently in trash',
+        bytes: bytes,
+        count: trashFiles.length,
+        filePaths: trashFiles,
+      ));
+    }
+    if (versionsBytes > 0) {
+      list.add(HoldSuggestion(
+        id: 'versions',
+        kind: 'versions',
+        title: 'Clean old versions',
+        description: 'Past the 30-day version retention rule',
+        bytes: versionsBytes,
+        count: 5,
+      ));
+    }
+    return list;
+  }
+
+  @override
+  Future<int> emptyTrash() async {
+    final trashFiles = [for (final p in _files.keys) if (_trash.contains(p)) p];
+    final freed = trashFiles.fold<int>(0, (acc, p) => acc + _files[p]!.length);
+    for (final p in trashFiles) {
+      _files.remove(p);
+      _trash.remove(p);
+      _modified.remove(p);
+    }
+    return freed;
   }
 }
