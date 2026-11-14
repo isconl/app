@@ -13,7 +13,6 @@ import '../../services/prefetch.dart' show DbPrefetchStore, markPrefetchOpened;
 import '../../data/db.dart';
 import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink, ParagraphHook;
 import '../widgets/recall_card.dart';
-import '../../data/lesson_notes.dart';
 import '../../data/modules.dart';
 import '../../study/cdm/cdm_lesson_body.dart';
 import '../../study/trajectory/trajectory_model.dart';
@@ -36,6 +35,8 @@ import '../widgets/study_pick_card.dart';
 import '../../services/study_extras.dart';
 import '../widgets/module_lifecycle.dart';
 import '../widgets/reader.dart';
+import '../widgets/lesson_notes_editor.dart';
+export '../widgets/lesson_notes_editor.dart' show LessonNotes;
 import '../widgets/standard_tag.dart';
 import '../../services/course_standard.dart';
 import '../../util/module_standard.dart';
@@ -1868,6 +1869,7 @@ class _LessonScreenState extends State<LessonScreen> {
                 _LessonNotes(
                   course: widget.course,
                   file: widget.file,
+                  title: widget.title,
                   anchor: anchor,
                   inSheet: true,
                 ),
@@ -2300,7 +2302,7 @@ class _LessonScreenState extends State<LessonScreen> {
                     // BI26101207: a Trajectory module's forecast block, read from the served payload.
                     if (Trajectory.tryParse(lessonMap['trajectory'], sconlOnly: lessonMap['sconlOnly'] ?? lessonMap['sconl_only']) case final traj?)
                       TrajectorySection(course: widget.course, file: widget.file, trajectory: traj),
-                    _LessonNotes(course: widget.course, file: widget.file),
+                    _LessonNotes(course: widget.course, file: widget.file, title: widget.title),
                     // BI26092613: "Mark as done" button at the end of the module,
                     // full width, in the track colour. Shows "Done · undo" for 5 seconds.
                     Padding(
@@ -2504,202 +2506,3 @@ class _LessonNavButton extends StatelessWidget {
 }
 
 typedef _LessonNotes = LessonNotes;
-
-/// Module notes widget. Keeps storage isolated behind LessonNotesRepository
-/// (Study-on-Canvas contract).
-class LessonNotes extends StatefulWidget {
-  const LessonNotes({
-    super.key,
-    required this.course,
-    required this.file,
-    this.anchor,
-    this.inSheet = false,
-    this.repository,
-  });
-
-  final String course;
-  final String file;
-  final int? anchor;
-  final bool inSheet;
-  final LessonNotesRepository? repository;
-
-  @override
-  State<LessonNotes> createState() => _LessonNotesState();
-}
-
-class _LessonNotesState extends State<LessonNotes> {
-  final _controller = TextEditingController();
-  late bool _open = widget.inSheet;
-  bool _loading = false;
-  bool _loaded = false;
-  bool _saving = false;
-  String? _error;
-  int? _anchor;
-
-  LessonNotesRepository _repo(BuildContext context) =>
-      widget.repository ?? AppScope.of(context).lessonNotes;
-
-  @override
-  void initState() {
-    super.initState();
-    _anchor = widget.anchor;
-    if (widget.inSheet) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _load();
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    if (_loaded || _loading) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final note = await _repo(context).getNote(
-        course: widget.course,
-        file: widget.file,
-      );
-      if (!mounted) return;
-      if (note != null) {
-        _controller.text = note.text;
-        _anchor ??= note.anchor;
-      }
-      setState(() => _loaded = true);
-    } catch (e) {
-      if (mounted) {
-        setState(() => _error = 'Could not load your notes ($e).');
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    final res = await _repo(context).saveNote(
-      course: widget.course,
-      file: widget.file,
-      text: _controller.text,
-      anchor: _anchor,
-    );
-    if (!mounted) return;
-    setState(() => _saving = false);
-    if (!res.ok) {
-      toast(context, res.error!, error: true);
-    } else if (res.queued) {
-      toast(context, 'Note queued - will sync');
-    } else {
-      toast(context, 'Note saved');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final noteBody = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_error != null)
-          ErrorRetry(_error!, onRetry: () {
-            _loaded = false;
-            _load();
-          }),
-        TextField(
-          controller: _controller,
-          maxLines: null,
-          minLines: 5,
-          style: T.body.copyWith(
-              fontSize: 15, height: 1.62, color: C.text),
-          decoration: InputDecoration(
-            filled: false,
-            contentPadding: const EdgeInsets.symmetric(vertical: 6),
-            hintText: 'Write it here.',
-            hintStyle: T.body2.copyWith(color: C.text3, fontSize: 15),
-            enabledBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: C.border)),
-            focusedBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: C.green)),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            FilledButton.icon(
-              onPressed: _saving ? null : _save,
-              icon: _saving
-                  ? const MiniSpinner()
-                  : const Icon(Icons.save_rounded, size: 16),
-              label: const Text('Save note'),
-            ),
-            if (_anchor != null)
-              Text(
-                'Anchored to paragraph ${_anchor! + 1}',
-                style: T.tiny.copyWith(color: C.text3),
-              ),
-          ],
-        ),
-      ],
-    );
-
-    if (widget.inSheet) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('NOTES', style: T.label.copyWith(color: C.text2)),
-              if (_loading) const MiniSpinner(),
-            ],
-          ),
-          const SizedBox(height: 10),
-          noteBody,
-        ],
-      );
-    }
-
-    return ReadingSection(
-      label: 'Your notes',
-      trailing: InkWell(
-        borderRadius: BorderRadius.circular(Sz.rSm),
-        onTap: () {
-          setState(() => _open = !_open);
-          if (_open) _load();
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_loading) ...[const MiniSpinner(), const SizedBox(width: 8)],
-              Text(_open ? 'Close' : 'Write', style: T.tiny.copyWith(color: C.green)),
-              Icon(
-                  _open
-                      ? Icons.expand_less_rounded
-                      : Icons.expand_more_rounded,
-                  size: 16,
-                  color: C.green),
-            ],
-          ),
-        ),
-      ),
-      child: !_open
-          ? Text(
-              'What you made of it. The tutor loads these as context, and the '
-              'agent reads them when it revises the course.',
-              style: T.body2.copyWith(color: C.text3, height: 1.6),
-            )
-          : noteBody,
-    );
-  }
-}
-

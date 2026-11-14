@@ -26,6 +26,12 @@ class ApiException implements Exception {
   /// BI26103095: hub itself answered (a JSON error body), so the server is reachable even though this one request
   /// failed, for instance an engine that is not running on the light fleet. Only a missing answer means unreachable.
   final bool answered;
+
+  /// A gateway, timeout, rate limit or server fault: the write may succeed later
+  /// unchanged, so queue it rather than refuse it (a host move or a tunnel
+  /// blip answers 502/503/530 for a minute).
+  bool get transient =>
+      status == 0 || status == 408 || status == 429 || status >= 500;
   @override
   String toString() => 'ApiException($status): $message';
 }

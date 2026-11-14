@@ -42,19 +42,14 @@ class FakeApiClient extends ApiClient {
 
 class FakeLessonNotesRepository implements LessonNotesRepository {
   @override
-  AppDb get db => throw UnimplementedError();
-
-  @override
-  ApiClient Function() get apiOf => throw UnimplementedError();
-
-  @override
-  Mutations get mutations => throw UnimplementedError();
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 
   LessonNote? note;
   String? lastSavedCourse;
   String? lastSavedFile;
   String? lastSavedText;
   int? lastSavedAnchor;
+  int drafts = 0;
 
   @override
   Future<LessonNote?> getNote({required String course, required String file}) async {
@@ -62,11 +57,28 @@ class FakeLessonNotesRepository implements LessonNotesRepository {
   }
 
   @override
+  Future<void> saveDraft({
+    required String course,
+    required String file,
+    required String text,
+    int? anchor,
+    String? title,
+  }) async {
+    drafts++;
+    lastSavedText = text;
+  }
+
+  @override
+  Future<MutationResult> pushOne({required String course, required String file}) async =>
+      MutationResult.sent();
+
+  @override
   Future<MutationResult> saveNote({
     required String course,
     required String file,
     required String text,
     int? anchor,
+    String? title,
   }) async {
     lastSavedCourse = course;
     lastSavedFile = file;
@@ -74,6 +86,24 @@ class FakeLessonNotesRepository implements LessonNotesRepository {
     lastSavedAnchor = anchor;
     note = LessonNote(course: course, file: file, text: text, anchor: anchor);
     return MutationResult.sent();
+  }
+}
+
+/// A server that can be switched off, to prove notes wait on the phone.
+class FlakyNotesApi extends FakeApiClient {
+  bool down = false;
+  int posts = 0;
+  @override
+  Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async {
+    if (down) throw OfflineException();
+    return super.getJson(path, cold: cold, stored: stored);
+  }
+
+  @override
+  Future<dynamic> postJson(String path, Map<String, dynamic> body, {bool cold = false}) async {
+    if (down) throw ApiException(502, 'Bad gateway');
+    posts++;
+    return super.postJson(path, body, cold: cold);
   }
 }
 
@@ -251,7 +281,7 @@ void main() {
   });
 
   group('BI26092614: LessonNotes UI widget', () {
-    testWidgets('renders note editor and saves note', (tester) async {
+    testWidgets('renders note editor, autosaves, and saves on the button', (tester) async {
       final repo = FakeLessonNotesRepository();
 
       await tester.pumpWidget(MaterialApp(
@@ -271,11 +301,15 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('NOTES'), findsOneWidget);
-      expect(find.text('Anchored to paragraph 5'), findsOneWidget);
-      expect(find.text('Save note'), findsOneWidget);
+      expect(find.textContaining('Anchored to paragraph 5'), findsOneWidget);
+      expect(find.text('Save and close'), findsOneWidget);
 
       await tester.enterText(find.byType(TextField), 'Important indemnity clause notes.');
-      await tester.tap(find.text('Save note'));
+      await tester.pump(const Duration(milliseconds: 800));
+      expect(repo.drafts, 1, reason: 'a pause in typing saves on the phone');
+      expect(find.text('Saved on this phone'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('note-save')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -283,6 +317,65 @@ void main() {
       expect(repo.lastSavedFile, '02-contracts.md');
       expect(repo.lastSavedText, 'Important indemnity clause notes.');
       expect(repo.lastSavedAnchor, 4);
+      expect(find.textContaining('Synced'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+    });
+  });
+
+  group('BI26111402: notes wait on the phone and sync themselves', () {
+    Future<(LessonNotesRepository, FlakyNotesApi, AppDb)> setup() async {
+      final db = await freshDb();
+      final api = FlakyNotesApi();
+      final store = Store(db, () => api);
+      final outbox = OutboxService(db, () => api);
+      final sync = SyncEngine(store, outbox, () => api);
+      final mutations = Mutations(store, outbox, sync, () => api);
+      return (LessonNotesRepository(apiOf: () => api, mutations: mutations, db: db), api, db);
+    }
+
+    test('a note saved while the server is down is kept, then pushAll sends it', () async {
+      final (repo, api, _) = await setup();
+      api.down = true;
+      final r = await repo.saveNote(course: 'c', file: 'm1.md', text: 'idea one');
+      expect(r.ok, isTrue);
+      expect(r.queued, isTrue);
+      expect(repo.waiting, 1);
+
+      api.down = false;
+      expect(await repo.pushAll(), 1);
+      expect(repo.waiting, 0);
+      final n = await repo.getNote(course: 'c', file: 'm1.md');
+      expect(n!.text, 'idea one');
+      expect(n.sync, NoteSync.synced);
+      expect(await repo.pushAll(), 0, reason: 'nothing is sent twice');
+    });
+
+    test('an unsent edit on the phone is never replaced by the older server copy', () async {
+      final (repo, api, _) = await setup();
+      await repo.saveNote(course: 'c', file: 'm1.md', text: 'old');
+      api.down = true;
+      await repo.saveNote(course: 'c', file: 'm1.md', text: 'newer, unsent');
+      api.down = false;
+      final n = await repo.getNote(course: 'c', file: 'm1.md');
+      expect(n!.text, 'newer, unsent');
+    });
+
+    test('notes written before the update (no synced_at) are pushed once', () async {
+      final (repo, api, db) = await setup();
+      await db.saveLessonNoteLocal(course: 'c', file: 'a.md', text: 'from this morning');
+      await db.saveLessonNoteLocal(course: 'c', file: 'b.md', text: '');
+      expect(await repo.pushAll(), 1, reason: 'the empty never-sent note is skipped');
+      expect(api.posts, 1);
+    });
+
+    test('export lists every note under its course', () async {
+      final (repo, _, _) = await setup();
+      await repo.saveNote(course: 'c', file: '20261114_x_module_03_three_messages_v4_8_0.md', text: 'ask Joel');
+      final md = await repo.exportMarkdown(now: DateTime(2026, 11, 14));
+      expect(md, contains('# Study notes, 2026-11-14'));
+      expect(md, contains('## c'));
+      expect(md, contains('Module 3: three messages'));
+      expect(md, contains('ask Joel'));
     });
   });
 

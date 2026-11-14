@@ -36,6 +36,8 @@ import 'views/media_view.dart';
 import 'views/notifications.dart';
 import 'views/ops.dart';
 import 'views/outbox_view.dart';
+import 'views/study_notes_view.dart';
+import '../data/lesson_notes.dart' show LessonNotesRepository;
 import 'views/planning.dart';
 import 'views/practice.dart';
 import 'views/projects.dart';
@@ -968,6 +970,9 @@ class MenuSheet extends StatelessWidget {
               () => go(const RhythmView(), 'Rhythm')),
           _item(ctx, Icons.school_rounded, 'Study',
               () => go(const LearningView(), 'Study')),
+          _item(ctx, Icons.edit_note_rounded, 'Study notes',
+              () => go(const StudyNotesView(), 'Study notes'),
+              badgeListenable: services.lessonNotes),
           _item(ctx, Icons.account_balance_wallet_rounded, 'Flot',
               () => go(const FinanceView(), 'Flot')),
           _item(ctx, Icons.edit_note_rounded, 'Flot tools',
@@ -1056,7 +1061,9 @@ class MenuSheet extends StatelessWidget {
             listenable: badgeListenable,
             builder: (context, _) {
               final services = AppScope.of(context);
-              final n = services.outbox.pending;
+              final n = badgeListenable is LessonNotesRepository
+                  ? badgeListenable.waiting
+                  : services.outbox.pending;
               return n > 0
                   ? Badge2('$n', color: C.amberBg, textColor: C.amber)
                   : const SizedBox.shrink();
@@ -1197,6 +1204,7 @@ class SecondaryScreen extends StatelessWidget {
     'articles' => (const ArticlesView(), 'Articles'),
     'decisions' => (const DecisionsView(), 'Decisions & Risks'),
     'outbox' => (const OutboxView(), 'Outbox'),
+    'notes' || 'study_notes' => (const StudyNotesView(), 'Study notes'),
     'settings' => (const SettingsView(), 'Settings'),
     'backlog' => (const SlateView(), 'Slate'),
     _ => null,

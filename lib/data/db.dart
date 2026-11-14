@@ -56,7 +56,12 @@ class AppDb {
       // movement, how many blocks, words left, title), so reading resumes at the
       // same block after a font-size or renderer change, and Today can offer
       // "Continue reading" without opening the module.
-      version: 8,
+      // v9 (BI26111402): lesson_notes knows whether the server has its latest
+      // text (synced_at), what module it belongs to by name (title) and when it
+      // was first written (created_at). A note with updated_at > synced_at, or no
+      // synced_at at all, is still to be sent, so notes written before v8 are all
+      // pushed once on the first sync after the update.
+      version: 9,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE snapshots (
@@ -105,6 +110,9 @@ class AppDb {
             text TEXT NOT NULL,
             anchor INTEGER,
             updated_at INTEGER NOT NULL,
+            synced_at INTEGER,
+            title TEXT,
+            created_at INTEGER,
             PRIMARY KEY (course, file)
           )''');
         await db.execute('''
@@ -198,6 +206,7 @@ class AppDb {
               synced INTEGER NOT NULL DEFAULT 0
             )''');
         }
+        if (oldVersion < 9) await ensureLessonNoteColumns(db);
       },
     );
     return AppDb._(db);
@@ -563,23 +572,96 @@ class AppDb {
 
   // ---- lesson notes (BI26092614) ----
 
-  /// Saves a lesson note locally with optional paragraph/block anchor.
-  Future<void> saveLessonNoteLocal({
+  /// BI26111402: adds the sync columns to an older lesson_notes table. Safe to
+  /// run twice: a column that is already there is skipped.
+  static Future<void> ensureLessonNoteColumns(DatabaseExecutor db) async {
+    for (final col in const [
+      'synced_at INTEGER',
+      'title TEXT',
+      'created_at INTEGER',
+    ]) {
+      try {
+        await db.execute('ALTER TABLE lesson_notes ADD COLUMN $col');
+      } catch (_) {}
+    }
+  }
+
+  Future<void>? _noteCols;
+  Future<void> _notesReady() => _noteCols ??= ensureLessonNoteColumns(_db);
+
+  /// Saves a lesson note on the phone. The note stays unsynced until
+  /// [markLessonNoteSynced] records that the server has this exact version.
+  /// Returns the updated_at it was stored with.
+  Future<int> saveLessonNoteLocal({
     required String course,
     required String file,
     required String text,
     int? anchor,
+    String? title,
   }) async {
+    await _notesReady();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final prior = await lessonNoteLocal(course: course, file: file);
+    // Keep updated_at strictly increasing so a save in the same millisecond as
+    // a sync still reads as newer than what was sent.
+    final priorAt = (prior?['updated_at'] as int?) ?? 0;
+    final at = now > priorAt ? now : priorAt + 1;
     await _db.insert(
       'lesson_notes',
       {
         'course': course,
         'file': file,
         'text': text,
-        'anchor': anchor,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
+        'anchor': anchor ?? prior?['anchor'],
+        'updated_at': at,
+        'synced_at': prior?['synced_at'],
+        'title': (title != null && title.trim().isNotEmpty)
+            ? title.trim()
+            : prior?['title'],
+        'created_at': prior?['created_at'] ?? at,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return at;
+  }
+
+  /// Takes a note that came from the server into the phone, already synced.
+  Future<void> adoptLessonNoteFromServer({
+    required String course,
+    required String file,
+    required String text,
+  }) async {
+    await _notesReady();
+    final prior = await lessonNoteLocal(course: course, file: file);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.insert(
+      'lesson_notes',
+      {
+        'course': course,
+        'file': file,
+        'text': text,
+        'anchor': prior?['anchor'],
+        'updated_at': now,
+        'synced_at': now,
+        'title': prior?['title'],
+        'created_at': prior?['created_at'] ?? now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Records that the server holds the version saved at [version]. A newer
+  /// edit made while the send was in flight stays unsynced.
+  Future<void> markLessonNoteSynced({
+    required String course,
+    required String file,
+    required int version,
+  }) async {
+    await _notesReady();
+    await _db.rawUpdate(
+      'UPDATE lesson_notes SET synced_at = ? '
+      'WHERE course = ? AND file = ? AND updated_at = ?',
+      [version, course, file, version],
     );
   }
 
@@ -588,6 +670,7 @@ class AppDb {
     required String course,
     required String file,
   }) async {
+    await _notesReady();
     final rows = await _db.query(
       'lesson_notes',
       where: 'course = ? AND file = ?',
@@ -595,9 +678,26 @@ class AppDb {
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    return rows.first;
+    return Map<String, dynamic>.from(rows.first);
   }
 
+  /// Every note on the phone, newest edit first.
+  Future<List<Map<String, dynamic>>> allLessonNotes() async {
+    await _notesReady();
+    final rows = await _db.query('lesson_notes', orderBy: 'updated_at DESC');
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  /// Notes the server does not have yet, oldest edit first.
+  Future<List<Map<String, dynamic>>> unsyncedLessonNotes() async {
+    await _notesReady();
+    final rows = await _db.query(
+      'lesson_notes',
+      where: 'synced_at IS NULL OR updated_at > synced_at',
+      orderBy: 'updated_at ASC',
+    );
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
 
   // ---- vault mirror (BN26083107, BI26092608) ----
 

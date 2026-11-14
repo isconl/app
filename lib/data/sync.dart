@@ -64,6 +64,20 @@ class SyncEngine extends ChangeNotifier {
   final Set<String> _seenAlertIds = {};
   bool _started = false;
 
+  /// BI26111402: other local-first stores (lesson notes) that send their own
+  /// waiting changes. Run on every full sync and on every poll tick.
+  final List<Future<int> Function()> pushers = [];
+
+  Future<int> _runPushers() async {
+    var n = 0;
+    for (final push in pushers) {
+      try {
+        n += await push();
+      } catch (_) {}
+    }
+    return n;
+  }
+
   void start() {
     if (_started) return;
     _started = true;
@@ -83,6 +97,10 @@ class SyncEngine extends ChangeNotifier {
     // Match the dashboard's 90s polling cadence for the core state.
     _pollTimer = Timer.periodic(const Duration(seconds: 90), (_) {
       if (online && phase == SyncPhase.idle) {
+        // Queued writes (notes, progress) go out on the next tick, not only
+        // on reconnect or the next time the app comes to the front.
+        if (_outbox.pending > 0 && !_outbox.draining) _outbox.drain();
+        _runPushers();
         _store.state.refresh();
         _refreshAlerts();
       }
@@ -127,7 +145,7 @@ class SyncEngine extends ChangeNotifier {
 
       phase = SyncPhase.pushing;
       notifyListeners();
-      final delivered = await _outbox.drain();
+      final delivered = await _outbox.drain() + await _runPushers();
 
       if (delivered > 0) {
         // Ask the server to sync the vault to OneDrive now.

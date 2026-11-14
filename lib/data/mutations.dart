@@ -50,7 +50,8 @@ class Mutations {
       } on OfflineException {
         // fall through to queue
       } on ApiException catch (e) {
-        return MutationResult.failed(e.message);
+        if (!queueable || !e.transient) return MutationResult.failed(e.message);
+        // fall through to queue: the server is there but not answering yet
       } catch (e) {
         if (!queueable) return MutationResult.failed('$e');
         // fall through to queue on connection/network error when queueable

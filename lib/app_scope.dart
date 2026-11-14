@@ -125,6 +125,8 @@ class AppServices {
     final sms = SmsIngest(apiOf);
     final updater = UpdateService(apiOf);
     final lessonNotes = LessonNotesRepository(apiOf: apiOf, mutations: mutations, db: db);
+    sync.pushers.add(lessonNotes.pushAll);
+    await lessonNotes.refreshWaiting();
     await outbox.refreshCount();
     await modules.load();
     await store.learning.hydrate();

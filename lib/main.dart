@@ -179,6 +179,12 @@ class _RootGateState extends State<RootGate> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // BI26101528: taps queued by the tile and widget while the app was away are taken over each time it is in front.
     if (state == AppLifecycleState.resumed) _runClockPass();
+    // BI26111402: notes go out when the app comes back and as it is put away.
+    if (state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.paused) {
+      final notes = _clockServices?.lessonNotes;
+      if (notes != null) unawaited(notes.pushAll());
+    }
     final feed = activeCloseFeed;
     if (feed == null) return;
     if (state == AppLifecycleState.resumed) {

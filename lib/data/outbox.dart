@@ -78,6 +78,11 @@ class OutboxService extends ChangeNotifier {
             lastError = 'session expired';
             break;
           }
+          if (e.transient) {
+            // Server busy or moving: keep it pending, keep order, try next pass.
+            lastError = e.message;
+            break;
+          }
           // Rejected by the server: keep it visible as failed, move on.
           await _db.markOutbox(id, 'failed', e.message);
         } catch (e) {
