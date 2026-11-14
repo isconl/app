@@ -89,6 +89,20 @@ class FakeLessonNotesRepository implements LessonNotesRepository {
   }
 }
 
+/// BI26111402: answers by path, to prove how the outbox treats each kind of answer.
+class ScriptedApi extends FakeApiClient {
+  ScriptedApi(this.answers);
+  final Map<String, Object> answers; // path -> ApiException/OfflineException to throw, or anything to succeed
+  final List<String> posted = [];
+  @override
+  Future<dynamic> postJson(String path, Map<String, dynamic> body, {bool cold = false}) async {
+    posted.add(path);
+    final a = answers[path];
+    if (a is Exception) throw a;
+    return <String, dynamic>{'ok': true};
+  }
+}
+
 /// A server that can be switched off, to prove notes wait on the phone.
 class FlakyNotesApi extends FakeApiClient {
   bool down = false;
@@ -437,6 +451,55 @@ void main() {
 
       expect(scroll.offset, 0.0);
       expect(find.byIcon(Icons.vertical_align_top_rounded), findsNothing);
+    });
+  });
+
+  group('BI26111402: the outbox tells a refusal from no answer', () {
+    test('a refusal hub answered is failed and skipped; no answer keeps the rest waiting in order', () async {
+      final db = await freshDb();
+      final api = ScriptedApi({
+        '/api/jira/x': ApiException(503, 'engine not on this fleet', answered: true),
+        '/api/tasks': ApiException(502, 'Server error 502'),
+      });
+      final outbox = OutboxService(db, () => api);
+      await outbox.enqueue(path: '/api/jira/x', body: {}, label: 'a', view: 'v');
+      await outbox.enqueue(path: '/api/ok', body: {}, label: 'b', view: 'v');
+      await outbox.enqueue(path: '/api/tasks', body: {}, label: 'c', view: 'v');
+      await outbox.enqueue(path: '/api/ok2', body: {}, label: 'd', view: 'v');
+
+      expect(await outbox.drain(), 1);
+      expect(api.posted, ['/api/jira/x', '/api/ok', '/api/tasks'], reason: 'stops at the first missing answer');
+      expect(outbox.failed, 1, reason: 'the refusal is visible');
+      expect(outbox.pending, 2, reason: 'refusals are not counted as waiting');
+
+      api.answers.remove('/api/tasks');
+      api.posted.clear();
+      expect(await outbox.drain(), 2);
+      expect(api.posted, ['/api/tasks', '/api/ok2'], reason: 'the refusal is not retried on its own');
+      expect(outbox.pending, 0);
+      expect(outbox.failed, 1);
+    });
+
+    test('refusals from before the update get exactly one more try', () async {
+      final db = await freshDb();
+      final api = ScriptedApi({});
+      final outbox = OutboxService(db, () => api);
+      await outbox.enqueue(path: '/api/old', body: {}, label: 'old', view: 'v');
+      final id = (await db.pendingOutbox()).first['id'] as int;
+      await db.markOutbox(id, 'failed', 'Server error 502');
+      expect(await outbox.drain(), 1);
+      await outbox.enqueue(path: '/api/no', body: {}, label: 'no', view: 'v');
+      api.answers['/api/no'] = ApiException(400, 'bad');
+      await outbox.drain();
+      api.answers.remove('/api/no');
+      expect(await outbox.drain(), 0, reason: 'the one-off retry does not repeat');
+    });
+
+    test('transient means no answer: an answered 5xx is not transient', () {
+      expect(ApiException(503, 'x', answered: true).transient, isFalse);
+      expect(ApiException(502, 'x').transient, isTrue);
+      expect(ApiException(429, 'x').transient, isTrue);
+      expect(ApiException(404, 'x').transient, isFalse);
     });
   });
 }

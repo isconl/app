@@ -18,7 +18,10 @@ class OutboxService extends ChangeNotifier {
   final AppDb _db;
   final ApiClient Function() _api;
 
+  /// Writes waiting to go. Refused ones are counted in [failed], not here.
   int pending = 0;
+  /// BI26111402: writes the server answered "no" to; shown in the Outbox, retried only by hand.
+  int failed = 0;
   bool draining = false;
   String? lastError;
 
@@ -27,6 +30,9 @@ class OutboxService extends ChangeNotifier {
 
   Future<void> refreshCount() async {
     pending = await _db.pendingCount();
+    try {
+      failed = await _db.failedCount();
+    } catch (_) {}
     try {
       moduleOps = moduleOpsFromOutbox(await _db.outboxHistory(limit: 200));
     } catch (_) {
@@ -51,6 +57,9 @@ class OutboxService extends ChangeNotifier {
   Future<int> drain() async {
     if (draining) return 0;
     draining = true;
+    try {
+      await _db.retryFailedOnce('outbox_retry_failed_once_BI26111402');
+    } catch (_) {}
     lastError = null;
     notifyListeners();
     var delivered = 0;
@@ -79,14 +88,18 @@ class OutboxService extends ChangeNotifier {
             break;
           }
           if (e.transient) {
-            // Server busy or moving: keep it pending, keep order, try next pass.
+            // No answer from the server (tunnel, timeout, rate limit): it stays pending, in order, for the next pass.
             lastError = e.message;
+            await _db.markOutbox(id, 'pending', e.message);
             break;
           }
-          // Rejected by the server: keep it visible as failed, move on.
+          // The server answered no: keep it visible as failed, never retried on its own, and go on with the rest.
           await _db.markOutbox(id, 'failed', e.message);
         } catch (e) {
-          await _db.markOutbox(id, 'failed', '$e');
+          // Not an answer at all (a socket error): the same as offline.
+          lastError = '$e';
+          await _db.markOutbox(id, 'pending', '$e');
+          break;
         }
       }
       await _db.pruneSentOutbox();

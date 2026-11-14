@@ -282,15 +282,33 @@ class AppDb {
 
   Future<List<Map<String, dynamic>>> pendingOutbox() async {
     final rows = await _db.query('outbox',
-        where: "status = 'pending' OR status = 'failed'",
+        where: "status = 'pending'",
         orderBy: 'id ASC');
     return rows.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
   Future<int> pendingCount() async {
     final rows = await _db.rawQuery(
-        "SELECT COUNT(*) AS n FROM outbox WHERE status = 'pending' OR status = 'failed'");
+        "SELECT COUNT(*) AS n FROM outbox WHERE status = 'pending'");
     return (rows.first['n'] as int?) ?? 0;
+  }
+
+  /// BI26111402: writes the server refused. Kept for the Outbox view and a manual retry, never retried on their own.
+  Future<int> failedCount() async {
+    final rows = await _db.rawQuery(
+        "SELECT COUNT(*) AS n FROM outbox WHERE status = 'failed'");
+    return (rows.first['n'] as int?) ?? 0;
+  }
+
+  /// BI26111402: once, after the update that stopped retrying refusals: every refused write gets one more try, so a
+  /// write that only met a blip (a host move, a timeout) goes through and only real refusals stay refused.
+  Future<int> retryFailedOnce(String marker) async {
+    final done = await _db.query('snapshots', where: 'key = ?', whereArgs: [marker], limit: 1);
+    if (done.isNotEmpty) return 0;
+    final n = await _db.rawUpdate("UPDATE outbox SET status = 'pending' WHERE status = 'failed'");
+    await _db.insert('snapshots', {'key': marker, 'json': 'true', 'fetched_at': DateTime.now().millisecondsSinceEpoch},
+        conflictAlgorithm: ConflictAlgorithm.replace);
+    return n;
   }
 
   Future<void> markOutbox(int id, String status, [String? error]) async {

@@ -108,7 +108,7 @@ void main() {
       final api = make(cache);
       next = () async => http.Response(jsonEncode({'error': 'Deck refused to parse this lesson'}), 400);
       expect(await api.getJson('/api/learning/lesson?course=c1&file=l1.md'), {'content': 'stored markdown'});
-      expect(api.serverUnreachable, isTrue);
+      expect(api.serverUnreachable, isFalse, reason: "a lesson spark cannot parse is not the server being away (BI26111402)");
       expect(api.servedFromCacheAt, DateTime(2026, 10, 27, 9));
     });
 

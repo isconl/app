@@ -30,8 +30,13 @@ class ApiException implements Exception {
   /// A gateway, timeout, rate limit or server fault: the write may succeed later
   /// unchanged, so queue it rather than refuse it (a host move or a tunnel
   /// blip answers 502/503/530 for a minute).
+  /// A 5xx that hub answered itself (JSON) is a real "no", such as an engine
+  /// that is not on this fleet: retrying it only blocks the queue behind it.
   bool get transient =>
-      status == 0 || status == 408 || status == 429 || status >= 500;
+      status == 0 ||
+      status == 408 ||
+      status == 429 ||
+      (status >= 500 && !answered);
   @override
   String toString() => 'ApiException($status): $message';
 }
@@ -137,7 +142,9 @@ class ApiClient {
           e is ApiException &&
           (e.status == 400 || e.message.toLowerCase().contains('refused to parse'));
       if ((!isUnreachable(e) && !isLessonParseFailure) || baseUrl.trim().isEmpty) rethrow;
-      _reachable(false);
+      // BI26111402: a lesson spark cannot parse is that lesson's problem, not the server's: the stored copy is
+      // served, but the whole app is not told the server is unreachable.
+      if (!isLessonParseFailure) _reachable(false);
       (dynamic, DateTime)? hit;
       if (c != null) {
         try {

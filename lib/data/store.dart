@@ -97,7 +97,8 @@ class Snapshot extends ChangeNotifier {
       if (ApiClient.isUnreachable(e) || isLessonParse) {
         error = 'offline';
         final api = _api();
-        api.serverUnreachable = true;
+        // BI26111402: only a missing answer marks the server unreachable; a lesson it refused to parse does not.
+        if (!isLessonParse || ApiClient.isUnreachable(e)) api.serverUnreachable = true;
         api.servedFromCacheAt ??= fetchedAt;
         api.onReachabilityChanged?.call();
         loading = false;
