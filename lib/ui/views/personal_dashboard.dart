@@ -129,7 +129,7 @@ class _HoldingsTileState extends State<HoldingsTile> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     final has = widget.netWorth != null;
     return DashTile(
-      label: 'Flot',
+      label: 'QFloat',
       onTap: has ? _reveal : null,
       child: !has
           ? const DashEmpty()

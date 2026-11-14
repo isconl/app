@@ -239,7 +239,7 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
                     if (day.isNotEmpty) byDay.putIfAbsent(day, () => []).add(e);
                   }
                   return SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -297,7 +297,7 @@ class _CalendarViewState extends State<CalendarView> with WidgetsBindingObserver
           if (day.isNotEmpty) byDay.putIfAbsent(day, () => []).add(e);
         }
         return SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

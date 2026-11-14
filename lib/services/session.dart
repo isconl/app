@@ -295,7 +295,7 @@ class SessionService extends ChangeNotifier {
     }
   }
 
-  /// PI26111401: whether this device can sign in with Acexoft ID. Android and iOS open the sign-in in the system
+  /// PI26111401: whether this device can sign in with QAce ID. Android and iOS open the sign-in in the system
   /// browser's own tab, which shares its id.acexoft.com sign-in, so a person already signed in anywhere in the estate
   /// gets one tap ("Continue as") instead of a new sign-in.
   static bool get acexoftSupported =>
@@ -304,7 +304,7 @@ class SessionService extends ChangeNotifier {
   /// The app's own link scheme, registered in AndroidManifest.xml (RFC 8252 private-use scheme).
   static const acexoftScheme = 'com.sconl.isconl';
 
-  /// PI26111401: sign in with Acexoft ID. A PKCE verifier stays in this method; hub sends back only a single-use code
+  /// PI26111401: sign in with QAce ID. A PKCE verifier stays in this method; hub sends back only a single-use code
   /// through [acexoftScheme], and the code and verifier are traded for the session over POST, so nothing that can
   /// open the account travels in a URL. [openBrowser] is for tests. Returns null on success, or a plain message.
   Future<String?> loginAcexoft({Future<String> Function(String url, String scheme)? openBrowser}) async {
@@ -319,9 +319,9 @@ class SessionService extends ChangeNotifier {
       result = await (openBrowser ??
           (u, scheme) => FlutterWebAuth2.authenticate(url: u, callbackUrlScheme: scheme))(url, acexoftScheme);
     } on PlatformException catch (e) {
-      return e.code == 'CANCELED' ? 'Sign-in was cancelled.' : 'Could not open the Acexoft ID sign-in.';
+      return e.code == 'CANCELED' ? 'Sign-in was cancelled.' : 'Could not open the QAce ID sign-in.';
     } catch (_) {
-      return 'Could not open the Acexoft ID sign-in.';
+      return 'Could not open the QAce ID sign-in.';
     }
     final q = Uri.tryParse(result)?.queryParameters ?? const <String, String>{};
     if ((q['error'] ?? '').isNotEmpty) return q['error'];

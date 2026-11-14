@@ -56,9 +56,9 @@ class NavGroup {
 final List<NavGroup> navGroups = [
   NavGroup('Hub', [
     NavItem('hub', Icons.bolt_rounded, 'Hub', () => const HubView()),
-    NavItem('tasks', Icons.task_alt_rounded, 'Slate', () => const SlateView()),
+    NavItem('calendar', Icons.calendar_month_rounded, 'iSignal', () => const CalendarView()),
+    NavItem('tasks', Icons.task_alt_rounded, 'xSlate', () => const SlateView()),
     NavItem('planning', Icons.explore_rounded, 'Compass', () => const PlanningView()),
-    NavItem('calendar', Icons.calendar_month_rounded, 'Calendar', () => const CalendarView()),
     NavItem('ideas', Icons.lightbulb_rounded, 'Ideas', () => const IdeasView()),
     NavItem('notifications', Icons.notifications_rounded, 'Alerts', () => const NotificationsView()),
   ]),
@@ -71,10 +71,10 @@ final List<NavGroup> navGroups = [
         () => const BufferView(compose: true)),
   ]),
   NavGroup('Personal', [
-    NavItem('finance', Icons.account_balance_wallet_rounded, 'Flot', () => const FinanceView()),
+    NavItem('finance', Icons.account_balance_wallet_rounded, 'QFloat', () => const FinanceView()),
     NavItem('rhythm', Icons.local_fire_department_rounded, 'Rhythm', () => const RhythmView()),
     NavItem('journal', Icons.auto_stories_rounded, 'Journal', () => const JournalView()),
-    NavItem('learning', Icons.school_rounded, 'Study', () => const LearningView()),
+    NavItem('learning', Icons.school_rounded, 'iSpark', () => const LearningView()),
   ]),
   NavGroup('Circle', [
     NavItem('family', Icons.favorite_rounded, 'Family', () => const CircleView(ring: 'family')),
@@ -85,7 +85,7 @@ final List<NavGroup> navGroups = [
     NavItem('projects', Icons.folder_rounded, 'Projects', () => const ProjectsView()),
     NavItem('corporate', Icons.apartment_rounded, 'Corporate', () => const CorporateView()),
     NavItem('spaces', Icons.hub_rounded, 'Spaces', () => const SpacesView()),
-    NavItem('files', Icons.folder_rounded, 'Hold', () => const FilesView()),
+    NavItem('files', Icons.folder_rounded, 'xHold', () => const FilesView()),
     NavItem('articles', Icons.article_rounded, 'Articles', () => const ArticlesView()),
     NavItem('decisions', Icons.gavel_rounded, 'Decisions & Risks', () => const DecisionsView()),
     NavItem('hosted-services', Icons.dns_rounded, 'Services', () => const HostedServicesView()),

@@ -1,5 +1,5 @@
-// BI26103090: Ledger is Flot in the app.
-// Every word a person sees that names the money product says Flot:
+// BI26103090: Ledger is QFloat in the app (Flot renamed Float, 14 Nov 2026).
+// Every word a person sees that names the money product says QFloat:
 // the space name, tab/screen titles, buttons, empty states, settings and notifications.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -130,25 +130,26 @@ void main() {
     );
   }
 
-  group('BI26103090: Ledger is Flot in the app', () {
-    test('routes: finance, flot, and ledger routes all resolve to Flot', () {
-      expect(viewForNavRoute('finance')?.$2, 'Flot');
-      expect(viewForNavRoute('flot')?.$2, 'Flot');
-      expect(viewForNavRoute('ledger')?.$2, 'Flot');
-      expect(viewForNavRoute('holdings')?.$2, 'Flot');
-      expect(viewForNavRoute('flot-tools')?.$2, 'Flot tools');
-      expect(viewForNavRoute('ledger-tools')?.$2, 'Flot tools');
+  group('BI26103090: Ledger is QFloat in the app (Flot renamed Float, 14 Nov 2026)', () {
+    test('routes: finance, flot, and ledger routes all resolve to QFloat', () {
+      expect(viewForNavRoute('finance')?.$2, 'QFloat');
+      expect(viewForNavRoute('flot')?.$2, 'QFloat');
+      expect(viewForNavRoute('float')?.$2, 'QFloat');
+      expect(viewForNavRoute('ledger')?.$2, 'QFloat');
+      expect(viewForNavRoute('holdings')?.$2, 'QFloat');
+      expect(viewForNavRoute('flot-tools')?.$2, 'QFloat tools');
+      expect(viewForNavRoute('ledger-tools')?.$2, 'QFloat tools');
     });
 
-    test('sidebar rail personal group includes Flot and not Ledger', () {
+    test('sidebar rail personal group includes QFloat and not Ledger', () {
       final personalGroup = navGroups.firstWhere((g) => g.label == 'Personal');
       final labels = personalGroup.items.map((item) => item.label).toList();
 
-      expect(labels, contains('Flot'));
+      expect(labels, contains('QFloat'));
       expect(labels, isNot(contains('Ledger')));
     });
 
-    testWidgets('PersonalDashboard tile displays FLOT label', (t) async {
+    testWidgets('PersonalDashboard tile displays QFLOAT label', (t) async {
       t.view.physicalSize = const Size(1080, 2400);
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
@@ -168,11 +169,11 @@ void main() {
       await t.pump();
       await t.pump(const Duration(milliseconds: 200));
 
-      expect(find.text('FLOT'), findsOneWidget);
+      expect(find.text('QFLOAT'), findsOneWidget);
       expect(find.text('LEDGER'), findsNothing);
     });
 
-    testWidgets('LedgerToolsScreen locked state displays Flot is private', (t) async {
+    testWidgets('LedgerToolsScreen locked state displays QFloat is private', (t) async {
       await t.pumpWidget(MaterialApp(
         theme: buildTheme(),
         home: Scaffold(
@@ -185,11 +186,11 @@ void main() {
       await t.pump();
       await t.pump(const Duration(milliseconds: 200));
 
-      expect(find.text('Flot is private'), findsOneWidget);
+      expect(find.text('QFloat is private'), findsOneWidget);
       expect(find.text('The ledger is private'), findsNothing);
     });
 
-    testWidgets('SettingsView SMS ingest copy refers to Flot entry', (t) async {
+    testWidgets('SettingsView SMS ingest copy refers to QFloat entry', (t) async {
       t.view.physicalSize = const Size(1080, 2400);
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
@@ -206,7 +207,7 @@ void main() {
       await t.pump();
       await t.pump(const Duration(milliseconds: 200));
 
-      expect(find.textContaining('becomes a Flot entry automatically'), findsOneWidget);
+      expect(find.textContaining('becomes a QFloat entry automatically'), findsOneWidget);
       expect(find.textContaining('becomes a ledger entry automatically'), findsNothing);
       await t.pumpWidget(const SizedBox());
       await t.pump(const Duration(seconds: 1));

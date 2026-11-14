@@ -72,7 +72,7 @@ class _SettingsViewState extends State<SettingsView> {
     ('Navigation', 'rail or tabs inside each space', 0),
     ('General', 'appearance, local data and branding', 0),
     ('Notifications', 'slate closes and alerts', 1),
-    ('Study', 'standard on list', 1),
+    ('iSpark', 'standard on list', 1),
     ('Offline narration', 'downloaded course audio', 1),
     ('Journal access', 'who may read the journal', 1),
     ('News watch', 'topics followed', 1),
@@ -233,7 +233,7 @@ class _SettingsViewState extends State<SettingsView> {
               ),
               ],
               if (part == 1) ...[
-              const SectionLabel('Study'),
+              const SectionLabel('iSpark'),
               const Panel(child: StandardOnListSwitch()),
               const SizedBox(height: 10),
               const StudyModelSettingCard(),
@@ -620,7 +620,7 @@ class _SmsCardState extends State<SmsCard> {
                   ? 'Reading M-Pesa messages only. Every movement becomes a '
                     'transaction, and money moving to or from someone in your '
                     'circle also becomes a touchpoint.'
-                  : 'Grant permission and every M-Pesa message becomes a Flot '
+                  : 'Grant permission and every M-Pesa message becomes a QFloat '
                     'entry automatically. Only messages from M-PESA are read - '
                     'your conversations are never touched, and the app cannot '
                     'send an SMS at all.',

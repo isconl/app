@@ -8,7 +8,7 @@ void main() {
       expect(viewForNavRoute('tasks')!.$1, isA<SlateView>());
       expect(viewForNavRoute('/api/tasks')!.$1, isA<SlateView>());
       expect(viewForNavRoute('slate')!.$1, isA<SlateView>());
-      expect(viewForNavRoute('slate')!.$2, 'Slate');
+      expect(viewForNavRoute('slate')!.$2, 'xSlate');
     });
 
     test('BS26102104: the strip is Overview, Grid and Asks, and defaults to Overview', () {

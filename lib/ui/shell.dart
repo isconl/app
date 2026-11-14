@@ -88,8 +88,10 @@ typedef _SubTab = SubTab;
 // BN26091012: reordered Calendar before Planning, per Sconl.
 const _commandSubs = [
   _SubTab('Hub',       HubView()),
-  _SubTab('Slate',     SlateView()),
-  _SubTab('Calendar',  CalendarView()),
+  // Sconl, 14 Nov 2026: names follow the engine behind the view, first letter the main system (i isconl, x xkeel);
+  // the calendar (isconl signal, Rust name of pulse) comes before xSlate.
+  _SubTab('iSignal',   CalendarView()),
+  _SubTab('xSlate',    SlateView()),
   _SubTab('Compass',   PlanningView()),
 ];
 
@@ -123,7 +125,7 @@ List<_SubTab> _projectsSubsFor(void Function(int) openSub) => [
 // BI26100131: Settings carries the Systems dashboard, whose tiles open Ops and the Slate Register.
 List<_SubTab> _settingsSubsFor(void Function(int) openSub) => [
   _SubTab('Settings', SettingsView(onOpenSub: openSub)),
-  const _SubTab('Hold',     HoldSpace()),
+  const _SubTab('xHold',    HoldSpace()),
   const _SubTab('Accounts', AccountsSpace()),
   const _SubTab('OpSec',    OpsView()),
 ];
@@ -267,8 +269,8 @@ class _ShellState extends State<Shell> {
   // hamburger menu (Sconl's explicit call, 6 Sep 2026).
   List<_SubTab> get _personalSubs => [
     _SubTab('Rhythm',    RhythmView(onOpenSub: _switchSub)),
-    const _SubTab('Study',  LearningView()),
-    const _SubTab('Flot',     FinanceView()),
+    const _SubTab('iSpark', LearningView()),
+    const _SubTab('QFloat',   FinanceView()),
     const _SubTab('Codex',   CodexView()),
   ];
 
@@ -926,12 +928,12 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Command'),
           _item(ctx, Icons.bolt_rounded, 'Hub',
               () => go(const HubView(), 'Hub')),
-          _item(ctx, Icons.task_alt_rounded, 'Slate',
-              () => go(const SlateView(), 'Slate')),
+          _item(ctx, Icons.calendar_month_rounded, 'iSignal',
+              () => go(const CalendarView(), 'iSignal')),
+          _item(ctx, Icons.task_alt_rounded, 'xSlate',
+              () => go(const SlateView(), 'xSlate')),
           _item(ctx, Icons.explore_rounded, 'Compass',
               () => go(const PlanningView(), 'Compass')),
-          _item(ctx, Icons.calendar_month_rounded, 'Calendar',
-              () => go(const CalendarView(), 'Calendar')),
           _item(ctx, Icons.notifications_rounded, 'Alerts',
               () => go(const NotificationsView(), 'Alerts')),
           // ── CHANNELS ─────────────────────────────────────────
@@ -968,15 +970,15 @@ class MenuSheet extends StatelessWidget {
           const SectionLabel('Personal'),
           _item(ctx, Icons.local_fire_department_rounded, 'Rhythm',
               () => go(const RhythmView(), 'Rhythm')),
-          _item(ctx, Icons.school_rounded, 'Study',
-              () => go(const LearningView(), 'Study')),
+          _item(ctx, Icons.school_rounded, 'iSpark',
+              () => go(const LearningView(), 'iSpark')),
           _item(ctx, Icons.edit_note_rounded, 'Study notes',
               () => go(const StudyNotesView(), 'Study notes'),
               badgeListenable: services.lessonNotes),
-          _item(ctx, Icons.account_balance_wallet_rounded, 'Flot',
-              () => go(const FinanceView(), 'Flot')),
-          _item(ctx, Icons.edit_note_rounded, 'Flot tools',
-              () => go(const LedgerToolsScreen(), 'Flot tools')),
+          _item(ctx, Icons.account_balance_wallet_rounded, 'QFloat',
+              () => go(const FinanceView(), 'QFloat')),
+          _item(ctx, Icons.edit_note_rounded, 'QFloat tools',
+              () => go(const LedgerToolsScreen(), 'QFloat tools')),
           // BI26100207: Journal and Ideas are one item, Codex, each still on its own route.
           _item(ctx, Icons.auto_stories_rounded, 'Codex',
               () => go(const CodexView(), 'Codex'),
@@ -1021,8 +1023,8 @@ class MenuSheet extends StatelessWidget {
               () => go(const OpsView(), 'OpSec')),
           _item(ctx, Icons.apps_rounded, 'Services',
               () => go(const HostedServicesView(), 'Services')),
-          _item(ctx, Icons.folder_rounded, 'Hold',
-              () => go(const HoldSpace(), 'Hold')),
+          _item(ctx, Icons.folder_rounded, 'xHold',
+              () => go(const HoldSpace(), 'xHold')),
           _item(ctx, Icons.alternate_email_rounded, 'Accounts',
               () => go(const AccountsSpace(), 'Accounts')),
           _item(ctx, Icons.play_circle_filled_rounded, 'Media',
@@ -1164,9 +1166,9 @@ class SecondaryScreen extends StatelessWidget {
   if (r.startsWith('api/')) r = r.substring(4);
   return switch (r) {
     'hub' || 'command' => (const HubView(), 'Hub'),
-    'tasks' || 'slate' => (const SlateView(), 'Slate'),
+    'tasks' || 'slate' => (const SlateView(), 'xSlate'),
     'planning' || 'plans' => (const PlanningView(), 'Compass'),
-    'calendar' || 'events' => (const CalendarView(), 'Calendar'),
+    'calendar' || 'events' => (const CalendarView(), 'iSignal'),
     'notifications' || 'alerts' => (const NotificationsView(), 'Alerts'),
     'channels' => (const ChannelsHomeView(), 'Channels'),
     'teams' => (const TeamsView(), 'Teams'),
@@ -1182,9 +1184,9 @@ class SecondaryScreen extends StatelessWidget {
     'platforms' => (const ProjectsView(cat: 'platform'), 'Platforms'),
     'corporate' => (const CorporateView(), 'Corporate'),
     'rhythm' => (const RhythmView(), 'Rhythm'),
-    'study' || 'learning' => (const LearningView(), 'Study'),
-    'ledger-tools' || 'flot-tools' => (const LedgerToolsScreen(), 'Flot tools'),
-    'holdings' || 'finance' || 'ledger' || 'flot' =>(const FinanceView(), 'Flot'),
+    'study' || 'learning' => (const LearningView(), 'iSpark'),
+    'ledger-tools' || 'flot-tools' || 'float-tools' => (const LedgerToolsScreen(), 'QFloat tools'),
+    'holdings' || 'finance' || 'ledger' || 'flot' || 'float' =>(const FinanceView(), 'QFloat'),
     'codex' => (const CodexView(), 'Codex'),
     'identity' => (const IdentityView(), 'Identity'),
     'readiness' => (const ReadinessHost(), 'Readiness'),
@@ -1197,7 +1199,7 @@ class SecondaryScreen extends StatelessWidget {
     'spaces' => (const SpacesView(), 'Spaces'),
     'ops' => (const OpsView(), 'OpSec'),
     'services' || 'hosted' => (const HostedServicesView(), 'Services'),
-    'files' || 'hold' => (const HoldSpace(), 'Hold'),
+    'files' || 'hold' => (const HoldSpace(), 'xHold'),
     'accounts' => (const AccountsSpace(), 'Accounts'),
     'media' => (const MediaView(), 'Media'),
     'audit' => (const AuditView(), 'Audit'),
@@ -1206,7 +1208,7 @@ class SecondaryScreen extends StatelessWidget {
     'outbox' => (const OutboxView(), 'Outbox'),
     'notes' || 'study_notes' => (const StudyNotesView(), 'Study notes'),
     'settings' => (const SettingsView(), 'Settings'),
-    'backlog' => (const SlateView(), 'Slate'),
+    'backlog' => (const SlateView(), 'xSlate'),
     _ => null,
   };
 }

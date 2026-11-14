@@ -1,4 +1,4 @@
-// PI26111401: the app's Acexoft ID sign-in. The browser leg is faked; what is checked is what the app sends and
+// PI26111401: the app's QAce ID sign-in. The browser leg is faked; what is checked is what the app sends and
 // what it does with each answer.
 import 'dart:convert';
 

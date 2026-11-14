@@ -66,7 +66,7 @@ class _LedgerToolsScreenState extends State<LedgerToolsScreen> with WidgetsBindi
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.lock_outline_rounded, size: 36, color: C.text3),
             const SizedBox(height: 10),
-            Text('Flot is private', style: T.title),
+            Text('QFloat is private', style: T.title),
             const SizedBox(height: 4),
             Text('Unlock with this device to see and change your accounts, income and assets.', textAlign: TextAlign.center, style: T.small),
             if (_note != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_note!, key: const Key('ledger-locked-note'), style: T.small)),

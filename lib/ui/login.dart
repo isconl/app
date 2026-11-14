@@ -36,7 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _editServer = false;
   // BI26100204: the server has a passkey and this phone can use it, so the button is offered first.
   bool _passkeyOffered = false;
-  // PI26111401: the server signs in with Acexoft ID and this is a phone, so that comes first.
+  // PI26111401: the server signs in with QAce ID and this is a phone, so that comes first.
   bool _acexoftOffered = false;
   String? _error;
   Timer? _tick;
@@ -166,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /// PI26111401: one tap when the phone's browser is already signed in to the estate; otherwise Acexoft ID's own
+  /// PI26111401: one tap when the phone's browser is already signed in to the estate; otherwise QAce ID's own
   /// sign-in. A failure leaves every other way in on screen with a plain message.
   Future<void> _submitAcexoft() async {
     if (_submitting) return;
@@ -263,7 +263,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           key: const Key('login-acexoft'),
                           onPressed: _submitting ? null : _submitAcexoft,
                           icon: const Icon(Icons.verified_user_rounded, size: 18),
-                          label: _submitting ? const MiniSpinner() : const Text('Continue with Acexoft ID'),
+                          label: _submitting ? const MiniSpinner() : const Text('Continue with QAce ID'),
                         ),
                       ),
                       const SizedBox(height: 6),

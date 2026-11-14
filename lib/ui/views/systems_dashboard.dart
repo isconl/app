@@ -92,7 +92,7 @@ class SystemsDashboard extends StatelessWidget {
             Navigator.push(
               context,
               MaterialPageRoute<void>(
-                  builder: (_) => const SecondaryScreen(title: 'Slate', child: SlateView())),
+                  builder: (_) => const SecondaryScreen(title: 'xSlate', child: SlateView())),
             );
           },
           child: BarStrip(segments: [
