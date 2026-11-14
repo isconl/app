@@ -336,7 +336,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.byType(SecondaryScreen), findsOneWidget);
-      expect(find.text('Flot'), findsOneWidget);
+      expect(find.text('QFloat'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 200)));
