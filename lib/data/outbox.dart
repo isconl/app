@@ -59,10 +59,16 @@ class OutboxService extends ChangeNotifier {
     draining = true;
     try {
       await _db.retryFailedOnce('outbox_retry_failed_once_BI26111402');
+      await _db.retryFailedOnce('outbox_retry_failed_once_BI26111590');
     } catch (_) {}
     lastError = null;
     notifyListeners();
     var delivered = 0;
+    // BI26111590: one write the server cannot take must never hold up the rest. Before this, a 404 (hub's answer for
+    // a part of iSconl not running on that server) read as "session expired" and stopped the whole drain at the
+    // first item, so 500+ writes sat behind one forever. Now such an item is skipped (it stays pending for the next
+    // pass) and the drain goes on. No answer at all (tunnel down) still stops the pass, keeping order.
+    bool? sessionAlive;
     try {
       final items = await _db.pendingOutbox();
       for (final item in items) {
@@ -83,9 +89,16 @@ class OutboxService extends ChangeNotifier {
           lastError = 'offline';
           break; // stop draining, keep order
         } on ApiException catch (e) {
-          if (e.status == 404 && e.authSuspect) {
-            lastError = 'session expired';
-            break;
+          if (e.status == 404 || isNotRunningHere(e)) {
+            // Is the session really dead? Ask once per pass; only /api/state can prove it.
+            sessionAlive ??= await _sessionAlive();
+            if (sessionAlive == false) {
+              lastError = 'session expired';
+              break;
+            }
+            // The session is fine: this part of iSconl is not on the server. Keep it waiting and go on.
+            await _db.markOutbox(id, 'pending', notRunningNote);
+            continue;
           }
           if (e.transient) {
             // No answer from the server (tunnel, timeout, rate limit): it stays pending, in order, for the next pass.
@@ -108,6 +121,24 @@ class OutboxService extends ChangeNotifier {
       await refreshCount();
     }
     return delivered;
+  }
+
+  /// BI26111590: the note on a write whose part of iSconl is not running on the server; it goes when that part is back.
+  static const notRunningNote = 'waiting: that part of iSconl is not running on the server';
+
+  /// Hub answers 503 {unavailable: true} for a write to an engine it does not run (hub 0.5.145+).
+  static bool isNotRunningHere(ApiException e) =>
+      e.status == 503 && e.message.toLowerCase().contains('not running');
+
+  Future<bool> _sessionAlive() async {
+    try {
+      await _api().getJson('/api/state');
+      return true;
+    } on ApiException catch (e) {
+      return !(e.status == 404 || e.status == 401);
+    } catch (_) {
+      return true; // no answer is not proof of a dead session
+    }
   }
 
   Future<List<Map<String, dynamic>>> history() => _db.outboxHistory();

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'continue_reading.dart';
 import 'package:flutter/material.dart';
+import '../widgets/birthday_reminders.dart';
 import 'package:flutter/services.dart';
 
 import '../../app_scope.dart';
@@ -157,6 +158,8 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
                     )
                   : const SizedBox.shrink(),
             ),
+            // BI26111595: birthdays in the next two weeks, first thing on Hub.
+            BirthdayReminders(clock: widget.clock),
             const ContinueReadingCard(),
             // ---- hero — date/due/review card, always first ----
             // BI26100541: no card behind the date, badges and strip; they sit on the page.

@@ -267,7 +267,7 @@ class Markdown extends StatelessWidget {
                 width: block.ordered ? (_reading ? 26 : 22) : (_reading ? 18 : 14),
                 child: Text(bullet,
                     style: style.copyWith(
-                        color: C.green, fontWeight: FontWeight.w600)),
+                        color: block.watch ? C.callWatch : C.green, fontWeight: FontWeight.w600)),
               ),
               Expanded(child: Text.rich(_inline(block.text, style))),
             ],
@@ -398,17 +398,16 @@ class Markdown extends StatelessWidget {
       key: ValueKey('rung-${block.rungIndex}:${block.anchor.isNotEmpty ? block.anchor : identityHashCode(block)}'),
       padding: EdgeInsets.symmetric(vertical: _reading ? 6 : 3),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          width: 26,
-          height: 26,
-          margin: const EdgeInsets.only(right: 12, top: 1),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: C.callLearn, width: 1.5)),
-          child: Text('${block.rungIndex}', style: style.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: C.callLearn, height: 1)),
+        // BI26111594: a plain bullet, not a numbered circle; the timeframe ("Two Minutes", "This Week") is the bold green
+        // part (Sconl, 14 Nov 2026 study note).
+        SizedBox(
+          key: const Key('rung-bullet'),
+          width: _reading ? 18 : 14,
+          child: Text('•', style: style.copyWith(color: C.green, fontWeight: FontWeight.w600)),
         ),
         Expanded(
           child: Text.rich(TextSpan(children: [
-            if (block.uiLabel.isNotEmpty) TextSpan(text: '${block.uiLabel}  ', style: style.copyWith(fontWeight: FontWeight.w700)),
+            if (block.uiLabel.isNotEmpty) TextSpan(text: '${block.uiLabel}  ', style: style.copyWith(fontWeight: FontWeight.w700, color: C.green)),
             _inline(block.text, style),
           ])),
         ),
@@ -1230,7 +1229,10 @@ class _RevealAnswerState extends State<_RevealAnswer> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (widget.probe != null) widget.probe!,
-        InkWell(
+        // BI26111594: the toggle sits on the right edge (Sconl, 14 Nov 2026 study note).
+        Align(
+          alignment: Alignment.centerRight,
+          child: InkWell(
           key: const Key('reveal-answer'),
           borderRadius: BorderRadius.circular(Sz.rSm),
           onTap: () => setState(() => _open = !_open),
@@ -1244,6 +1246,7 @@ class _RevealAnswerState extends State<_RevealAnswer> {
               ],
             ),
           ),
+        ),
         ),
         if (_open) widget.answer,
       ],
@@ -1491,6 +1494,8 @@ final _callouts = <_Callout>[
       RegExp(r'^\*\*(?:Fun fact|Fact):?\*\*\s*', caseSensitive: false)),
   // BI26100537: the line and rung elements of 4.x (prior, place, point, link, now, week, ...) share
   // a quiet neutral callout. Its pattern never matches: only the `{id}` form claims a line for it.
+  // BI26111594: the one sentence to carry forward, above KEEP THIS's key points (Sconl, 14 Nov 2026 study note).
+  _Callout('carry', 'Carry forward', C.greenBright, C.greenBg, RegExp(r'(?!)')),
   _Callout('note', 'Note', C.text3, C.bgRaised, RegExp(r'(?!)')),
   // BI26101804: section 0's objective, the most prominent callout of the module, and the answer to a probe.
   _Callout('objective', 'Objective', C.callLearn, C.callLearnBg, RegExp(r'(?!)')),
@@ -1513,6 +1518,9 @@ const _elementKinds = <String, String>{
   'healthtip': 'healthtip',
   'probe': 'probe',
   'modelanswer': 'answer',
+  // BI26111594: {concept} showed as raw text; it is the BUILD movement's main callout.
+  'concept': 'learn',
+  'carry': 'carry',
   // BI26101804 / CI26101803: the tags the content retag uses for section 0 and for probe answers.
   'answer': 'answer',
   'objective': 'objective',
@@ -1900,6 +1908,9 @@ List<_Block> _transformGuardSection(List<_Block> section, {String movementNumber
         ? pitfallsBlock.uiLabel
         : 'Failure modes';
     out.add(_Block(_Kind.heading, text: subheadingText, level: 3));
+    for (final li in remainingItems) {
+      li.watch = true;
+    }
     out.addAll(remainingItems);
   }
 
@@ -1911,9 +1922,17 @@ List<_Block> _transformGuardSection(List<_Block> section, {String movementNumber
     }
   }
   if (lastSpecial >= 0) {
+    var inFailureList = remainingItems.isNotEmpty || pitfallsBlock != null;
     for (var k = lastSpecial + 1; k < section.length; k++) {
       if (!specialBlocks.contains(section[k])) {
-        out.add(section[k]);
+        final b = section[k];
+        // The failure list runs on in plain list items right after the pitfalls label; they wear its colour too.
+        if (b.kind == _Kind.listItem && inFailureList) {
+          b.watch = true;
+        } else {
+          inFailureList = false;
+        }
+        out.add(b);
       }
     }
   }
@@ -2224,6 +2243,9 @@ class _Block {
 
   /// BI26102804: an APPLY rung's place in its movement's ladder (1, 2, 3).
   int rungIndex = 0;
+
+  /// BI26111594: a GUARD failure-list item; its number wears the failure callout's colour.
+  bool watch = false;
 
   /// BI26101804: how section 0 draws this block: `prerequisite` (an italic line), `objective` (the prominent
   /// callout) or `aside` (a small grey note). Empty everywhere else.

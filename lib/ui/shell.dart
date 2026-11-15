@@ -17,6 +17,7 @@ import 'views/channel_subs.dart';
 import 'views/channels_home.dart';
 import 'views/chat.dart';
 import 'views/circle.dart';
+import 'views/cover_pane.dart';
 import 'views/corporate.dart';
 import 'views/decisions.dart';
 import 'views/accounts_space.dart';
@@ -240,6 +241,8 @@ class _ShellState extends State<Shell> {
           p.label,
           switch (p.kind) {
             ChannelKind.inbox => InboxView(onOpenView: _openChannelView),
+            ChannelKind.circle => const CircleView(),
+            ChannelKind.cove => const CoverPane(),
             ChannelKind.deck => const DeckChannelView(),
             ChannelKind.teams => const TeamsView(),
             ChannelKind.tools => ToolsView(views: tools),

@@ -103,33 +103,36 @@ void main() {
     await t.pump(const Duration(seconds: 11));
   });
 
-  testWidgets('key dates are day-count cards like the web console', (t) async {
+  testWidgets('key dates: three picked on the phone, the most relevant wide, labels plain, no placeholder year', (t) async {
+    String iso(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final now = DateTime.now();
+    final soon = DateTime(now.year, now.month, now.day + 5);
+    final later = DateTime(now.year, now.month, now.day + 30);
+    final far = DateTime(now.year, now.month, now.day + 200);
     await pumpCalendar(t, dates: {
       'dates': [
-        {'ID': 'd1', 'KIND': 'birthday', 'TITLE': 'Mum', 'DATE': '1965-03-02', 'daysSince': 22000, 'yearsTurning': 61, 'daysToNext': 134,
-         'milestones': [{'label': '22,500 days', 'days': 500, 'date': '2027-02-27'}]},
-        {'ID': 'd2', 'KIND': 'first graduation', 'COLOR': '#112233', 'TITLE': 'Degree', 'DATE': '2020-12-04', 'daysSince': 2144},
-        {'ID': 'd3', 'KIND': 'deadline', 'TITLE': 'Renewal', 'DATE': '2026-11-20', 'daysUntil': 33},
+        {'ID': 'd1', 'KIND': 'birthday', 'TITLE': 'Mum', 'DATE': '2000-${iso(soon).substring(5)}', 'RECURS': 'yearly'},
+        {'ID': 'd2', 'KIND': 'first graduation', 'COLOR': '#112233', 'TITLE': 'Degree', 'DATE': '2020-12-04', 'RECURS': '-'},
+        {'ID': 'd3', 'KIND': 'deadline', 'TITLE': 'Renewal', 'DATE': iso(later), 'RECURS': '-'},
+        {'ID': 'd4', 'KIND': 'anniversary', 'COLOR': '#112233', 'TITLE': 'Far one', 'DATE': '2010-${iso(far).substring(5)}', 'RECURS': 'yearly'},
       ],
-      'upcoming': [
-        {'id': 'd3', 'title': 'Renewal', 'label': 'due', 'days': 5, 'date': '2026-11-20'},
-      ],
+      'upcoming': <dynamic>[],
     });
     await t.scrollUntilVisible(find.byKey(const Key('key-date-card-d1')), 300, scrollable: find.byType(Scrollable).first);
-    for (final id in ['d1', 'd2', 'd3']) {
+    for (final id in ['d1', 'd3', 'd4']) {
       expect(find.byKey(Key('key-date-card-$id')), findsOneWidget, reason: id);
     }
-    expect(t.widget<Text>(find.byKey(const Key('key-date-number-d1'))).data, '22,000');
-    expect(t.widget<Text>(find.byKey(const Key('key-date-number-d3'))).data, '33');
-    expect(find.text('days since'), findsNWidgets(2));
-    expect(find.text('days until'), findsOneWidget);
-    expect(find.text('BACHELORS GRADUATION'), findsOneWidget, reason: 'the display label override');
-    expect(find.textContaining('turns 61 in 134d'), findsOneWidget);
-    expect(find.textContaining('22,500 days'), findsOneWidget, reason: 'the next milestone under the rule');
-    expect(find.byKey(const Key('key-dates-soon')), findsOneWidget);
+    expect(find.byKey(const Key('key-date-card-d2')), findsNothing, reason: 'three only: a graduation 800+ days from its next round count waits');
+    expect(find.byKey(const Key('key-dates-all')), findsOneWidget);
+    final wide = t.getRect(find.byKey(const Key('key-date-card-d1')));
+    final square = t.getRect(find.byKey(const Key('key-date-card-d3')));
+    expect(wide.width, greaterThan(square.width * 1.8), reason: 'the most relevant spans the width');
+    expect(t.widget<Text>(find.byKey(const Key('key-date-number-d1'))).data, '5');
+    expect(t.widget<Text>(find.byKey(const Key('key-date-unit-d1'))).data, 'DAYS TO BIRTHDAY');
+    expect(find.descendant(of: find.byKey(const Key('key-date-card-d1')), matching: find.textContaining('2000')), findsNothing);
     expect(find.byKey(const Key('delete-date-d1')), findsOneWidget);
     // a card is tinted by its colour: an explicit COLOR wins over the kind
-    final card2 = t.widget<Container>(find.byKey(const Key('key-date-card-d2')));
+    final card2 = t.widget<Container>(find.byKey(const Key('key-date-card-d4')));
     expect((card2.decoration as BoxDecoration).color, const Color(0xFF112233).withValues(alpha: 0.08));
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 11));

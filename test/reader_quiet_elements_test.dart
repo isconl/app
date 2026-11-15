@@ -86,7 +86,7 @@ void main() {
     }
   });
 
-  testWidgets('the APPLY rungs read as one numbered ladder', (t) async {
+  testWidgets('the APPLY rungs keep their order (BI26111594 draws them as bullets)', (t) async {
     await _pump(t, _module);
     for (final n in [1, 2, 3]) {
       expect(_keyed('rung-$n:'), findsOneWidget);

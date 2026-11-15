@@ -17,7 +17,8 @@ import 'social.dart';
 /// the app. Mobile shows Inbox (landing), Deck, Teams and Tools; the nav views
 /// jira, social and github fold into the one Tools tab, at the position of
 /// the first of them. Press is not a mobile sub-tab (Sconl, 27 Sep 2026).
-enum ChannelKind { inbox, deck, teams, tools }
+/// BI26111597: circle is iSocial (people, isconl's social engine) and cove is QCove (every chat's home).
+enum ChannelKind { inbox, circle, cove, deck, teams, tools }
 
 class ChannelSub {
   const ChannelSub(this.kind, this.label);
@@ -29,6 +30,8 @@ const toolViews = ['jira', 'social', 'github'];
 
 ChannelKind? _kindOf(String view) => switch (view) {
       'inbox' => ChannelKind.inbox,
+      'circle' || 'isocial' => ChannelKind.circle,
+      'cove' || 'cover' => ChannelKind.cove,
       'canvas' || 'deck' => ChannelKind.deck,
       'teams' => ChannelKind.teams,
       'tools' || 'jira' || 'social' || 'github' => ChannelKind.tools,

@@ -4,6 +4,7 @@ import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/equicycle.dart';
 import '../../util/equicycle_grid.dart';
+import '../../util/key_dates.dart';
 import '../../util/fmt.dart' as fmt;
 import '../widgets/common.dart';
 
@@ -32,6 +33,21 @@ class EquicycleGridView extends StatefulWidget {
 
 const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 String _short(String iso) => '${int.parse(iso.substring(8, 10))} ${_months[int.parse(iso.substring(5, 7)) - 1]}';
+
+/// BI26111593: one colour per kind of thing on a day, the same in the grid's dot row, the legend and the day's list.
+const eqRainsBlue = Color(0xFF58A6FF);
+const eqEquinoxPurple = Color(0xFFBC8CFF);
+Color eqMarkColor(String kind) => switch (kind) {
+      'event' => C.green,
+      'event-microsoft' => C.cyan,
+      'rains' => eqRainsBlue,
+      'solstice' => C.amber,
+      'equinox' => eqEquinoxPurple,
+      'new-moon' => C.text3,
+      'full-moon' => C.text,
+      _ when kind.startsWith('kd:') => keyDateColor(kind.substring(3)),
+      _ => C.text2,
+    };
 
 class _EquicycleGridViewState extends State<EquicycleGridView> {
   int? _year;
@@ -162,12 +178,15 @@ class _EquicycleGridViewState extends State<EquicycleGridView> {
   Widget _legend() {
     Widget item(Widget leading, String label) => Row(mainAxisSize: MainAxisSize.min, children: [leading, const SizedBox(width: 4), Text(label, style: T.tiny.copyWith(color: C.text3))]);
     Widget swatch(Color c) => Container(width: 10, height: 10, decoration: BoxDecoration(color: c, border: Border.all(color: C.border), borderRadius: BorderRadius.circular(2)));
+    Widget dot(String kind) => StatusDot(eqMarkColor(kind), size: 6);
     return Wrap(spacing: 12, runSpacing: 2, children: [
       item(swatch(C.surface), 'sprint A'),
       item(swatch(C.border.withValues(alpha: 0.5)), 'sprint B'),
-      item(const Text('☀', style: TextStyle(fontSize: 11)), 'solstice'),
-      item(const Text('◐', style: TextStyle(fontSize: 11)), 'equinox'),
-      if (_moon) ...[item(const Text('●', style: TextStyle(fontSize: 11)), 'new moon'), item(const Text('○', style: TextStyle(fontSize: 11)), 'full moon')],
+      item(dot('event'), 'event'),
+      if (_rains) item(dot('rains'), 'rains'),
+      item(dot('solstice'), 'solstice'),
+      item(dot('equinox'), 'equinox'),
+      if (_moon) ...[item(dot('new-moon'), 'new moon'), item(dot('full-moon'), 'full moon')],
     ]);
   }
 
@@ -221,9 +240,15 @@ class _EquicycleGridViewState extends State<EquicycleGridView> {
     final isToday = c.date == todayKey;
     final isSel = widget.selected != null && fmt.isoDate(widget.selected!) == c.date;
     final items = widget.byDay[c.date] ?? const [];
-    final rain = _rains && grid.inRains(c.date);
     final past = c.date.compareTo(todayKey) < 0;
     final date = DateTime.parse(c.date);
+    final dots = <String>{
+      if (items.any((e) => fmt.s(e['source']) != 'microsoft' && fmt.s(e['source']) != 'keydate')) 'event',
+      // BI26111595: a key date wears its kind's colour (birthday violet, deadline amber, ...).
+      for (final e in items.where((e) => fmt.s(e['source']) == 'keydate')) 'kd:${fmt.s(e['kind'])}',
+      if (items.any((e) => fmt.s(e['source']) == 'microsoft')) 'event-microsoft',
+      for (final m in grid.marksFor(c.date, rains: _rains, moon: _moon)) m.kind,
+    };
     return GestureDetector(
       key: Key('eq-cell-${c.date}'),
       onTap: () => widget.onSelect(date),
@@ -242,16 +267,15 @@ class _EquicycleGridViewState extends State<EquicycleGridView> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text(c.day.toString().padLeft(2, '0'), style: T.w600(small ? T.tiny : T.small).copyWith(color: isToday ? C.greenBright : C.text2)),
             Text(small ? '${date.day}' : '${date.day} ${_months[date.month - 1]}', style: T.monoSmall.copyWith(color: C.text3, fontSize: small ? 7 : 8)),
-            if (rain) Container(key: Key('eq-rain-${c.date}'), height: 3, decoration: BoxDecoration(color: const Color(0xFF58A6FF), borderRadius: BorderRadius.circular(2))),
-            if (!small)
-              SizedBox(
-                height: 12,
-                child: Row(children: [
-                  for (final m in c.markers) Text(m.kind == 'solstice' ? '☀' : '◐', style: const TextStyle(fontSize: 10, color: C.amber)),
-                  if (_moon && c.moon != null) Text(c.moon == 'new' ? '●' : '○', style: TextStyle(fontSize: 10, color: c.moon == 'new' ? C.text3 : C.text2)),
-                  if (items.isNotEmpty) const Padding(padding: EdgeInsets.only(left: 2), child: StatusDot(C.green, size: 4)),
-                ]),
-              ),
+            // BI26111593: one row of coloured dots under the date, one per kind of thing on the day (events, the rains, a
+            // solstice or equinox, the moon). Tapping the day lists each of them with the day's events.
+            SizedBox(
+              key: Key('eq-dots-${c.date}'),
+              height: small ? 5 : 7,
+              child: Row(children: [
+                for (final k in dots) Padding(padding: const EdgeInsets.only(right: 2), child: StatusDot(eqMarkColor(k), size: small ? 4 : 5)),
+              ]),
+            ),
           ]),
         ),
       ),

@@ -41,10 +41,10 @@ void main() {
       }
     });
 
-    test("hub's CHANNELS (Inbox, Cover, Deck, Teams, Tools) gives the phone Inbox, Deck, Teams, Tools: the tools item is the Tools tab and Cover is the chat sheet's, not a tab", () {
-      final plan = channelPlan(nav([('inbox', 'Inbox'), ('cover', 'Cover'), ('deck', 'Deck'), ('teams', 'Teams'), ('tools', 'Tools')]));
-      expect(plan.map((p) => p.kind), [ChannelKind.inbox, ChannelKind.deck, ChannelKind.teams, ChannelKind.tools]);
-      expect(plan.map((p) => p.label), ['Inbox', 'Deck', 'Teams', 'Tools']);
+    test("hub's CHANNELS (Inbox, iSocial, QCove, Deck, Tools) gives the phone those tabs in that order (BI26111597)", () {
+      final plan = channelPlan(nav([('inbox', 'Inbox'), ('circle', 'iSocial'), ('cove', 'QCove'), ('deck', 'Deck'), ('tools', 'Tools')]));
+      expect(plan.map((p) => p.kind), [ChannelKind.inbox, ChannelKind.circle, ChannelKind.cove, ChannelKind.deck, ChannelKind.tools]);
+      expect(plan.map((p) => p.label), ['Inbox', 'iSocial', 'QCove', 'Deck', 'Tools']);
       expect(toolViewsIn(nav([('inbox', 'Inbox'), ('tools', 'Tools')])), ['jira', 'social', 'github'], reason: 'with no individual tool items, all three are on offer');
     });
 

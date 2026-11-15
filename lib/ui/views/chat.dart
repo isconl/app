@@ -633,7 +633,7 @@ class _ChatSheetState extends State<ChatSheet> {
         child: Row(children: [
           ChoiceChip(key: const Key('chat-tab-agent'), label: const Text('Agent'), selected: !_coverTab, onSelected: (_) => _setCoverTab(false)),
           const SizedBox(width: 8),
-          ChoiceChip(key: const Key('chat-tab-cover'), label: const Text('Cover'), selected: _coverTab, onSelected: (_) => _setCoverTab(true)),
+          ChoiceChip(key: const Key('chat-tab-cover'), label: const Text('QCove'), selected: _coverTab, onSelected: (_) => _setCoverTab(true)),
         ]),
       );
 

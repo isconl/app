@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:isconl/ui/widgets/common.dart';
 import 'package:isconl/app_scope.dart';
 import 'package:isconl/theme.dart';
 import 'package:isconl/util/equicycle_grid.dart';
@@ -77,13 +78,19 @@ void main() {
     expect(find.byKey(const Key('eq-cell-2026-10-01')), findsOneWidget);
     expect(find.text('19'), findsOneWidget);
     expect(find.text('1 Oct'), findsOneWidget);
-    expect(find.text('◐'), findsWidgets, reason: 'the equinox marker on 23 Sep (D11), plus the legend');
+    // BI26111593: each kind of thing on a day is a coloured dot in the row under the date.
+    List<Color> dotsOn(String d) => tester
+        .widgetList<StatusDot>(find.descendant(of: find.byKey(Key('eq-dots-$d')), matching: find.byType(StatusDot)))
+        .map((w) => w.color)
+        .toList();
+    expect(dotsOn('2026-09-23'), contains(eqMarkColor('equinox')), reason: 'the equinox on 23 Sep (D11)');
     expect(find.byKey(const Key('eq-cell-2026-09-23')), findsOneWidget);
-    expect(find.text('○'), findsWidgets, reason: 'the 26 Sep full moon, with the overlay on');
+    expect(dotsOn('2026-09-26'), contains(eqMarkColor('full-moon')), reason: 'the 26 Sep full moon, with the overlay on');
+    expect(dotsOn('2026-10-01'), contains(eqMarkColor('event')), reason: 'a day with events wears the event dot');
+    expect(find.text('◐'), findsNothing, reason: 'glyphs gave way to dots');
     await tester.tap(find.byKey(const Key('eq-moon')));
     await tester.pump();
-    expect(find.text('○'), findsNothing, reason: 'no full-moon glyph, in the grid or the legend, with the overlay off');
-    expect(find.text('●'), findsNothing);
+    expect(dotsOn('2026-09-26'), isNot(contains(eqMarkColor('full-moon'))), reason: 'no moon dot with the overlay off');
   });
 
   testWidgets('paging moves to the next cycle and across the year edge', (tester) async {

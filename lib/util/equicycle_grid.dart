@@ -85,6 +85,32 @@ class EqGrid {
   /// The 13 cycles, plus the Stillweek (page 14) when the year has one.
   int get pages => stillweek == null ? 13 : 14;
 
+  /// BI26111593: the day's cell, wherever it sits (a cycle or the Stillweek); null outside this year.
+  EqCell? cellFor(String date) {
+    for (final c in cycles) {
+      for (final d in c.days) {
+        if (d.date == date) return d;
+      }
+    }
+    for (final d in stillweek ?? const <EqCell>[]) {
+      if (d.date == date) return d;
+    }
+    return null;
+  }
+
+  /// BI26111593: what marks a day besides events, in dot order: the rains, a solstice or equinox, a new or full moon.
+  /// The grid draws one coloured dot per kind under the date; tapping the day lists them with its events.
+  List<EqDayMark> marksFor(String date, {bool rains = true, bool moon = true}) {
+    final c = cellFor(date);
+    final rainSpan = rains ? this.rains.where((p) => date.compareTo(p.start) >= 0 && date.compareTo(p.end) <= 0).toList() : <({String name, String start, String end})>[];
+    return [
+      for (final r in rainSpan) EqDayMark('rains', r.name.isEmpty ? 'Rains${rainsLocation.isEmpty ? '' : ' ($rainsLocation)'}' : r.name),
+      if (c != null)
+        for (final m in c.markers) EqDayMark(m.kind == 'solstice' ? 'solstice' : 'equinox', m.name.isEmpty ? (m.kind == 'solstice' ? 'Solstice' : 'Equinox') : m.name),
+      if (moon && c?.moon != null) EqDayMark(c!.moon == 'new' ? 'new-moon' : 'full-moon', c.moon == 'new' ? 'New moon' : 'Full moon'),
+    ];
+  }
+
   bool inRains(String date) => rains.any((p) => date.compareTo(p.start) >= 0 && date.compareTo(p.end) <= 0);
 
   static EqGrid? fromJson(dynamic j) {
@@ -206,4 +232,13 @@ class EquicycleGrids extends ChangeNotifier {
       _loading.remove(year);
     }
   }
+}
+
+
+/// BI26111593: one thing that marks a day in the Equicycle grid other than an event. [kind] picks the dot's colour:
+/// rains, solstice, equinox, new-moon, full-moon.
+class EqDayMark {
+  const EqDayMark(this.kind, this.label);
+  final String kind;
+  final String label;
 }
