@@ -121,25 +121,28 @@ void main() {
     expect(tp.dy, lessThan(np.dy), reason: 'above notes');
     expect(np.dy - tp.dy, lessThan(80), reason: 'directly above, no other button between');
     FloatingActionButton fab() => t.widget<FloatingActionButton>(find.ancestor(of: tutor, matching: find.byType(FloatingActionButton)));
-    expect(fab().backgroundColor, NavTint.bg);
+    expect(fab().backgroundColor, NavTint.fabBg);
     expect((fab().shape as CircleBorder).side, BorderSide.none);
     await t.tap(tutor);
     await t.pump();
-    expect(fab().backgroundColor, NavTint.bgOn);
+    expect(fab().backgroundColor, NavTint.fabBgOn);
     expect((fab().shape as CircleBorder).side.color, NavTint.border);
     await t.tap(tutor);
     await t.pump();
-    expect(fab().backgroundColor, NavTint.bg);
+    expect(fab().backgroundColor, NavTint.fabBg);
     await settle(t);
   });
 
   testWidgets('every secondary FAB wears the same tint as the active bottom-nav tab', (t) async {
     await pumpLesson(t);
     final notesFab = t.widget<FloatingActionButton>(find.ancestor(of: find.byTooltip('Notes'), matching: find.byType(FloatingActionButton)));
-    expect(notesFab.backgroundColor, NavTint.bg);
+    expect(notesFab.backgroundColor, NavTint.fabBg);
     expect(notesFab.foregroundColor, NavTint.fg);
     // the nav tint is the green the active sub-tab is drawn in (shell.dart reads the same three constants)
     expect(NavTint.bg, C.greenBg);
+    // BI26111599: the floating buttons are solid, never see-through.
+    expect(NavTint.fabBg.a, 1.0);
+    expect(NavTint.fabBgOn.a, 1.0);
     expect(NavTint.fg, C.greenBright);
     await settle(t);
   });

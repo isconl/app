@@ -29,7 +29,7 @@ void main() {
     final green = fabs.where((f) => f.backgroundColor == C.green).toList();
     expect(green.length, 1, reason: 'exactly one primary green FAB');
     expect(fabs.where((f) => f.mini).length, 2, reason: 'secondaries are small');
-    expect(fabs.where((f) => f.mini).every((f) => f.backgroundColor == NavTint.bg), isTrue, reason: 'and the nav tint');
+    expect(fabs.where((f) => f.mini).every((f) => f.backgroundColor == NavTint.fabBg), isTrue, reason: 'and the nav tint');
 
     final primary = find.byKey(const Key('fab-primary'));
     final s0 = find.byKey(const Key('fab-secondary-0'));

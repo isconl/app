@@ -54,7 +54,7 @@ void main() {
     expect(t.getCenter(io).dx, closeTo(t.getCenter(add).dx, 0.5), reason: 'same column');
     expect(t.getCenter(io).dy, lessThan(t.getCenter(add).dy), reason: 'stacked above Add');
     final fab = t.widget<FloatingActionButton>(find.descendant(of: io, matching: find.byType(FloatingActionButton)));
-    expect(fab.backgroundColor, NavTint.bg);
+    expect(fab.backgroundColor, NavTint.fabBg);
     expect(fab.foregroundColor, NavTint.fg);
     await t.tap(io);
     await t.pumpAndSettle();

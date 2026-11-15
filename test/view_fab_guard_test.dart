@@ -35,7 +35,7 @@ void main() {
     final view = t.getRect(find.byKey(const Key('view-fab')));
     final fab = t.widget<FloatingActionButton>(find.descendant(of: find.byKey(const Key('view-fab')), matching: find.byType(FloatingActionButton)).evaluate().isEmpty ? find.byKey(const Key('view-fab')) : find.byKey(const Key('view-fab')));
     expect(fab.mini, isTrue);
-    expect(fab.backgroundColor, NavTint.bg);
+    expect(fab.backgroundColor, NavTint.fabBg); // BI26111599: solid, not see-through
     expect(view.bottom, lessThanOrEqualTo(assistant.top), reason: 'does not overlap the Assistant');
   });
 }

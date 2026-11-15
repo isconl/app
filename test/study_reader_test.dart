@@ -403,8 +403,7 @@ void main() {
       await tester.pump();
 
       // 1. Opened pill is selected
-      final openedPill = tester.widget<Pill>(find.widgetWithText(Pill, 'Opened'));
-      expect(openedPill.selected, isTrue);
+      expect(find.byKey(const Key('module-status-opened')), findsOneWidget); // BI26111599: one icon, not pills
 
       // 2. Scroll past 10%
       final scrollableFinder = find.byType(Scrollable).first;
@@ -417,8 +416,7 @@ void main() {
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
       await tester.pump();
 
-      final learningPill = tester.widget<Pill>(find.widgetWithText(Pill, 'Learning'));
-      expect(learningPill.selected, isTrue);
+      expect(find.byKey(const Key('module-status-learning')), findsOneWidget); // BI26111599: one icon, not pills
 
       // 3. Mark as done button
       final markDoneFinder = find.text('Mark as done');
@@ -431,8 +429,7 @@ void main() {
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
       await tester.pump();
 
-      final donePill = tester.widget<Pill>(find.widgetWithText(Pill, 'Done'));
-      expect(donePill.selected, isTrue);
+      expect(find.byKey(const Key('module-status-done')), findsOneWidget); // BI26111599: one icon, not pills
       expect(find.text('Done · undo'), findsOneWidget);
 
       // 4. Undo within 5 seconds
@@ -441,8 +438,7 @@ void main() {
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
       await tester.pump();
 
-      final revertedLearningPill = tester.widget<Pill>(find.widgetWithText(Pill, 'Learning'));
-      expect(revertedLearningPill.selected, isTrue);
+      expect(find.byKey(const Key('module-status-learning')), findsOneWidget); // BI26111599: one icon, not pills
       expect(find.text('Mark as done'), findsOneWidget);
 
       // Mark as done again and wait 5 seconds -> changes to Completed

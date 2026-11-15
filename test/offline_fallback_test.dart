@@ -34,6 +34,22 @@ void main() {
     // BI26103095 (30 Oct 2026): on the light fleet hub answers some routes with its own JSON 5xx (an engine that is not
     // running there, slate being down). That is hub answering, so the server is reachable: no "server unreachable"
     // banner and no stored copy standing in for it. And a 404 on /api/notifications no longer signs Sconl out.
+    // BI26111605: one route failing while hub's /health answers is that route's problem, never "server unreachable".
+    test('a failed route with /health answering does not mark the server unreachable', () async {
+      final cache = MemCache();
+      final api = ApiClient(
+        baseUrl: 'https://hub.test',
+        token: 't',
+        httpClient: MockClient((req) async => req.url.path == '/health'
+            ? http.Response(jsonEncode({'status': 'ok'}), 200)
+            : http.Response('<html>Bad gateway</html>', 502)),
+      )..cache = cache;
+      cache.rows['/api/slate/matrix'] = ({'rows': []}, DateTime(2026, 11, 15));
+      final got = await api.getJson('/api/slate/matrix');
+      expect(got, {'rows': []}, reason: 'the stored copy still stands in for the failed route');
+      expect(api.serverUnreachable, isFalse);
+    });
+
     test('hub answering a JSON 5xx is an answer, not an unreachable server', () async {
       final api = make(MemCache());
       next = () async => http.Response(jsonEncode({'ok': false, 'error': 'slate is not reachable'}), 503);

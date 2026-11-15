@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 
 import '../util/server_clock.dart';
@@ -87,6 +88,54 @@ class ApiClient {
     serverUnreachable = !ok;
     if (ok) servedFromCacheAt = null;
     onReachabilityChanged?.call();
+    if (!ok) _startRecheck();
+  }
+
+  // BI26111605 (Sconl, 15 Nov 2026: "no more server unreachable errors while the device is in fact online and the
+  // engines VM is up"). One failed request (a slow route timing out, one engine's 502, a lesson that will not parse)
+  // used to flip the whole app to "server unreachable". Now a failure is confirmed against hub's /health first: only
+  // when that fails too is the server unreachable. While it is, /health is asked again every 15 s, so the banner
+  // clears by itself as soon as the server answers, not on the next request the person happens to make.
+  Future<bool>? _healthCheck;
+  DateTime? _healthAt;
+  bool _healthOk = true;
+  Timer? _recheck;
+
+  /// Did hub's /health answer just now (memoised for 10 s, one check in flight at a time)?
+  @visibleForTesting
+  Future<bool> healthAnswers() {
+    final at = _healthAt;
+    if (at != null && DateTime.now().difference(at) < const Duration(seconds: 10)) return Future.value(_healthOk);
+    return _healthCheck ??= () async {
+      try {
+        final r = await _http.get(_uri('/health'), headers: _headers(json: false)).timeout(const Duration(seconds: 8));
+        _healthOk = r.statusCode < 500;
+      } catch (_) {
+        _healthOk = false;
+      }
+      _healthAt = DateTime.now();
+      _healthCheck = null;
+      return _healthOk;
+    }();
+  }
+
+  Future<void> _failed() async {
+    if (await healthAnswers()) {
+      _reachable(true);
+    } else {
+      _reachable(false);
+    }
+  }
+
+  void _startRecheck() {
+    _recheck ??= Timer.periodic(const Duration(seconds: 15), (_) async {
+      _healthAt = null;
+      if (await healthAnswers()) {
+        _recheck?.cancel();
+        _recheck = null;
+        _reachable(true);
+      }
+    });
   }
 
   /// A failure that means "the server did not answer", as opposed to "the
@@ -144,7 +193,7 @@ class ApiClient {
       if ((!isUnreachable(e) && !isLessonParseFailure) || baseUrl.trim().isEmpty) rethrow;
       // BI26111402: a lesson spark cannot parse is that lesson's problem, not the server's: the stored copy is
       // served, but the whole app is not told the server is unreachable.
-      if (!isLessonParseFailure) _reachable(false);
+      if (!isLessonParseFailure) await _failed();
       (dynamic, DateTime)? hit;
       if (c != null) {
         try {

@@ -21,12 +21,7 @@ import 'reader_comfort.dart';
 /// read it" and, if the module is plane B, it says so in those words after the
 /// agent refuses, rather than showing an error.
 class ListenBar extends StatefulWidget {
-  const ListenBar({
-    super.key,
-    required this.course,
-    required this.file,
-    required this.markdown,
-  });
+  const ListenBar({super.key, required this.course, required this.file, required this.markdown});
 
   final String course;
   final String file;
@@ -65,11 +60,9 @@ class _ListenBarState extends State<ListenBar> {
                     label: mine && n.state == NarrationState.playing
                         ? 'Pause'
                         : mine && n.state == NarrationState.paused
-                            ? 'Resume'
-                            : 'Listen',
-                    icon: mine && n.state == NarrationState.playing
-                        ? Icons.pause_rounded
-                        : Icons.headphones_rounded,
+                        ? 'Resume'
+                        : 'Listen',
+                    icon: mine && n.state == NarrationState.playing ? Icons.pause_rounded : Icons.headphones_rounded,
                     onTap: () async {
                       HapticFeedback.selectionClick();
                       if (mine && n.state == NarrationState.playing) return n.pause();
@@ -84,39 +77,67 @@ class _ListenBarState extends State<ListenBar> {
                           fallbackMarkdown: widget.markdown,
                         );
                       } else {
-                        await n.speakDevice(
-                          course: widget.course,
-                          file: widget.file,
-                          markdown: widget.markdown,
-                        );
+                        await n.speakDevice(course: widget.course, file: widget.file, markdown: widget.markdown);
                       }
                     },
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
+                  // BI26111599 (Sconl, 15 Nov 2026): speed (just "1x") and text size sit beside Listen; while it
+                  // narrates, the skip and stop controls take the rest of this row.
+                  const SizedBox(width: 8),
+                  _ComfortButton(
+                    key: const Key('listen-speed'),
+                    tooltip: 'Narration speed',
+                    onTap: () => showReaderComfortSheet(context),
                     child: Text(
-                      mine && n.tier == NarrationTier.agent
-                          ? (n.source == 'downloaded' ? 'Playing the copy on this phone' : 'Streaming from the agent')
-                          : mine
-                              ? 'This device reading it'
-                              : hasNarration
-                                  ? staleNarration
-                                      ? 'Narration exists but the module has changed since'
-                                      : 'Narrated by the agent'
-                                  : 'This device can read it now, free and offline',
-                      style: T.tiny.copyWith(
-                          color: staleNarration ? C.amber : C.text3, fontSize: 11),
+                      speedLabel(Narrator.snapSpeed(n.speed)),
+                      style: T.monoSmall.copyWith(color: C.text2, fontWeight: FontWeight.w600),
                     ),
                   ),
-                  if (mine && n.active)
-                    InkWell(
-                      borderRadius: BorderRadius.circular(Sz.rSm),
-                      onTap: n.stop,
-                      child: const Padding(
-                        padding: EdgeInsets.all(6),
-                        child: Icon(Icons.stop_rounded, size: 17, color: C.text3),
+                  const SizedBox(width: 6),
+                  _ComfortButton(
+                    key: const Key('reader-aa'),
+                    tooltip: 'Text size and spacing',
+                    onTap: () => showReaderComfortSheet(context),
+                    child: Text('Aa', style: T.w600(T.body2).copyWith(color: C.text2)),
+                  ),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (mine && n.active && n.tier == NarrationTier.device && n.chunkCount > 0) ...[
+                              IconButton(
+                                key: const Key('listen-back'),
+                                tooltip: 'Back a section',
+                                visualDensity: VisualDensity.compact,
+                                icon: const Icon(Icons.replay_rounded, size: 19),
+                                onPressed: () => n.skip(-1),
+                              ),
+                              Text('${n.chunkIndex + 1}/${n.chunkCount}', style: T.monoSmall),
+                              IconButton(
+                                key: const Key('listen-forward'),
+                                tooltip: 'Forward a section',
+                                visualDensity: VisualDensity.compact,
+                                icon: const Icon(Icons.forward_rounded, size: 19),
+                                onPressed: () => n.skip(1),
+                              ),
+                            ],
+                            if (mine && n.active)
+                              IconButton(
+                                key: const Key('listen-stop'),
+                                tooltip: 'Stop',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: n.stop,
+                                icon: const Icon(Icons.stop_rounded, size: 19, color: C.text3),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
+                  ),
                 ],
               ),
 
@@ -136,12 +157,9 @@ class _ListenBarState extends State<ListenBar> {
                           overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
                         ),
                         child: Slider(
-                          value: n.position.inMilliseconds
-                              .clamp(0, n.duration.inMilliseconds)
-                              .toDouble(),
+                          value: n.position.inMilliseconds.clamp(0, n.duration.inMilliseconds).toDouble(),
                           max: n.duration.inMilliseconds.toDouble(),
-                          onChanged: (v) =>
-                              n.seek(Duration(milliseconds: v.round())),
+                          onChanged: (v) => n.seek(Duration(milliseconds: v.round())),
                         ),
                       ),
                     ),
@@ -150,27 +168,8 @@ class _ListenBarState extends State<ListenBar> {
                 ),
               ] else if (mine && n.tier == NarrationTier.device && n.chunkCount > 0) ...[
                 const SizedBox(height: 8),
-                // The device voice is read in chunks, so the bar shows real
-                // progress and a chunk is the unit of skipping.
+                // The device voice is read in chunks, so the line shows real progress; skipping is in the row above.
                 LinearProgressIndicator(minHeight: 2, value: n.deviceProgress),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      key: const Key('listen-back'),
-                      tooltip: 'Back a section',
-                      icon: const Icon(Icons.replay_rounded, size: 20),
-                      onPressed: () => n.skip(-1),
-                    ),
-                    Text('${n.chunkIndex + 1} of ${n.chunkCount}', style: T.monoSmall),
-                    IconButton(
-                      key: const Key('listen-forward'),
-                      tooltip: 'Forward a section',
-                      icon: const Icon(Icons.forward_rounded, size: 20),
-                      onPressed: () => n.skip(1),
-                    ),
-                  ],
-                ),
               ],
 
               if (hasNarration && !staleNarration && n.downloads != null)
@@ -180,33 +179,22 @@ class _ListenBarState extends State<ListenBar> {
                   file: widget.file,
                   rev: fmt.s(audio?['rev']),
                 ),
-              const SizedBox(height: 10),
-              // BI26101804: speed and text size are two buttons under Listen that open one centred dialog.
-              Row(
-                children: [
-                  _ComfortButton(
-                    key: const Key('listen-speed'),
-                    tooltip: 'Narration speed',
-                    onTap: () => showReaderComfortSheet(context),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.speed_rounded, size: 15, color: C.text2),
-                      const SizedBox(width: 5),
-                      Text(speedLabel(Narrator.snapSpeed(n.speed)), style: T.monoSmall.copyWith(color: C.text2)),
-                    ]),
+              if (staleNarration && !mine)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Narration exists but the module has changed since; Listen reads it on this device.',
+                    key: const Key('listen-stale'),
+                    style: T.tiny.copyWith(color: C.amber, fontSize: 11),
                   ),
-                  const SizedBox(width: 8),
-                  _ComfortButton(
-                    key: const Key('reader-aa'),
-                    tooltip: 'Text size and spacing',
-                    onTap: () => showReaderComfortSheet(context),
-                    child: Text('Aa', style: T.w600(T.body2).copyWith(color: C.text2)),
-                  ),
-                ],
-              ),
-
+                ),
               if (n.error != null && mine) ...[
                 const SizedBox(height: 8),
-                Text(n.error!, key: const Key('listen-error'), style: T.tiny.copyWith(color: C.red)),
+                Text(
+                  n.error!,
+                  key: const Key('listen-error'),
+                  style: T.tiny.copyWith(color: C.red),
+                ),
                 if (n.tier == NarrationTier.device)
                   Align(
                     alignment: Alignment.centerLeft,
@@ -220,7 +208,11 @@ class _ListenBarState extends State<ListenBar> {
               if (mine && n.notice != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Text(n.notice!, key: const Key('listen-notice'), style: T.tiny.copyWith(color: C.amber)),
+                  child: Text(
+                    n.notice!,
+                    key: const Key('listen-notice'),
+                    style: T.tiny.copyWith(color: C.amber),
+                  ),
                 ),
               if (mine && n.needsVoiceData)
                 Padding(

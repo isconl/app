@@ -118,29 +118,64 @@ class _CourseControlsState extends State<CourseControls> {
     final status = courseStatusOf(widget.course);
     final export = courseExportOf(widget.course);
     final allowed = CourseControls.exportAllowed == true;
+    // BI26111600 (Sconl, 15 Nov 2026): status and export on one row, each a small chip that changes itself when
+    // tapped, with no separate Change buttons.
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 4,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Row(
         children: [
-          Pill('status: $status', selected: status == 'active', key: const Key('course-status')),
-          TextButton(
-            key: const Key('course-status-change'),
-            onPressed: _busy ? null : () => _change(title: 'Course status', options: courseStatuses, current: status, path: '/api/learning/course/status', field: 'status', extra: {'courseId': widget.courseId}),
-            child: const Text('Change'),
+          _ControlChip(
+            key: const Key('course-status'),
+            label: status,
+            icon: status == 'active' ? Icons.play_circle_outline_rounded : Icons.pause_circle_outline_rounded,
+            on: status == 'active',
+            onTap: _busy ? null : () => _change(title: 'Course status', options: courseStatuses, current: status, path: '/api/learning/course/status', field: 'status', extra: {'courseId': widget.courseId}),
           ),
-          Pill('export: $export', selected: export == 'publishable', key: const Key('course-export')),
+          const SizedBox(width: 6),
           Tooltip(
-            message: allowed ? '' : 'Only your own signed-in session can change this.',
-            child: TextButton(
-              key: const Key('course-export-change'),
-              onPressed: (_busy || !allowed) ? null : () => _change(title: 'Export classification', options: exportClasses, current: export, path: '/api/learning/export/set', field: 'export', extra: {'course': widget.courseId}),
-              child: const Text('Change'),
+            message: allowed ? 'Export classification' : 'Only your own signed-in session can change this.',
+            child: _ControlChip(
+              key: const Key('course-export'),
+              label: export,
+              icon: export == 'publishable' ? Icons.public_rounded : Icons.lock_outline_rounded,
+              on: export == 'publishable',
+              onTap: (_busy || !allowed) ? null : () => _change(title: 'Export classification', options: exportClasses, current: export, path: '/api/learning/export/set', field: 'export', extra: {'course': widget.courseId}),
             ),
           ),
+          if (_busy) ...[const SizedBox(width: 8), const MiniSpinner()],
         ],
+      ),
+    );
+  }
+}
+
+/// One tappable control: an icon and its value, with a small caret when it can be changed.
+class _ControlChip extends StatelessWidget {
+  const _ControlChip({super.key, required this.label, required this.icon, required this.on, this.onTap});
+  final String label;
+  final IconData icon;
+  final bool on;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = on ? C.green : C.text2;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: on ? C.greenBg : Colors.transparent,
+          border: Border.all(color: on ? C.greenDim : C.border),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: c),
+          const SizedBox(width: 5),
+          Text(label, style: T.tiny.copyWith(color: c, fontWeight: FontWeight.w600)),
+          if (onTap != null) ...[const SizedBox(width: 2), Icon(Icons.expand_more_rounded, size: 13, color: c)],
+        ]),
       ),
     );
   }

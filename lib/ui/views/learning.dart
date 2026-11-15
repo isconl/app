@@ -1137,6 +1137,12 @@ class _CourseTileState extends State<CourseTile> {
               valueColor: AlwaysStoppedAnimation(effectiveColor),
             ),
           ),
+          // BI26111600: the controls on one row, then the course's description under them.
+          CourseControls(courseId: courseId, course: widget.course),
+          if (fmt.s(widget.course['DESCRIPTION'] ?? widget.course['description'] ?? widget.course['SUBTITLE'] ?? widget.course['subtitle']).isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(fmt.s(widget.course['DESCRIPTION'] ?? widget.course['description'] ?? widget.course['SUBTITLE'] ?? widget.course['subtitle']), key: const Key('course-description'), style: T.small.copyWith(color: C.text2, height: 1.45)),
+          ],
           if (files.isNotEmpty) ...[
             const SizedBox(height: 9),
             Row(
@@ -1174,7 +1180,6 @@ class _CourseTileState extends State<CourseTile> {
               ],
             ),
           ],
-          CourseControls(courseId: courseId, course: widget.course),
           const SizedBox(height: 10),
           for (var i = 0; i < lessons.length; i++)
             LessonRow(
@@ -1211,6 +1216,23 @@ Color statusChipColor(String status, Color trackColor) => switch (status.toLower
       'opened' => legibleTrackColor(trackColor, C.bg),
       _ => C.text3,
     };
+
+/// BI26111599: the module's status as one small icon beside its title: opened (an open eye, the track colour),
+/// learning (a half-read book, amber), done (a check, green). Nothing for a module not opened yet.
+Widget? _statusIcon(String status, Color trackColor) {
+  final s = status.toLowerCase();
+  final (icon, label) = switch (s) {
+    'done' => (Icons.check_circle_rounded, 'Done'),
+    'learning' => (Icons.auto_stories_rounded, 'Learning'),
+    'opened' => (Icons.visibility_rounded, 'Opened'),
+    _ => (null, ''),
+  };
+  if (icon == null) return null;
+  return Tooltip(
+    message: label,
+    child: Icon(icon, key: Key('module-status-$s'), size: 20, color: statusChipColor(s, trackColor), semanticLabel: label),
+  );
+}
 
 /// A small status chip for a module row: Opened, Learning or Done.
 @visibleForTesting
@@ -2244,25 +2266,9 @@ class _LessonScreenState extends State<LessonScreen> {
                                   reviewedAt.isEmpty ? null : reviewedAt,
                               version: version.isEmpty ? null : version,
                             ),
-                      trailing: Row(
-                        children: [
-                          for (final (st, label) in [
-                            ('opened', 'Opened'),
-                            ('learning', 'Learning'),
-                            ('done', 'Done'),
-                          ]) ...[
-                            Pill(
-                              label,
-                              selected: _status.toLowerCase() == st,
-                              color: widget.trackColor,
-                              // BI26100538: Opened in the track colour, Learning yellow, Done green.
-                              stateColor: statusChipColor(st, widget.trackColor),
-                              onTap: null,
-                            ),
-                            const SizedBox(width: 6),
-                          ],
-                        ],
-                      ),
+                      // BI26111599 (Sconl, 15 Nov 2026): one small status icon on the title's line replaces the
+                      // Opened, Learning and Done pills. Same colours: the track colour, amber, green.
+                      titleBadge: _statusIcon(_status, widget.trackColor),
                     ),
                     if (content.isNotEmpty)
                       ListenBar(

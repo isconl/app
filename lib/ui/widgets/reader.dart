@@ -105,9 +105,14 @@ class ReadingHeader extends StatelessWidget {
     this.kicker,
     this.meta,
     this.trailing,
+    this.titleBadge,
   });
 
   final String title;
+
+  /// BI26111599: a small icon on the title's own line, after its last word (the module's status), so the status takes
+  /// no row of its own.
+  final Widget? titleBadge;
 
   /// Small uppercase line above the title - the course, the space, the source.
   final String? kicker;
@@ -129,8 +134,15 @@ class ReadingHeader extends StatelessWidget {
           const SizedBox(height: 9),
         ],
         SelectionArea(
-          child: Text(
-            title,
+          child: Text.rich(
+            TextSpan(children: [
+              TextSpan(text: title),
+              if (titleBadge != null)
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: Padding(padding: const EdgeInsets.only(left: 8), child: titleBadge!),
+                ),
+            ]),
             style: T.headline.copyWith(
                 fontSize: 25, height: 1.22, letterSpacing: -0.6),
           ),

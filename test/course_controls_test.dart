@@ -103,23 +103,23 @@ void main() {
 
   testWidgets('for Sconl\'s own session the probe is accepted and the export control is on; the probe repeats the current value', (tester) async {
     final r = await pump(tester, const CourseControls(courseId: 'c-1', course: course));
-    expect(find.text('status: active'), findsOneWidget);
-    expect(find.text('export: internal'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('course-status')), matching: find.text('active')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('course-export')), matching: find.text('internal')), findsOneWidget);
     final probe = r.api.posts.firstWhere((p) => p['path'] == '/api/learning/export/set');
     expect(probe['course'], 'c-1');
     expect(probe['export'], 'internal', reason: 'the probe changes nothing');
-    expect(tester.widget<TextButton>(find.byKey(const Key('course-export-change'))).onPressed, isNotNull);
+    expect(tester.widget<InkWell>(find.descendant(of: find.byKey(const Key('course-export')), matching: find.byType(InkWell)).first).onTap, isNotNull);
   });
 
   testWidgets('for any other session the export control stays off', (tester) async {
     await pump(tester, const CourseControls(courseId: 'c-1', course: course), api: CourseApi({}, exportRefused: true));
-    expect(tester.widget<TextButton>(find.byKey(const Key('course-export-change'))).onPressed, isNull);
-    expect(tester.widget<TextButton>(find.byKey(const Key('course-status-change'))).onPressed, isNotNull);
+    expect(tester.widget<InkWell>(find.descendant(of: find.byKey(const Key('course-export')), matching: find.byType(InkWell)).first).onTap, isNull);
+    expect(tester.widget<InkWell>(find.descendant(of: find.byKey(const Key('course-status')), matching: find.byType(InkWell)).first).onTap, isNotNull);
   });
 
   testWidgets('changing the status posts the course id and the new status', (tester) async {
     final r = await pump(tester, const CourseControls(courseId: 'c-1', course: course));
-    await tester.tap(find.byKey(const Key('course-status-change')));
+    await tester.tap(find.byKey(const Key('course-status')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('archived'));
     await tester.pump();
@@ -132,7 +132,7 @@ void main() {
 
   testWidgets('changing the export class posts the course and the new class', (tester) async {
     final r = await pump(tester, const CourseControls(courseId: 'c-1', course: course));
-    await tester.tap(find.byKey(const Key('course-export-change')));
+    await tester.tap(find.byKey(const Key('course-export')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('publishable'));
     await tester.pump();
@@ -145,7 +145,7 @@ void main() {
 
   testWidgets('a refused status change shows the server\'s reason', (tester) async {
     await pump(tester, const CourseControls(courseId: 'c-1', course: course), api: CourseApi({}, statusError: 'Course has an active cohort.'));
-    await tester.tap(find.byKey(const Key('course-status-change')));
+    await tester.tap(find.byKey(const Key('course-status')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('disabled'));
     await tester.pump();

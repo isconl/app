@@ -13,6 +13,10 @@ class NavTint {
   static const border = C.greenDim;
   /// A control that is switched on (the tutor FAB while ask mode is on).
   static const bgOn = C.greenBg2;
+  /// BI26111598: the floating buttons' fill, solid: the same green tint laid over the panel colour, so nothing behind
+  /// a button shows through it (Sconl, 15 Nov 2026). [fabBgOn] is the switched-on state, a little stronger.
+  static const fabBg = Color(0xFF1A2B27);
+  static const fabBgOn = Color(0xFF1D352A);
 }
 
 class C {
