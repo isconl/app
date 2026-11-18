@@ -1,0 +1,23 @@
+# BI26092602: the voice-lint step over the app's user-visible copy (CLAUDE.md section 34).
+# WARNING-ONLY: findings show as annotations and the job passes. Once the copy comb is done, change the run line to
+# `node tools/voice-lint/run.js --strict`.
+name: voice-lint
+
+on:
+  push:
+    branches: [dev, staging, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  voice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: The vendored linter has not drifted
+        run: node tools/voice-lint/verify-vendored.js
+      - name: Lint the copy (warning-only)
+        run: node tools/voice-lint/run.js
