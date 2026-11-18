@@ -77,7 +77,8 @@ void main() {
   testWidgets('a Chronicle reads as a book: PROLOGUE, CHAPTER n and EPILOGUE, unnumbered callouts', (t) async {
     await _pump(t, _chronicle);
     final eyebrows = t.widgetList<Text>(find.byKey(const Key('movement-eyebrow'))).map((x) => x.data).toList();
-    expect(eyebrows, ['PROLOGUE', 'CHAPTER 1', 'CHAPTER 2', 'EPILOGUE']);
+    // the opening section is drawn the way every module's section 0 is, without an eyebrow
+    expect(eyebrows, ['CHAPTER 1', 'CHAPTER 2', 'EPILOGUE']);
     final labels = _labels(t);
     expect(labels.where((l) => l!.contains('KEY IDEA')).length, 2);
     expect(labels.any((l) => l!.contains('PLAYER')), isTrue);
@@ -122,7 +123,7 @@ void mainDocument() {
   testWidgets('a Document module shows the document\'s section number and its word-for-word, commentary and open-point boxes', (t) async {
     await _pump(t, _document);
     final eyebrows = t.widgetList<Text>(find.byKey(const Key('movement-eyebrow'))).map((x) => x.data).toList();
-    expect(eyebrows, ['PROLOGUE', 'SECTION 3.2', 'EPILOGUE']);
+    expect(eyebrows, ['SECTION 3.2', 'EPILOGUE']);
     final labels = _labels(t);
     for (final l in ['WORD FOR WORD', 'COMMENTARY', 'OPEN POINT', 'KEY IDEA']) {
       expect(labels.any((x) => x!.contains(l)), isTrue, reason: l);

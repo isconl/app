@@ -354,7 +354,8 @@ void main() {
       await tester.pump();
 
       expect(
-        find.text('1,240 words · 6 min read · reviewed 22 Sep 2026 · v3.0'),
+        // BI26111891: the condensed five-item line (no archetype in this fixture); the year shows only in another year
+        find.textContaining(RegExp(r'^1,240 words · 6 min · Sep (22|2026) · v3\.0$')),
         findsOneWidget,
       );
     });

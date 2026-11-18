@@ -2469,7 +2469,10 @@ class ModuleStatusAction extends StatelessWidget {
           child: Row(children: [
             Icon(savedOffline ? Icons.offline_pin_rounded : Icons.cloud_outlined, size: 16, color: C.text3),
             const SizedBox(width: 8),
-            Text(savedOffline ? 'Saved on this device' : 'Not saved on this device yet', key: Key(savedOffline ? 'module-saved-here' : 'module-not-saved')),
+            Flexible(
+              child: Text(savedOffline ? 'Saved on this device' : 'Not saved on this device yet',
+                  key: Key(savedOffline ? 'module-saved-here' : 'module-not-saved'), overflow: TextOverflow.ellipsis),
+            ),
           ]),
         ),
         const PopupMenuDivider(),
