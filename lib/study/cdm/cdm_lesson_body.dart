@@ -78,8 +78,7 @@ class _CdmLessonBodyState extends State<CdmLessonBody> {
 /// The Listen bar for a module served as a deck document: it reads the same
 /// cached document the body draws, so it works offline and costs no request.
 class CdmListenBar extends StatefulWidget {
-  const CdmListenBar({super.key, required this.docId, required this.version, required this.course, required this.file, this.padding = const EdgeInsets.only(top: 18, bottom: 2)});
-  final EdgeInsetsGeometry padding;
+  const CdmListenBar({super.key, required this.docId, required this.version, required this.course, required this.file});
   final String docId;
   final String version;
   final String course;
@@ -107,7 +106,7 @@ class _CdmListenBarState extends State<CdmListenBar> {
         builder: (context, snap) {
           final md = snap.data ?? '';
           if (md.isEmpty) return const SizedBox.shrink();
-          return ListenBar(course: widget.course, file: widget.file, markdown: md, padding: widget.padding);
+          return ListenBar(course: widget.course, file: widget.file, markdown: md);
         },
       );
 }

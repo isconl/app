@@ -2215,14 +2215,10 @@ class _LessonScreenState extends State<LessonScreen> {
           child: ShellAppBar(
             title: heading,
             showBrand: false,
-            // BI26111891 (Sconl, 18 Nov 2026): the module's status icon (opened, learning, done) takes the place of the
-            // white offline pin. Its menu keeps what the old button did: whether the module is saved here, and Export.
+            // BI26101804: the download button is the only action. Its icon carries the offline state (a pin when the
+            // module is saved on this device), so the bar shows one sync cloud and no second one.
             actions: [
-              ModuleStatusAction(
-                  status: _status,
-                  trackColor: widget.trackColor,
-                  savedOffline: snap.value != null,
-                  onExport: () => exportModulePdf(context, widget.course, widget.file)),
+              _ExportPdfButton(course: widget.course, file: widget.file, savedOffline: snap.value != null),
             ],
           ),
         ),
@@ -2256,8 +2252,6 @@ class _LessonScreenState extends State<LessonScreen> {
                 final docVersion = fmt.s(lessonMap['docVersion'] ?? lessonMap['doc_version']);
                 _currentContent = content;
                 _maybeRestoreResume();
-                final archetype = moduleArchetype(content, fmt.s(lessonMap['archetype']));
-                final hasListen = content.isNotEmpty || (docId.isNotEmpty && docVersion.isNotEmpty);
                 return ReadingSurface(
                   children: [
                     ReadingHeader(
@@ -2271,24 +2265,19 @@ class _LessonScreenState extends State<LessonScreen> {
                               reviewedAt:
                                   reviewedAt.isEmpty ? null : reviewedAt,
                               version: version.isEmpty ? null : version,
-                              archetype: archetype,
                             ),
-                      // BI26111891 (Sconl, 18 Nov 2026): the status icon moved to the app bar; the Listen row below
-                      // carries the divider.
-                      showDivider: !hasListen,
+                      // BI26111599 (Sconl, 15 Nov 2026): one small status icon on the title's line replaces the
+                      // Opened, Learning and Done pills. Same colours: the track colour, amber, green.
+                      titleBadge: _statusIcon(_status, widget.trackColor),
                     ),
                     if (content.isNotEmpty)
-                      ListenStrip(
-                          child: ListenBar(
-                              course: widget.course,
-                              file: widget.file,
-                              markdown: content,
-                              padding: EdgeInsets.zero)),
+                      ListenBar(
+                          course: widget.course,
+                          file: widget.file,
+                          markdown: content),
                     // BI26101394: a document-served module with no markdown still gets a Listen bar.
                     if (content.isEmpty && docId.isNotEmpty && docVersion.isNotEmpty)
-                      ListenStrip(
-                          child: CdmListenBar(
-                              docId: docId, version: docVersion, course: widget.course, file: widget.file, padding: EdgeInsets.zero)),
+                      CdmListenBar(docId: docId, version: docVersion, course: widget.course, file: widget.file),
                     if (docId.isNotEmpty && docVersion.isNotEmpty)
                       // BI26092620: a module served as a deck document is drawn natively
                       // from the version-keyed cache; the markdown reader is its fallback.
@@ -2417,102 +2406,64 @@ class _LessonScreenState extends State<LessonScreen> {
 /// only has to move the bytes to disk and let Android open them, which is what
 /// makes "export from the mobile app" a small feature rather than a second
 /// implementation of the whole document.
-Future<void> exportModulePdf(BuildContext context, String course, String file) async {
-  final services = AppScope.of(context);
-  toast(context, 'Exporting the module as a PDF');
-  try {
-    final res = await services.api.getBytes(
-        '/api/learning/export?course=${Uri.encodeComponent(course)}'
-        '&lesson=${Uri.encodeComponent(file)}');
-    final name = res.filename.isEmpty ? '$course-${file.replaceAll(RegExp(r'\.md$'), '')}.pdf' : res.filename;
-    final opened = await export_impl.saveAndOpenExport(name, res.bytes);
-    if (!context.mounted) return;
-    toast(
-        context,
-        opened
-            ? '${(res.bytes.length / 1024).round()} KB - opening'
-            : kIsWeb
-                ? 'PDF export is not available in the web console yet'
-                : 'Saved, but nothing on this phone opens a PDF',
-        error: !opened);
-  } catch (e) {
-    if (!context.mounted) return;
-    toast(context, 'Export failed: $e', error: true);
-  }
+class _ExportPdfButton extends StatefulWidget {
+  const _ExportPdfButton({required this.course, required this.file, this.savedOffline = false});
+  final String course;
+  final String file;
+  /// The module is saved on this device: the icon is the offline pin instead of the plain download arrow.
+  final bool savedOffline;
+
+  @override
+  State<_ExportPdfButton> createState() => _ExportPdfButtonState();
 }
 
-/// BI26111891 (Sconl, 18 Nov 2026): the module's status icon in the app bar, where the white offline pin was. Opened
-/// is an open eye in the track colour, learning a half-read book in amber, done a check in green; a module not opened
-/// yet shows a quiet outline. Its menu says the status, whether the module is saved on this device, and exports it.
-class ModuleStatusAction extends StatelessWidget {
-  const ModuleStatusAction({super.key, required this.status, required this.trackColor, required this.savedOffline, required this.onExport});
-  final String status;
-  final Color trackColor;
-  final bool savedOffline;
-  final VoidCallback onExport;
+class _ExportPdfButtonState extends State<_ExportPdfButton> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final services = AppScope.of(context);
+    try {
+      final res = await services.api.getBytes(
+          '/api/learning/export?course=${Uri.encodeComponent(widget.course)}'
+          '&lesson=${Uri.encodeComponent(widget.file)}');
+
+      final name = res.filename.isEmpty
+          ? '${widget.course}-${widget.file.replaceAll(RegExp(r'\.md$'), '')}.pdf'
+          : res.filename;
+      final opened = await export_impl.saveAndOpenExport(name, res.bytes);
+
+      if (!mounted) return;
+      toast(
+          context,
+          opened
+              ? '${(res.bytes.length / 1024).round()} KB - opening'
+              : kIsWeb
+                  ? 'PDF export isn\'t available in the web console yet'
+                  : 'Saved, but nothing on this phone opens a PDF',
+          error: !opened);
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, 'Export failed: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final s = status.toLowerCase();
-    final label = switch (s) { 'done' => 'Done', 'learning' => 'Learning', 'opened' => 'Opened', _ => 'Not opened yet' };
-    final icon = _statusIcon(s, trackColor) ??
-        Icon(Icons.radio_button_unchecked_rounded, key: const Key('module-status-new'), size: 20, color: C.text3, semanticLabel: label);
-    return PopupMenuButton<String>(
-      key: const Key('module-status-action'),
-      tooltip: 'Status: $label',
-      icon: icon,
-      onSelected: (v) { if (v == 'export') onExport(); },
-      itemBuilder: (_) => [
-        PopupMenuItem<String>(enabled: false, child: Text(label, style: T.small.copyWith(color: C.text2, fontWeight: FontWeight.w600))),
-        PopupMenuItem<String>(
-          enabled: false,
-          child: Row(children: [
-            Icon(savedOffline ? Icons.offline_pin_rounded : Icons.cloud_outlined, size: 16, color: C.text3),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(savedOffline ? 'Saved on this device' : 'Not saved on this device yet',
-                  key: Key(savedOffline ? 'module-saved-here' : 'module-not-saved'), overflow: TextOverflow.ellipsis),
-            ),
-          ]),
-        ),
-        const PopupMenuDivider(),
-        const PopupMenuItem<String>(
-          value: 'export',
-          key: Key('module-export-pdf'),
-          child: Row(children: [Icon(Icons.picture_as_pdf_outlined, size: 18), SizedBox(width: 8), Text('Export as PDF')]),
-        ),
-      ],
+    return IconButton(
+      onPressed: _busy ? null : _run,
+      tooltip: widget.savedOffline ? 'Export this module as a PDF (saved on this device)' : 'Export this module as a PDF',
+      icon: _busy
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : Icon(widget.savedOffline ? Icons.offline_pin_rounded : Icons.download_rounded, size: 20, key: Key(widget.savedOffline ? 'export-saved' : 'export-plain')),
     );
   }
-}
-
-/// BI26111891 (Sconl, 18 Nov 2026): Listen, speed and text size with even room above and below, and a line under them,
-/// so the row neither floats loose under the header nor presses into the first heading.
-class ListenStrip extends StatelessWidget {
-  const ListenStrip({super.key, required this.child});
-  final Widget child;
-  static const gap = 14.0;
-
-  @override
-  Widget build(BuildContext context) => Column(
-        key: const Key('listen-strip'),
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: gap),
-          child,
-          const SizedBox(height: gap),
-          const Divider(height: 1),
-          const SizedBox(height: gap - 6),
-        ],
-      );
-}
-
-/// BI26111891: the module's archetype for its header line, from its own frontmatter, else what the server sent.
-String? moduleArchetype(String content, [String fallback = '']) {
-  final fm = RegExp(r'^(?:\s*<!--[\s\S]*?-->)*\s*---[ \t]*\r?\n([\s\S]*?)\r?\n---').firstMatch(content);
-  final m = fm == null ? null : RegExp(r'^archetype:\s*"?([A-Za-z-]+)"?\s*$', multiLine: true).firstMatch(fm.group(1)!);
-  final v = (m?.group(1) ?? fallback).trim();
-  return v.isEmpty ? null : v;
 }
 
 /// BL26091006/BL26091028: shared Next/Previous nav button -- an outlined

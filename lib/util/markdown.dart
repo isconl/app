@@ -279,7 +279,6 @@ class Markdown extends StatelessWidget {
         if (block.zeroRole == 'line') return _quietLine(block, style);
         if (block.zeroRole == 'rung') return _rung(block, style);
         if (block.callout?.kind == 'answer') return _RevealAnswer(answer: _callout(block, style));
-        if ((block.callout?.kind == 'dateline' || block.callout?.kind == 'source') && !block.demoted) return _dateline(block, style);
         return block.demoted ? _prose(block, style) : _callout(block, style, prominent: block.zeroRole == 'objective');
       case _Kind.quiz:
         return _quizCallout(block, style);
@@ -422,17 +421,6 @@ class Markdown extends StatelessWidget {
   /// label change. It is a Container rather than a Card on purpose - a card
   /// would set it apart from the prose, and a callout is part of the reading,
   /// not an aside beside it.
-  /// BI26111891 (4.9.0 §19): a chapter's dateline, the place and date it opens on. A small italic line, no box.
-  Widget _dateline(_Block block, TextStyle style) {
-    final text = [block.uiLabel.trim(), block.text.trim()].where((s) => s.isNotEmpty).join(' · ');
-    return Padding(
-      key: const Key('chronicle-dateline'),
-      padding: EdgeInsets.only(top: _reading ? 2 : 0, bottom: _reading ? 10 : 6),
-      child: Text(text,
-          style: style.copyWith(color: C.text3, fontSize: _reading ? 13 : 12, fontStyle: FontStyle.italic, letterSpacing: 0.2)),
-    );
-  }
-
   Widget _callout(_Block block, TextStyle style, {bool prominent = false}) {
     final c = block.callout!;
     final pad = (_reading ? 14.0 : 10.0) + (prominent ? 3 : 0);
@@ -1508,20 +1496,6 @@ final _callouts = <_Callout>[
   // a quiet neutral callout. Its pattern never matches: only the `{id}` form claims a line for it.
   // BI26111594: the one sentence to carry forward, above KEEP THIS's key points (Sconl, 14 Nov 2026 study note).
   _Callout('carry', 'Carry forward', C.greenBright, C.greenBg, RegExp(r'(?!)')),
-  // BI26111891 (standard 4.9.0 §8.5, §19): the section takeaways and the Chronicle callouts. Claimed by `{id}` only.
-  _Callout('keyidea', 'Key idea', C.callKeyIdea, C.callKeyIdeaBg, RegExp(r'(?!)')),
-  _Callout('takeaway', 'Takeaway', C.callTakeaway, C.callTakeawayBg, RegExp(r'(?!)')),
-  _Callout('keypoints', 'Key points', C.callTakeaway, C.callTakeawayBg, RegExp(r'(?!)')),
-  _Callout('player', 'Player', C.callPlayer, C.callPlayerBg, RegExp(r'(?!)')),
-  _Callout('record', 'On record', C.callRecord, C.callRecordBg, RegExp(r'(?!)')),
-  _Callout('dateline', 'Dateline', C.text3, C.bgRaised, RegExp(r'(?!)')),
-  // BI26111891 (standard 4.9.0 §21): the Document module's callouts. The document's words, and ours, look different.
-  _Callout('verbatim', 'Word for word', C.callQuote, C.callQuoteBg, RegExp(r'(?!)')),
-  _Callout('defined', 'As defined', C.callJargon, C.callJargonBg, RegExp(r'(?!)')),
-  _Callout('requires', 'Requires', C.callPlayer, C.callPlayerBg, RegExp(r'(?!)')),
-  _Callout('commentary', 'Commentary', C.violet, C.violetBg, RegExp(r'(?!)')),
-  _Callout('gap', 'Open point', C.callWatch, C.callWatchBg, RegExp(r'(?!)')),
-  _Callout('source', 'Source', C.text3, C.bgRaised, RegExp(r'(?!)')),
   _Callout('note', 'Note', C.text3, C.bgRaised, RegExp(r'(?!)')),
   // BI26101804: section 0's objective, the most prominent callout of the module, and the answer to a probe.
   _Callout('objective', 'Objective', C.callLearn, C.callLearnBg, RegExp(r'(?!)')),
@@ -1547,18 +1521,6 @@ const _elementKinds = <String, String>{
   // BI26111594: {concept} showed as raw text; it is the BUILD movement's main callout.
   'concept': 'learn',
   'carry': 'carry',
-  'keyidea': 'keyidea',
-  'takeaway': 'takeaway',
-  'keypoints': 'keypoints',
-  'player': 'player',
-  'record': 'record',
-  'dateline': 'dateline',
-  'verbatim': 'verbatim',
-  'defined': 'defined',
-  'requires': 'requires',
-  'commentary': 'commentary',
-  'gap': 'gap',
-  'source': 'source',
   // BI26101804 / CI26101803: the tags the content retag uses for section 0 and for probe answers.
   'answer': 'answer',
   'objective': 'objective',
@@ -1745,24 +1707,6 @@ final _movementHeading = RegExp(r'^##\s+\{([a-z]+)\}\s+(\S+\s+\S+):\s+(.+)$');
 /// inside movement k are `k.1`, `k.2`, ... and each gets a stable anchor (`grasp-1`, `week-7-2`).
 /// A pre-4.0.0 module is numbered by its `##` headings, with no element numbers or anchors.
 void _numberBlocks(List<_Block> blocks) {
-  // BI26111891 (4.9.0 §19): a Chronicle reads as a book. Its sections are PROLOGUE, CHAPTER n and EPILOGUE, and its
-  // callouts carry no k.j numbers; anchors stay stable (`chapter-1`, `keyidea-1-2`) so links still resolve.
-  if (blocks.any((b) => b.kind == _Kind.heading && (b.movementId == 'chapter' || b.movementId == 'part'))) {
-    var k = -1, ch = 0, j = 0;
-    for (final b in blocks) {
-      if (b.kind == _Kind.heading && b.level == 2 && b.movementId.isNotEmpty) {
-        k++;
-        j = 0;
-        if (b.movementId == 'chapter') ch++;
-        b.number = switch (b.movementId) { 'prologue' => 'PROLOGUE', 'epilogue' => 'EPILOGUE', 'chapter' => 'CHAPTER $ch', 'part' => b.uiLabel.toUpperCase(), _ => '' };
-        b.anchor = b.movementId == 'chapter' ? 'chapter-$ch' : b.movementId == 'part' ? 'part-${b.uiLabel.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-')}' : '${b.movementId}-$k';
-      } else if (b.kind == _Kind.callout && b.elementId.isNotEmpty && k >= 0) {
-        j++;
-        b.anchor = '${b.elementId}-$k-$j';
-      }
-    }
-    return;
-  }
   final v4 = blocks.any((b) => b.kind == _Kind.heading && b.movementId.isNotEmpty);
   var k = -1;
   var j = 0;
@@ -1840,9 +1784,6 @@ void _oneCalloutPerSection(List<_Block> blocks) {
             blocks[i].callout?.kind != 'answer' &&
             // BI26103094: a medicine module's Health Tip is always its own callout and never counts as the section's one.
             blocks[i].callout?.kind != 'healthtip' &&
-            // BI26111891 (4.9.0 §8.5): a section's takeaway is its own box, on top of the section's one callout.
-            !_ownBoxKinds.contains(blocks[i].callout?.kind) &&
-            !_chronicleSection(blocks, start) &&
             blocks[i].zeroRole != 'prerequisite' &&
             blocks[i].zeroRole != 'aside')
           blocks[i],
@@ -2628,7 +2569,7 @@ List<_Block> _parseBlocks(String source, [List<ChangeNote>? changeNotes]) {
         idx = nextLine;
         continue;
       }
-      if (base.kind == 'book' || base.kind == 'quote' || base.kind == 'research' || base.kind == 'record' || base.kind == 'verbatim' || base.kind == 'defined') {
+      if (base.kind == 'book' || base.kind == 'quote' || base.kind == 'research') {
         final m = RegExp(r'\[([^\]]{4,})\]\s*$').firstMatch(body);
         if (m != null) {
           cite = m.group(1)!;
@@ -2760,43 +2701,12 @@ List<_Block> _parseBlocks(String source, [List<ChangeNote>? changeNotes]) {
     idx++;
   }
   flushPara();
-  blocks = _keyPointsTakeTheirList(blocks);
   _numberBlocks(blocks);
   _tagSectionZero(blocks);
   blocks = _applyGuardMovementRule(blocks);
   _oneCalloutPerSection(blocks);
   blocks = _quietElements(blocks);
   return _tablesIntoIllustrations(blocks);
-}
-
-/// BI26111891 (4.9.0 §8.5): callouts drawn in their own box whatever else the section holds.
-const _ownBoxKinds = {'keyidea', 'takeaway', 'keypoints', 'carry', 'dateline', 'source'};
-
-/// BI26111891 (4.9.0 §19): a Chronicle section (prologue, chapter, epilogue) keeps every callout it has: the standard
-/// already limits them to the key idea and at most three others, so none is demoted to prose.
-bool _chronicleSection(List<_Block> blocks, int start) {
-  for (var i = start - 1; i >= 0; i--) {
-    final b = blocks[i];
-    if (b.kind == _Kind.heading && b.level == 2) return const {'prologue', 'chapter', 'epilogue', 'part'}.contains(b.movementId);
-  }
-  return false;
-}
-
-/// BI26111891 (4.9.0 §19): `**{keypoints} Two Words:**` is followed by a bullet list; the box holds the list.
-List<_Block> _keyPointsTakeTheirList(List<_Block> blocks) {
-  final out = <_Block>[];
-  for (var i = 0; i < blocks.length; i++) {
-    final b = blocks[i];
-    out.add(b);
-    if (b.kind != _Kind.callout || b.elementId != 'keypoints') continue;
-    final points = <String>[if (b.text.trim().isNotEmpty) b.text.trim()];
-    while (i + 1 < blocks.length && blocks[i + 1].kind == _Kind.listItem) {
-      points.add('• ${blocks[i + 1].text.trim()}');
-      i++;
-    }
-    b.text = points.join('\n');
-  }
-  return out;
 }
 
 /// PI26103090: 72 medicine and bme illustrations are a one-line caption with the table floating outside the box. The
