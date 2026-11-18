@@ -40,6 +40,8 @@ Pascal took the question seriously and wrote to Fermat.
 
 ## {chapter} Chapter Two: Fermat Replies
 
+**{dateline} Toulouse, Summer:** 1654
+
 Fermat counted every way the game could end.
 
 **{keyidea} Count Futures:** Listing every possible ending turns a dispute into arithmetic.
@@ -87,7 +89,9 @@ void main() {
     // no k.j numbers in a chronicle
     expect(labels.any((l) => RegExp(r'^\d+\.\d+').hasMatch(l!)), isFalse);
     // the dateline is a small line, not a box
-    expect(find.byKey(const Key('chronicle-dateline')), findsOneWidget);
+    // BI26111899: one dateline per chapter, drawn without the module screen's wrappers, must not throw "Duplicate keys".
+    expect(t.takeException(), isNull);
+    expect(_text(t), contains('Toulouse, Summer · 1654'));
     expect(_text(t), contains('Paris, Summer · 1654'));
     // the key points box holds its list
     expect(_text(t), contains('• Counting futures settles arguments.'));

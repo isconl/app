@@ -426,7 +426,8 @@ class Markdown extends StatelessWidget {
   Widget _dateline(_Block block, TextStyle style) {
     final text = [block.uiLabel.trim(), block.text.trim()].where((s) => s.isNotEmpty).join(' · ');
     return Padding(
-      key: const Key('chronicle-dateline'),
+      // BI26111899: no fixed Key here: a chronicle has a dateline per chapter, and siblings with one Key throw "Duplicate keys".
+      key: ValueKey('dateline-${block.anchor}-${block.text.hashCode}'),
       padding: EdgeInsets.only(top: _reading ? 2 : 0, bottom: _reading ? 10 : 6),
       child: Text(text,
           style: style.copyWith(color: C.text3, fontSize: _reading ? 13 : 12, fontStyle: FontStyle.italic, letterSpacing: 0.2)),

@@ -11,6 +11,7 @@ import 'app_nav.dart';
 import 'console/audio_backends.dart' show ensureBackgroundAudio;
 import 'console/console_services.dart';
 import 'app_scope.dart';
+import 'data/db.dart' show AppDb;
 import 'services/alerts.dart';
 import 'services/branding.dart';
 import 'services/clock.dart';
@@ -53,13 +54,99 @@ Future<void> main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
   PlatformBridge.instance.init();
+  // BI26111899 (Sconl, 18 Nov 2026: "such an error is to absolutely never happen again"): everything before the first
+  // frame is guarded. If start-up throws or takes longer than 40 seconds, the app shows what went wrong and offers to
+  // reset its stored data, instead of a blank screen with no way out. Before this, a bad state on the phone left the
+  // app blank until it was uninstalled.
+  try {
+    final services = await _start().timeout(const Duration(seconds: 40));
+    runApp(IsconlApp(services: services));
+  } catch (e) {
+    runApp(StartFailedApp(error: e));
+  }
+}
+
+Future<AppServices> _start() async {
   // BI26100323: notification and lock-screen controls for the Console player. Never allowed to stop the app starting.
-  await ensureBackgroundAudio();
+  try {
+    await ensureBackgroundAudio().timeout(const Duration(seconds: 8));
+  } catch (_) {}
   final services = await AppServices.boot();
-  await BrandingService.instance.load();
+  try {
+    await BrandingService.instance.load().timeout(const Duration(seconds: 5));
+  } catch (_) {}
   // BI26102802: spaces open in the rail unless Settings says tabs.
   await SpaceNavMode.load(services.db);
-  runApp(IsconlApp(services: services));
+  return services;
+}
+
+/// BI26111899: drawn when start-up fails, so the phone never sits on a blank screen. It says what happened, can try
+/// again, and can delete the app's local database (offline copies and caches; the sign-in is kept, and everything comes
+/// back from the server on the next start).
+class StartFailedApp extends StatefulWidget {
+  const StartFailedApp({super.key, required this.error});
+  final Object error;
+
+  @override
+  State<StartFailedApp> createState() => _StartFailedAppState();
+}
+
+class _StartFailedAppState extends State<StartFailedApp> {
+  bool _busy = false;
+  String? _note;
+
+  Future<void> _retry() async {
+    setState(() => _busy = true);
+    try {
+      final services = await _start().timeout(const Duration(seconds: 40));
+      runApp(IsconlApp(services: services));
+    } catch (e) {
+      if (mounted) setState(() { _busy = false; _note = 'Still could not start: $e'; });
+    }
+  }
+
+  Future<void> _reset() async {
+    setState(() => _busy = true);
+    try {
+      await AppDb.deleteLocal();
+      await _retry();
+    } catch (e) {
+      if (mounted) setState(() { _busy = false; _note = 'Could not reset: $e'; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final msg = widget.error.toString();
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme(),
+      home: Scaffold(
+        key: const Key('start-failed'),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text('iSconl could not start', style: T.headline),
+              const SizedBox(height: 12),
+              Text('Something stored on this phone stopped the app from opening. Try again, or reset the app\'s stored data: '
+                  'your sign-in stays, and lessons and other data come back from the server.',
+                  style: T.body2.copyWith(color: C.text2, height: 1.5)),
+              const SizedBox(height: 12),
+              SelectableText(msg.length > 400 ? '${msg.substring(0, 400)}...' : msg, style: T.monoSmall.copyWith(color: C.text3)),
+              if (_note != null) ...[const SizedBox(height: 12), Text(_note!, style: T.small.copyWith(color: C.amber))],
+              const SizedBox(height: 24),
+              Row(children: [
+                FilledButton(key: const Key('start-retry'), onPressed: _busy ? null : _retry, child: const Text('Try again')),
+                const SizedBox(width: 12),
+                OutlinedButton(key: const Key('start-reset'), onPressed: _busy ? null : _reset, child: const Text('Reset stored data')),
+              ]),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class IsconlApp extends StatefulWidget {

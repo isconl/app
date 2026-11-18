@@ -25,6 +25,13 @@ class AppDb {
   /// BI26092620: deck documents cached per version, plus their images.
   late final CdmCache cdm = CdmCache(_db);
 
+  /// BI26111899: the start-failed screen's reset. Deletes the local database (offline copies, caches, the outbox's
+  /// unsent writes); the sign-in lives in secure storage and is kept. sqflite closes an open handle to the path first.
+  static Future<void> deleteLocal() async {
+    final path = kIsWeb ? 'isconl.db' : p.join((await getApplicationDocumentsDirectory()).path, 'isconl.db');
+    await deleteDatabase(path);
+  }
+
   static Future<AppDb> open() async {
     // Web has no filesystem; ffi-web keys its IndexedDB store off a bare
     // logical name rather than a joined directory path (see main.dart's
