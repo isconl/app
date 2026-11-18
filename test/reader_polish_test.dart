@@ -96,15 +96,19 @@ void main() {
     await settle(t);
   });
 
-  testWidgets('the app bar holds one action, the download button, with the offline pin when the module is saved', (t) async {
+  testWidgets('BI26111891: the app bar holds the status icon in place of the offline pin; its menu says saved and exports', (t) async {
     await pumpLesson(t);
     final bar = find.byType(AppBar);
     expect(find.descendant(of: bar, matching: find.byKey(const Key('reader-aa'))), findsNothing);
     expect(find.descendant(of: bar, matching: find.byKey(const Key('reader-tutor'))), findsNothing);
-    expect(find.descendant(of: bar, matching: find.byTooltip(RegExp('Export this module'))), findsOneWidget);
-    // saved on this device: the pin, not the plain arrow
-    expect(find.byKey(const Key('export-saved')), findsOneWidget);
-    expect(find.byKey(const Key('export-plain')), findsNothing);
+    expect(find.descendant(of: bar, matching: find.byKey(const Key('module-status-action'))), findsOneWidget);
+    expect(find.byIcon(Icons.offline_pin_rounded), findsNothing, reason: 'the white pin is gone from the bar');
+    await t.tap(find.byKey(const Key('module-status-action')));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('module-saved-here')), findsOneWidget);
+    expect(find.byKey(const Key('module-export-pdf')), findsOneWidget);
+    await t.tapAt(const Offset(5, 500));
+    await t.pumpAndSettle();
     // one sync cloud in the bar
     expect(find.descendant(of: bar, matching: find.byType(SyncCloud)), findsOneWidget);
     await settle(t);

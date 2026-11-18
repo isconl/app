@@ -52,6 +52,17 @@ class C {
   static const callHealth = TokenColors.greenBright;
   static const callHealthBg = TokenColors.greenBg2;
   static const callLearnBg = TokenColors.callLearnBg;
+  // BI26111891 (course standard 4.9.0 §8.5): the section takeaways and the Chronicle callouts. Hues chosen to sit
+  // apart from every callout a section can already hold (rose and lime are unused elsewhere). Move into vela's
+  // tokens.json with the next token build; the values stay the same.
+  static const callKeyIdea = Color(0xFFD9849E);
+  static const callKeyIdeaBg = Color(0x1AD9849E);
+  static const callTakeaway = Color(0xFFA8C95A);
+  static const callTakeawayBg = Color(0x1AA8C95A);
+  static const callPlayer = TokenColors.cyan;
+  static const callPlayerBg = TokenColors.cyanBg;
+  static const callRecord = Color(0xFF8FA3B8);
+  static const callRecordBg = Color(0x1A8FA3B8);
   static const callJargon = TokenColors.callJargon;
   static const callJargonBg = TokenColors.callJargonBg;
   static const callWatch = TokenColors.callWatch;
