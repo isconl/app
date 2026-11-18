@@ -2506,10 +2506,8 @@ class ListenStrip extends StatelessWidget {
 
 /// BI26111891: the module's archetype for its header line, from its own frontmatter, else what the server sent.
 String? moduleArchetype(String content, [String fallback = '']) {
-  final fm = RegExp(r'^(?:s*<!--[sS]*?-->)*s*---[ 	]*?
-([sS]*?)?
----').firstMatch(content);
-  final m = fm == null ? null : RegExp(r'^archetype:s*"?([A-Za-z-]+)"?s*$', multiLine: true).firstMatch(fm.group(1)!);
+  final fm = RegExp(r'^(?:\s*<!--[\s\S]*?-->)*\s*---[ \t]*\r?\n([\s\S]*?)\r?\n---').firstMatch(content);
+  final m = fm == null ? null : RegExp(r'^archetype:\s*"?([A-Za-z-]+)"?\s*$', multiLine: true).firstMatch(fm.group(1)!);
   final v = (m?.group(1) ?? fallback).trim();
   return v.isEmpty ? null : v;
 }
