@@ -62,6 +62,7 @@ String _text(WidgetTester t) =>
     t.widgetList<RichText>(find.byType(RichText)).map((r) => r.text.toPlainText()).join('\n');
 
 void main() {
+  mainDocument();
   testWidgets('a Key Idea and a Takeaway are boxed with their fixed names, beside the section\'s other callout', (t) async {
     await _pump(t, _takeaways);
     final labels = _labels(t);
@@ -89,5 +90,43 @@ void main() {
     expect(_text(t), contains('Paris, Summer · 1654'));
     // the key points box holds its list
     expect(_text(t), contains('• Counting futures settles arguments.'));
+  });
+}
+
+const _document = '''## {prologue} About This Part: Recruitment And Probation
+
+**{outcome} You Will:** say what chapter three requires.
+
+**{source} The Manual:** HR Manager Manual v1.0.
+
+## {part} Section 3.2: Notice And Probation
+
+The manual sets a probation period for every hire.
+
+**{verbatim} Probation Terms:** "Every new hire serves a probation of three months." [HR Manual v1.0, §3.2]
+
+**{commentary} In Practice:** the clock starts on the first working day.
+
+**{gap} Unclear Start:** the manual does not say who signs the confirmation.
+
+**{keyidea} Probation First:** Nobody is confirmed before three months of checked work.
+
+## {epilogue} Keep This: What Chapter Three Asks
+
+**{keypoints} Key Points:**
+- Three months of probation.
+''';
+
+// BI26111891 (4.9.0 §21): the Document module keeps the document's own numbering and marks its words apart from ours.
+void mainDocument() {
+  testWidgets('a Document module shows the document\'s section number and its word-for-word, commentary and open-point boxes', (t) async {
+    await _pump(t, _document);
+    final eyebrows = t.widgetList<Text>(find.byKey(const Key('movement-eyebrow'))).map((x) => x.data).toList();
+    expect(eyebrows, ['PROLOGUE', 'SECTION 3.2', 'EPILOGUE']);
+    final labels = _labels(t);
+    for (final l in ['WORD FOR WORD', 'COMMENTARY', 'OPEN POINT', 'KEY IDEA']) {
+      expect(labels.any((x) => x!.contains(l)), isTrue, reason: l);
+    }
+    expect(find.byKey(const Key('callout-cite')), findsOneWidget, reason: 'the locator is the credit line');
   });
 }
