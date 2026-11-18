@@ -89,33 +89,23 @@ void main() {
   group('readingMeta', () {
     test('counts words and rounds reading time up', () {
       expect(readingMeta(''), '');
-      expect(readingMeta('one two three'), '3 words · 1 min read');
+      expect(readingMeta('one two three'), '3 words · 1 min');
       final long = List.filled(440, 'word').join(' ');
-      expect(readingMeta(long), '440 words · 2 min read');
+      expect(readingMeta(long), '440 words · 2 min');
     });
 
-    test('BI26092613: formats word count with thousands comma, reviewed date, and version', () {
+    test('BI26111891: five items, condensed: words, minutes, date, version, archetype', () {
       final doc = List.filled(1240, 'word').join(' ');
-      // Full line: 1,240 words · 6 min read · reviewed 22 Sep 2026 · v3.0
+      final now = DateTime(2026, 11, 18);
       expect(
-        readingMeta(doc, reviewedAt: '2026-09-22', version: '3.0'),
-        '1,240 words · 6 min read · reviewed 22 Sep 2026 · v3.0',
+        readingMeta(doc, reviewedAt: '2026-11-15', version: '4.9.0', archetype: 'Chronicle', now: now),
+        '1,240 words · 6 min · Nov 15 · v4.9.0 · Chronicle',
       );
-      // Hides missing version
-      expect(
-        readingMeta(doc, reviewedAt: '2026-09-22'),
-        '1,240 words · 6 min read · reviewed 22 Sep 2026',
-      );
-      // Hides missing reviewedAt
-      expect(
-        readingMeta(doc, version: 'v3.0'),
-        '1,240 words · 6 min read · v3.0',
-      );
-      // Backwards compatible with updatedAt
-      expect(
-        readingMeta(doc, updatedAt: '2026-07-29'),
-        contains('1,240 words · 6 min read · Updated Jul 29'),
-      );
+      // Another year shows the month and year instead of the day.
+      expect(readingMeta(doc, reviewedAt: '2025-09-22', version: '3.0', now: now), '1,240 words · 6 min · Sep 2025 · v3.0');
+      // The updated date stands in when there is no reviewed date; missing parts are hidden.
+      expect(readingMeta(doc, updatedAt: '2026-07-29', now: now), '1,240 words · 6 min · Jul 29');
+      expect(readingMeta(doc, version: 'v3.0'), '1,240 words · 6 min · v3.0');
     });
   });
 }

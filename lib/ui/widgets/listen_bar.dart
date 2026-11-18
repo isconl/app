@@ -21,8 +21,10 @@ import 'reader_comfort.dart';
 /// read it" and, if the module is plane B, it says so in those words after the
 /// agent refuses, rather than showing an error.
 class ListenBar extends StatefulWidget {
-  const ListenBar({super.key, required this.course, required this.file, required this.markdown});
+  const ListenBar({super.key, required this.course, required this.file, required this.markdown, this.padding = const EdgeInsets.only(top: 18, bottom: 2)});
 
+  /// BI26111891: the module view sets its own even spacing around the row, with a divider under it.
+  final EdgeInsetsGeometry padding;
   final String course;
   final String file;
   final String markdown;
@@ -48,7 +50,7 @@ class _ListenBarState extends State<ListenBar> {
         final staleNarration = hasNarration && audio?['stale'] == true;
 
         return Padding(
-          padding: const EdgeInsets.only(top: 18, bottom: 2),
+          padding: widget.padding,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

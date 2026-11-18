@@ -106,7 +106,11 @@ class ReadingHeader extends StatelessWidget {
     this.meta,
     this.trailing,
     this.titleBadge,
+    this.showDivider = true,
   });
+
+  /// BI26111891: false when a Listen row follows, which then carries the divider under itself.
+  final bool showDivider;
 
   final String title;
 
@@ -155,9 +159,12 @@ class ReadingHeader extends StatelessWidget {
           const SizedBox(height: 16),
           trailing!,
         ],
-        const SizedBox(height: 10),
-        const Divider(),
-        const SizedBox(height: 4),
+        if (showDivider) ...[
+          const SizedBox(height: 10),
+          const Divider(),
+          const SizedBox(height: 4),
+        ] else
+          const SizedBox(height: 2),
       ],
     );
   }
@@ -246,13 +253,16 @@ class ReadingSection extends StatelessWidget {
 /// Rough reading time, for the meta line. 220 wpm is a sensible middle for
 /// dense technical prose read on a phone.
 ///
-/// BI26092613: Header line: `1,240 words · 8 min read · reviewed 22 Sep 2026 · v3.0`,
-/// using `reviewedAt` and `version`. Hides any part that is missing.
+/// BI26111891 (Sconl, 18 Nov 2026): five items, condensed: `1,234 words · 8 min · Nov 15 · v4.9.0 · Chronicle`.
+/// The date is the reviewed date, else the updated one, without the year when it is this year. Hides any part that is
+/// missing.
 String readingMeta(
   String markdown, {
   String? updatedAt,
   String? reviewedAt,
   String? version,
+  String? archetype,
+  DateTime? now,
 }) {
   final words = markdown
       .split(RegExp(r'\s+'))
@@ -262,19 +272,14 @@ String readingMeta(
   if (words > 0) {
     final minutes = (words / 220).ceil();
     parts.add('${fmt.thousands(words)} words');
-    parts.add('$minutes min read');
+    parts.add('$minutes min');
   }
-  if (reviewedAt != null && reviewedAt.trim().isNotEmpty) {
-    final rawRev = reviewedAt.trim();
-    final dStr = fmt.reviewedDate(rawRev);
-    if (dStr.toLowerCase().startsWith('reviewed ')) {
-      parts.add(dStr);
-    } else {
-      parts.add('reviewed $dStr');
-    }
-  } else if (updatedAt != null && updatedAt.trim().isNotEmpty) {
-    final date = fmt.shortDate(updatedAt);
-    parts.add('Updated $date');
+  final when = [reviewedAt, updatedAt].map((s) => (s ?? '').trim()).firstWhere((s) => s.isNotEmpty, orElse: () => '');
+  final day = when.isEmpty ? null : fmt.parseDate(when);
+  if (day != null) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final thisYear = (now ?? DateTime.now()).year == day.year;
+    parts.add(thisYear ? '${months[day.month - 1]} ${day.day}' : '${months[day.month - 1]} ${day.year}');
   }
   if (version != null && version.trim().isNotEmpty) {
     final vStr = version.trim();
@@ -284,6 +289,7 @@ String readingMeta(
       parts.add('v$vStr');
     }
   }
+  if (archetype != null && archetype.trim().isNotEmpty) parts.add(archetype.trim());
   return parts.join(' · ');
 }
 
