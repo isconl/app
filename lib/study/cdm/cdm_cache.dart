@@ -15,6 +15,7 @@ import 'dart:typed_data';
 
 import 'package:sqflite/sqflite.dart';
 
+import '../../data/cursor_safe.dart';
 import 'cdm_model.dart';
 
 /// Fetches one document version as JSON text, or null when it cannot be reached.
@@ -88,14 +89,25 @@ class CdmCache {
 
   // ---- documents ----
 
-  /// The cached JSON text of one version, or null.
+  /// The cached JSON text of one version, or null. BI26111901: read in slices so a large document cannot hit Android's
+  /// 2 MB row limit; a row that still cannot be read is dropped and refetched, never thrown to the reader.
   Future<String?> readRaw(String docId, String version) async {
-    final rows = await _db.query('cdm_cache',
-        columns: ['json'], where: 'doc_id = ? AND version = ?', whereArgs: [docId, version], limit: 1);
-    return rows.isEmpty ? null : rows.first['json'] as String;
+    try {
+      return await readTextCursorSafe(_db,
+          table: 'cdm_cache', column: 'json', where: 'doc_id = ? AND version = ?', whereArgs: [docId, version]);
+    } catch (_) {
+      try {
+        await _db.delete('cdm_cache', where: 'doc_id = ? AND version = ?', whereArgs: [docId, version]);
+      } catch (_) {}
+      return null;
+    }
   }
 
-  Future<bool> has(String docId, String version) async => await readRaw(docId, version) != null;
+  Future<bool> has(String docId, String version) async {
+    final rows = await _db.query('cdm_cache',
+        columns: ['version'], where: 'doc_id = ? AND version = ?', whereArgs: [docId, version], limit: 1);
+    return rows.isNotEmpty;
+  }
 
   Future<void> write(String docId, String version, String json, {String contentHash = ''}) async {
     await _db.insert(
@@ -189,8 +201,15 @@ class CdmCache {
   /// Image bytes from the cache, else fetched once and kept, so a module's
   /// pictures survive going offline.
   Future<Uint8List?> image(String url, CdmImageFetch fetch) async {
-    final rows = await _db.query('cdm_images', columns: ['bytes'], where: 'url = ?', whereArgs: [url], limit: 1);
-    if (rows.isNotEmpty) return Uint8List.fromList(rows.first['bytes'] as List<int>);
+    try {
+      final kept = await readBlobCursorSafe(_db, table: 'cdm_images', column: 'bytes', where: 'url = ?', whereArgs: [url]);
+      if (kept != null && kept.isNotEmpty) return kept;
+    } catch (_) {
+      // BI26111901: an unreadable cached image is dropped and fetched again, never thrown to the reader.
+      try {
+        await _db.delete('cdm_images', where: 'url = ?', whereArgs: [url]);
+      } catch (_) {}
+    }
     final bytes = await fetch(url);
     if (bytes == null || bytes.isEmpty) return null;
     await _db.insert(

@@ -1,11 +1,12 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb, visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../study/cdm/cdm_cache.dart';
+import 'cursor_safe.dart';
 import 'vault_mirror.dart';
 
 /// Local persistence. The vault ENGINE on the server remains the single
@@ -233,16 +234,25 @@ class AppDb {
     );
   }
 
+  /// A snapshot is a cache, so reading one never throws. BI26111901: the body is read in slices (see cursor_safe.dart)
+  /// so a large one, such as the course catalogue, cannot hit Android's 2 MB row limit, and any row that still cannot
+  /// be read or decoded is deleted and reported as a miss. The next refresh fetches it again from the server.
   Future<(dynamic, DateTime)?> getSnapshot(String key) async {
-    final rows = await _db
-        .query('snapshots', where: 'key = ?', whereArgs: [key], limit: 1);
-    if (rows.isEmpty) return null;
     try {
-      final value = jsonDecode(rows.first['json'] as String);
-      final at = DateTime.fromMillisecondsSinceEpoch(
-          rows.first['fetched_at'] as int);
+      final meta = await _db.query('snapshots',
+          columns: ['fetched_at'], where: 'key = ?', whereArgs: [key], limit: 1);
+      if (meta.isEmpty) return null;
+      final json = await readTextCursorSafe(_db,
+          table: 'snapshots', column: 'json', where: 'key = ?', whereArgs: [key]);
+      if (json == null) return null;
+      final value = jsonDecode(json);
+      final at = DateTime.fromMillisecondsSinceEpoch(meta.first['fetched_at'] as int);
       return (value, at);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('snapshot "$key" unreadable, dropped: $e');
+      try {
+        await deleteSnapshot(key);
+      } catch (_) {}
       return null;
     }
   }
@@ -310,7 +320,7 @@ class AppDb {
   /// BI26111402: once, after the update that stopped retrying refusals: every refused write gets one more try, so a
   /// write that only met a blip (a host move, a timeout) goes through and only real refusals stay refused.
   Future<int> retryFailedOnce(String marker) async {
-    final done = await _db.query('snapshots', where: 'key = ?', whereArgs: [marker], limit: 1);
+    final done = await _db.query('snapshots', columns: ['key'], where: 'key = ?', whereArgs: [marker], limit: 1);
     if (done.isNotEmpty) return 0;
     final n = await _db.rawUpdate("UPDATE outbox SET status = 'pending' WHERE status = 'failed'");
     await _db.insert('snapshots', {'key': marker, 'json': 'true', 'fetched_at': DateTime.now().millisecondsSinceEpoch},
