@@ -1571,6 +1571,11 @@ const _elementKinds = <String, String>{
   // BI26102804: two 4.x ids the table lacked, so they fell through as plain text with their tag showing.
   'rescore': 'note',
   'scenarios': 'note',
+  // BI26111904: the forecast elements (first-outside-income and its siblings) showed their tags as raw text.
+  'question': 'note',
+  'baserate': 'note',
+  'indicators': 'note',
+  'rules': 'note',
 };
 
 /// BI26102804: line-kind elements read as a quiet line (small caps label, one step below body, no box).
@@ -1723,10 +1728,14 @@ String _matchLabel(String line) => RegExp(r'^\*\*([^:*]+)').firstMatch(line)?.gr
 /// `**{prior} Before This:** body`, optionally as a list item (`1. **{now} Two Words:** body`).
 ///
 /// BI26101106: `{id!}` marks the element that is its section's one callout.
-final _elementLine = RegExp(r'^\*\*\{([a-z]+)(!?)\}\s+(\S+\s+\S+):\*\*\s*(.*)$');
+// BI26111904: the label is one to several words ending in `:` (`**{concept} Who Decides What:**`) or a question
+// (`**{probe} Can You Send It?**`, the `?` kept in the label). Two words is the standard; the reader takes any.
+final _elementLine = RegExp(r'^\*\*\{([a-z]+)(!?)\}\s+([^*]{1,80}?\?|[^*:]{1,80}?):?\*\*\s*(.*)$');
 
 /// `## {orient} Setting Out: Where This Module Begins`.
-final _movementHeading = RegExp(r'^##\s+\{([a-z]+)\}\s+(\S+\s+\S+):\s+(.+)$');
+// BI26111904: Document modules (4.9.0 section 21) label their opening `## {prologue} About This Part: ...`, three words
+// before the colon; the reader takes a label of one to several words.
+final _movementHeading = RegExp(r'^##\s+\{([a-z]+)\}\s+([^:]{1,80}?):\s+(.+)$');
 
 /// Standard 4.x §3.10: movements are numbered from 0 in reading order (`k.0`), the labelled elements
 /// inside movement k are `k.1`, `k.2`, ... and each gets a stable anchor (`grasp-1`, `week-7-2`).
@@ -2341,10 +2350,26 @@ String normalizeModuleSource(String source) {
   }
 
   t = outsideFences(t, (x) => x.replaceAll(RegExp(r'<!--[\s\S]*?-->'), ''));
+  t = outsideFences(t, stripStrayTags);
   t = t.replaceFirst(RegExp(r'^\s+'), '');
   final fm = RegExp(r'^---[ \t]*\n[\s\S]*?\n---[ \t]*(?:\n|$)').firstMatch(t);
   if (fm != null) t = t.substring(fm.end);
   return outsideFences(t, _gridTablesToPipe).trimLeft();
+}
+
+/// BI26111904: no `{tag}` ever reaches the reader. A movement heading (`## {id} Label: Heading`) and an element line
+/// (`**{id} Label:** body`) are the parser's to draw; any other heading, paragraph, list item or quote that starts with
+/// a `{tag}` loses the tag. LaTeX (`{r}{n}`, no space after) and inline mentions are left alone.
+String stripStrayTags(String text) {
+  final tag = r'\{[a-z][a-z0-9_-]*!?\}';
+  final headingTag = RegExp('^(\\s*#{1,6}\\s+)$tag\\s*');
+  final lineTag = RegExp('^(\\s*(?:>\\s*)*(?:(?:\\d+[.)]|[-*+])\\s+)?)$tag(?:\\s+|\$)');
+  return text.split('\n').map((l) {
+    if (_movementHeading.hasMatch(l.trim())) return l;
+    if (headingTag.hasMatch(l)) return l.replaceFirstMapped(headingTag, (m) => m.group(1)!);
+    if (lineTag.hasMatch(l)) return l.replaceFirstMapped(lineTag, (m) => m.group(1)!);
+    return l;
+  }).join('\n');
 }
 
 bool _isGridBorder(String l) => RegExp(r'^\s*\+[-=:+]{2,}\+\s*$').hasMatch(l);
@@ -2597,9 +2622,10 @@ List<_Block> _parseBlocks(String source, [List<ChangeNote>? changeNotes]) {
 
     // BI26100537: a 4.x element line, `**{id} Two Words:** body`, also as a list item (APPLY rungs).
     final element = _elementLine.firstMatch(trimmed.replaceFirst(RegExp(r'^\s*(?:\d+[.)]|[-*+])\s+'), ''));
-    if (element != null && _elementKinds.containsKey(element.group(1))) {
+    if (element != null) {
       flushPara();
-      final base = _callouts.firstWhere((c) => c.kind == _elementKinds[element.group(1)]);
+      // BI26111904: a tag the table does not know yet is drawn as a quiet note with its label, never shown raw.
+      final base = _callouts.firstWhere((c) => c.kind == (_elementKinds[element.group(1)] ?? 'note'));
       final (whole, nextLine) = _withContinuation(lines, idx, element.group(4)!.trim());
       var body = whole.trim();
       var cite = '';
