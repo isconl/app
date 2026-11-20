@@ -1,0 +1,54 @@
+{
+  "_comment": "Fallback copy of the rule data behind Slate doc WRITING-VOICE.md. voice-lint.js reads this file; `voice-lint.js --check-rules` (run by guardrails.js) compares docVersion and crutchWords against the live doc. Edit the doc first, then this file to match.",
+  "docKey": "WRITING-VOICE.md",
+  "docVersion": "1.0.0",
+  "crutchWords": [
+    { "term": "delve", "severity": "error" },
+    { "term": "moreover", "severity": "error" },
+    { "term": "furthermore", "severity": "error" },
+    { "term": "in today's world", "severity": "error" },
+    { "term": "it's important to note", "severity": "error" },
+    { "term": "arguably", "severity": "error" },
+    { "term": "at the end of the day", "severity": "error" },
+    { "term": "in conclusion", "severity": "error" },
+    { "term": "navigate the landscape", "severity": "error" },
+    { "term": "a testament to", "severity": "error" },
+    { "term": "seamless", "severity": "error" },
+    { "term": "robust", "severity": "error" },
+    { "term": "leverage", "severity": "warning", "note": "the doc bans it as filler only, so a reviewer decides" }
+  ],
+  "crutchVariants": {
+    "delve": ["delves", "delved", "delving"],
+    "it's important to note": ["it is important to note"],
+    "seamless": ["seamlessly"]
+  },
+  "crutchPatterns": {
+    "leverage": [
+      "\\b(?:to|we|you|they|i|can|could|will|would|should|must|and|let's|helps?(?: you)?) leverage\\s+(?:our|your|their|the|this|that|these|its|his|her|existing|every|ai|data)\\b",
+      "(?<![\\w-])leverag(?:es|ing)\\s+(?:our|your|their|the|this|that|these|its|his|her|existing|every|ai|data)\\b"
+    ]
+  },
+  "throatClear": [
+    "^(?:#+\\s*)?in this (?:module|lesson|section|article|guide|post|document|chapter|course|video|brief|report)\\b[^.]{0,20}\\b(?:we|you|i)(?:'ll| will| are going to)\\b",
+    "\\bi hope (?:this|my) (?:message|email|e-mail|note|letter) finds you\\b",
+    "^(?:#+\\s*)?in today's\\b"
+  ],
+  "contrastSetup": [
+    "\\bnot (?:just|only|merely|simply) [^.;:!?\\n]{1,80}?[,;]\\s*(?:it's|it is|but|they're|they are|we're|we are|this is)\\b",
+    "\\b(?:it's|it is|this is|that's|that is) not (?:about )?[^.;:!?,\\n]{1,60}[,;]\\s*(?:it's|it is|this is|that's|that is)\\b",
+    "\\bnot [^,.;\\n]{1,40}, not [^,.;\\n]{1,40},? but\\b"
+  ],
+  "signoffFiller": [
+    "\\blet me know if you have any (?:other |further |more )?questions\\b",
+    "\\bhope (?:this|that) helps\\b",
+    "\\bfeel free to reach out\\b",
+    "\\bdon't hesitate to (?:reach out|contact|get in touch|ask)\\b",
+    "\\bhappy to help\\b"
+  ],
+  "rangeWords": [
+    "jan", "january", "feb", "february", "mar", "march", "apr", "april", "may", "jun", "june",
+    "jul", "july", "aug", "august", "sep", "sept", "september", "oct", "october", "nov", "november",
+    "dec", "december", "mon", "monday", "tue", "tues", "tuesday", "wed", "wednesday", "thu", "thurs",
+    "thursday", "fri", "friday", "sat", "saturday", "sun", "sunday", "q1", "q2", "q3", "q4"
+  ]
+}
