@@ -234,7 +234,7 @@ class _StatChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = warn ? C.amber : C.text3;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: warn ? C.amberBg : C.surface,
         borderRadius: BorderRadius.circular(6),

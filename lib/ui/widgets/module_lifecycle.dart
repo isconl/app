@@ -62,7 +62,7 @@ class LifecycleBadges extends StatelessWidget {
             for (final b in badges)
               Container(
                 key: Key('lifecycle-${b.label}'),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(border: Border.all(color: b.color), borderRadius: BorderRadius.circular(8)),
                 child: Text(b.label, style: T.tiny.copyWith(color: b.color)),
               ),

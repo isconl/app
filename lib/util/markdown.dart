@@ -89,8 +89,6 @@ class Markdown extends StatelessWidget {
     final changeNotes = <ChangeNote>[];
     final blocks = _parseBlocks(source, changeNotes);
     final figures = _figuresOf(blocks);
-    // Sconl, 8 Nov 2026: a module's dated change notes sit just above its first movement, folded into one pill.
-    var notesPlaced = changeNotes.isEmpty;
     final children = <Widget>[];
     final movements = <String>[];
     final words = <int>[];
@@ -101,13 +99,7 @@ class Markdown extends StatelessWidget {
           first: i == 0, lead: i > 0 && blocks[i - 1].kind == _Kind.heading, figures: figures);
       if (w == null) continue;
       final b = blocks[i];
-      if (!notesPlaced && b.kind == _Kind.heading && b.level == 2) {
-        notesPlaced = true;
-        w = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Padding(padding: EdgeInsets.only(top: _reading ? 6 : 2, bottom: _reading ? 4 : 2), child: ChangeNotesPill(notes: changeNotes)),
-          w,
-        ]);
-      }
+      // Sconl, 21 Nov 2026: what changed is a toolbar button on every module (ListenBar), no longer a pill in the copy.
       // BI26101804: a probe followed by its answer is one unit: the probe, then a Reveal answer button that opens the
       // answer in place. The answer is never drawn as a second callout.
       if (b.kind == _Kind.callout && b.callout?.kind == 'probe' && i + 1 < blocks.length &&
@@ -151,8 +143,6 @@ class Markdown extends StatelessWidget {
               )));
     }
     anchors?._describe(movements, words, anchorIndex);
-    // A module with change notes and no movement heading still shows them, at the top.
-    if (!notesPlaced) children.insert(0, ChangeNotesPill(notes: changeNotes));
     if (children.isEmpty) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
   }
@@ -1051,7 +1041,7 @@ class Markdown extends StatelessWidget {
           onTap: () => showJargonDefinition(context, term, definition,
               etymology: etymology, example: example),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: C.violet.withValues(alpha: 0.1),
               border: Border.all(color: C.violet.withValues(alpha: 0.3)),
@@ -1238,28 +1228,24 @@ class _RevealAnswerState extends State<_RevealAnswer> {
 
   @override
   Widget build(BuildContext context) {
+    // Sconl, 21 Nov 2026: no Reveal answer button; tapping the probe callout itself opens the answer, and a second tap
+    // folds it again.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (widget.probe != null) widget.probe!,
-        // BI26111594: the toggle sits on the right edge (Sconl, 14 Nov 2026 study note).
-        Align(
-          alignment: Alignment.centerRight,
+        Semantics(
+          button: true,
+          expanded: _open,
+          label: _open ? 'Hide answer' : 'Reveal answer',
           child: InkWell(
-          key: const Key('reveal-answer'),
-          borderRadius: BorderRadius.circular(Sz.rSm),
-          onTap: () => setState(() => _open = !_open),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_open ? 'Hide answer' : 'Reveal answer', style: T.tiny.copyWith(color: C.green)),
-                Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 16, color: C.green),
-              ],
+            key: const Key('reveal-answer'),
+            borderRadius: BorderRadius.circular(Sz.rMd),
+            onTap: () => setState(() => _open = !_open),
+            child: widget.probe ?? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 18, color: C.text3),
             ),
           ),
-        ),
         ),
         if (_open) widget.answer,
       ],
@@ -1325,7 +1311,7 @@ class _QuizRevealState extends State<_QuizReveal> {
               ),
               TextButton(
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   foregroundColor: C.callQuiz,

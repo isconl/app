@@ -213,7 +213,7 @@ class _SidebarRailState extends State<SidebarRail> {
                       _ => null,
                     };
                 return ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   children: [
                     for (final group in navGroups) ...[
                       InkWell(

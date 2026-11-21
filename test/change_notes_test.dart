@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:isconl/ui/widgets/listen_bar.dart' show showModuleChangesSheet;
 import 'package:isconl/util/markdown.dart';
 
 // Sconl, 8 Nov 2026: a module's change notes leave the copy and fold into one pill above the first movement.
@@ -46,21 +47,28 @@ Body text.
     expect(notes.map((n) => n.date), ['8 November 2026', '6 October 2026']);
   });
 
-  testWidgets('notes leave the copy and open from one pill', (tester) async {
+  testWidgets('notes leave the copy; the toolbar sheet lists them, newest first', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(body: SingleChildScrollView(child: Markdown(module, variant: MarkdownVariant.reading))),
     ));
     expect(find.textContaining('_Changed'), findsNothing);
     expect(find.textContaining('no longer recommends Estonia'), findsNothing);
-    expect(find.text('Updated 8 Nov 2026'), findsOneWidget);
-    expect(find.textContaining('2 revisions'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('change-notes-toggle')));
+    expect(find.byType(ChangeNotesPill), findsNothing, reason: 'Sconl, 21 Nov 2026: a toolbar button, not a pill in the copy');
+    await tester.pumpWidget(MaterialApp(home: Builder(builder: (ctx) => Scaffold(body: TextButton(
+      onPressed: () => showModuleChangesSheet(ctx, changeNotesOf(module)), child: const Text('open'))))));
+    await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
     expect(find.text('the module no longer recommends Estonia first.'), findsOneWidget);
     expect(find.text('the CEO decided on 7 November.'), findsOneWidget);
-    expect(find.text('WHY'), findsOneWidget);
     expect(find.text('6 OCT 2026'), findsOneWidget);
-    expect(find.textContaining('Body text'), findsOneWidget);
+  });
+
+  testWidgets('a module without notes says so in the sheet', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Builder(builder: (ctx) => Scaffold(body: TextButton(
+      onPressed: () => showModuleChangesSheet(ctx, const []), child: const Text('open'))))));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('No changes recorded'), findsOneWidget);
   });
 
   testWidgets('a module without notes shows no pill', (tester) async {

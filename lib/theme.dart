@@ -221,6 +221,8 @@ ThemeData buildTheme() {
           side: const BorderSide(color: Color(0x1AF0F6FC)),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+        minimumSize: const Size(64, 44),
+        visualDensity: VisualDensity.standard,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -230,14 +232,22 @@ ThemeData buildTheme() {
         side: const BorderSide(color: C.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        minimumSize: const Size(64, 44),
+        visualDensity: VisualDensity.standard,
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: C.green,
         textStyle: T.w500(T.body2),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        minimumSize: const Size(48, 40),
+        visualDensity: VisualDensity.standard,
       ),
     ),
+    // Sconl, 21 Nov 2026: no button in the app should look squashed. Every button theme opts out of the app-wide
+    // compact density and carries a real minimum height; icon buttons keep a full touch target.
+    iconButtonTheme: const IconButtonThemeData(style: ButtonStyle(visualDensity: VisualDensity.standard)),
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith((s) =>
           s.contains(WidgetState.selected) ? C.greenBright : C.text3),
@@ -269,6 +279,7 @@ ThemeData buildTheme() {
       checkmarkColor: C.greenBright,
       side: const BorderSide(color: C.border),
       labelStyle: T.small,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     ),
     segmentedButtonTheme: SegmentedButtonThemeData(
@@ -276,6 +287,9 @@ ThemeData buildTheme() {
         backgroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? C.green : null),
         foregroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? C.textInverse : C.text2),
         side: const WidgetStatePropertyAll(BorderSide(color: C.border)),
+        visualDensity: VisualDensity.standard,
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+        minimumSize: const WidgetStatePropertyAll(Size(48, 40)),
       ),
     ),
     checkboxTheme: CheckboxThemeData(

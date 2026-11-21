@@ -435,7 +435,7 @@ class _HubViewState extends State<HubView> with WidgetsBindingObserver {
           onTap: handleTap,
           onLongPress: handleLongPress,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: textWidget,
           ),
         ),

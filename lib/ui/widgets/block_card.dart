@@ -169,7 +169,7 @@ class _BlockCardState extends State<BlockCard> {
                 if (block['quiet'] == true) ...[
                   const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: C.surface,
                       borderRadius: BorderRadius.circular(Sz.rSm),
@@ -411,7 +411,7 @@ class _BlockItemTileState extends State<_BlockItemTile> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

@@ -912,7 +912,7 @@ class _WishlistState extends State<_Wishlist> {
               trailing: InkWell(
                 onTap: () => _addSheet(context),
                 child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   child: Icon(Icons.add_rounded, size: 17, color: C.text2),
                 ),
               ),

@@ -156,7 +156,7 @@ class _KitsTab extends StatelessWidget {
               CheckboxListTile(
                 key: Key('item-${item.id}'),
                 // 56 dp rows: easy to hit with gloves.
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 value: item.packed,
                 onChanged: (v) => controller.setPacked(kit.id, item.id, v ?? false),
                 title: Text(item.name, style: T.body),

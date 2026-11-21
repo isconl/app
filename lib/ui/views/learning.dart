@@ -210,7 +210,7 @@ class _LearningViewState extends State<LearningView> {
                     data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                     child: ExpansionTile(
                       initiallyExpanded: false,
-                      tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                      tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                       leading: const Icon(Icons.campaign_outlined, size: 20, color: C.text2),
                       title: Text('Announcements', style: T.label),
                       children: [
@@ -938,7 +938,7 @@ class CourseSummaryCard extends StatelessWidget {
           if (isFirstIncomplete) ...[
             const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: trackColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
@@ -1170,7 +1170,7 @@ class _CourseTileState extends State<CourseTile> {
                     borderRadius: BorderRadius.circular(Sz.rSm),
                     onTap: () => _takeOffline(courseId, files),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       child: Text(stale > 0 ? 'Update all' : 'Take offline',
                           style: T.tiny.copyWith(
                               color: C.green, fontWeight: FontWeight.w600)),
@@ -1248,7 +1248,7 @@ class ModuleStatusChip extends StatelessWidget {
     final label = s == 'done' ? 'Done' : (s == 'learning' ? 'Learning' : 'Opened');
     return Container(
       key: const Key('status-chip'),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: c.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(10),

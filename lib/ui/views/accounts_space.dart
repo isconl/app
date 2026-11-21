@@ -275,7 +275,7 @@ class _SignUpsTabState extends State<_SignUpsTab> {
                   Text('Renews in the next 14 days: ${dueSoon.map((s) => s.service).join(', ')}', style: T.body2.copyWith(color: C.amber)),
                 ]),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Wrap(spacing: 8, children: [
                   Pill('Costs money', key: const Key('filter-paid'), selected: _paid, onTap: () => setState(() => _paid = !_paid)),
                   Pill('Renews in 30 days', key: const Key('filter-soon'), selected: _soon, onTap: () => setState(() => _soon = !_soon)),

@@ -5,6 +5,7 @@ import '../../app_scope.dart';
 import '../../services/narration.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
+import '../../util/markdown.dart' show ChangeNote, changeNotesOf;
 import 'common.dart';
 import 'offline_narration.dart';
 import 'reader_comfort.dart';
@@ -101,6 +102,14 @@ class _ListenBarState extends State<ListenBar> {
                     tooltip: 'Text size and spacing',
                     onTap: () => showReaderComfortSheet(context),
                     child: Text('Aa', style: T.w600(T.body2).copyWith(color: C.text2)),
+                  ),
+                  // Sconl, 21 Nov 2026: what changed in this module, on every module, styled like speed and text size.
+                  const SizedBox(width: 6),
+                  _ComfortButton(
+                    key: const Key('reader-changes'),
+                    tooltip: 'What changed in this module',
+                    onTap: () => showModuleChangesSheet(context, changeNotesOf(widget.markdown)),
+                    child: Icon(Icons.history_rounded, size: 18, color: changeNotesOf(widget.markdown).isEmpty ? C.text3 : C.amber),
                   ),
                   Expanded(
                     child: Align(
@@ -288,4 +297,46 @@ class _ComfortButton extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// What changed in a module, newest first: each revision's date, what changed and why. A module with no change notes
+/// says so, so the button behaves the same on every module.
+Future<void> showModuleChangesSheet(BuildContext context, List<ChangeNote> notes) {
+  final label = T.tiny.copyWith(color: C.text3, fontWeight: FontWeight.w700, letterSpacing: 0.9);
+  final body = T.small.copyWith(color: C.text2, height: 1.5);
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (ctx) => SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
+        child: ListView(
+          key: const Key('module-changes-sheet'),
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          children: [
+            Text('What changed', style: T.w600(T.body2)),
+            const SizedBox(height: 12),
+            if (notes.isEmpty)
+              Text('No changes recorded since this module was published.', style: body)
+            else
+              for (var i = 0; i < notes.length; i++) ...[
+                if (i > 0) const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: C.border)),
+                Text(notes[i].shortDate.toUpperCase(), style: label.copyWith(color: C.amber)),
+                const SizedBox(height: 6),
+                Text(notes[i].what, style: body),
+                if (notes[i].why.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text('WHY', style: label),
+                  const SizedBox(height: 3),
+                  Text(notes[i].why, style: body),
+                ],
+              ],
+          ],
+        ),
+      ),
+    ),
+  );
 }

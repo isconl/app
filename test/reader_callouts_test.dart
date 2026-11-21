@@ -121,11 +121,11 @@ void main() {
 
   group('BI26101804: probe answers', () {
     for (final entry in {'4.x': _probe, 'older': _probeOld}.entries) {
-      testWidgets('${entry.key}: the answer is hidden behind Reveal answer, opens in place and folds again', (t) async {
+      testWidgets('${entry.key}: tapping the probe callout opens the answer in place and folds it again', (t) async {
         await _pump(t, entry.value);
         final reveal = find.byKey(const Key('reveal-answer'));
         expect(reveal, findsOneWidget);
-        expect(find.text('Reveal answer'), findsOneWidget);
+        expect(find.text('Reveal answer'), findsNothing, reason: 'Sconl, 21 Nov 2026: no button; the probe callout is the tap target');
         expect(_text(t), contains('mandate stall').or(contains('why does it stall')));
         expect(_text(t), isNot(contains('nobody owns')));
         expect(_labels(t).any((l) => l!.contains('ANSWER')), isFalse, reason: 'never a second callout');
@@ -134,12 +134,10 @@ void main() {
         await t.pumpAndSettle();
         expect(_text(t), contains('nobody owns'));
         expect(_labels(t).any((l) => l!.contains('ANSWER')), isTrue);
-        expect(find.text('Hide answer'), findsOneWidget);
 
         await t.tap(reveal);
         await t.pumpAndSettle();
         expect(_text(t), isNot(contains('nobody owns')));
-        expect(find.text('Reveal answer'), findsOneWidget);
       });
     }
 

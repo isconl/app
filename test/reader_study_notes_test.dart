@@ -56,11 +56,10 @@ void main() {
     expect(_all(t), contains('what each line sells'));
   });
 
-  testWidgets('the answer toggle sits on the right edge', (t) async {
+  testWidgets('the probe callout itself is the answer toggle (no button)', (t) async {
     await _pump(t);
-    final r = t.getRect(find.byKey(const Key('reveal-answer')));
-    expect(r.right, greaterThan(400 - 60), reason: 'right-aligned in the column');
-    expect(r.left, greaterThan(200));
+    expect(find.byKey(const Key('reveal-answer')), findsOneWidget);
+    expect(find.text('Reveal answer'), findsNothing);
   });
 
   testWidgets('APPLY rungs are bullets, no numbered circles, the timeframe bold green', (t) async {

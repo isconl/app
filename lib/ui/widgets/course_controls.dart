@@ -160,21 +160,23 @@ class _ControlChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = on ? C.green : C.text2;
+    // Sconl, 21 Nov 2026: the chips looked squashed; they now share the reader's button size (12 by 6 padding,
+    // radius 20, small text), the same as the speed and text-size buttons.
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(20),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: on ? C.greenBg : Colors.transparent,
           border: Border.all(color: on ? C.greenDim : C.border),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 13, color: c),
-          const SizedBox(width: 5),
-          Text(label, style: T.tiny.copyWith(color: c, fontWeight: FontWeight.w600)),
-          if (onTap != null) ...[const SizedBox(width: 2), Icon(Icons.expand_more_rounded, size: 13, color: c)],
+          Icon(icon, size: 16, color: c),
+          const SizedBox(width: 6),
+          Text(label, style: T.small.copyWith(color: c, fontWeight: FontWeight.w600)),
+          if (onTap != null) ...[const SizedBox(width: 2), Icon(Icons.expand_more_rounded, size: 16, color: c)],
         ]),
       ),
     );

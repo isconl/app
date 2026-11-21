@@ -374,7 +374,7 @@ class _LessonNotesState extends State<LessonNotes> {
           if (_open) _load();
         },
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

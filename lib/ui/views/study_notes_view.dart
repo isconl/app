@@ -157,7 +157,7 @@ class _StudyNotesViewState extends State<StudyNotesView> {
   }
 
   Widget _chip(bool synced) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: synced ? C.greenBg : C.amberBg,
           borderRadius: BorderRadius.circular(20),

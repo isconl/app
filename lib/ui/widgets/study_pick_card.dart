@@ -261,7 +261,7 @@ class _StudyPickCardState extends State<StudyPickCard> {
           label: Text(label, style: T.tiny),
           backgroundColor: C.bgRaised,
           side: const BorderSide(color: C.border),
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         ),
       );
 
@@ -282,7 +282,7 @@ class _StudyPickCardState extends State<StudyPickCard> {
           });
         },
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Column(
             children: [
               SizedBox(
@@ -422,7 +422,7 @@ class _StudyPickCardState extends State<StudyPickCard> {
                     child: Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color: C.panel,
                             borderRadius: BorderRadius.circular(Sz.rSm),
@@ -486,7 +486,7 @@ class _StudyPickCardState extends State<StudyPickCard> {
                           label: 'Rebuilt from downloaded modules',
                           child: Container(
                             key: const Key('study-pick-degraded'),
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
                               color: C.amberBg,
                               borderRadius: BorderRadius.circular(Sz.rSm),
@@ -500,7 +500,7 @@ class _StudyPickCardState extends State<StudyPickCard> {
                           label: 'Offline, data from $offlineTime',
                           child: Container(
                             key: const Key('study-pick-offline'),
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
                               color: C.panel,
                               borderRadius: BorderRadius.circular(Sz.rSm),

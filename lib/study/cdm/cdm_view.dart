@@ -691,7 +691,7 @@ class _CdmQuizState extends State<_CdmQuiz> {
           ),
           TextButton(
             style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               foregroundColor: C.callQuiz,

@@ -161,7 +161,7 @@ class _TrajectoryReaderState extends State<TrajectoryReader> {
         if (t.isStale(now))
           Container(
             key: const Key('stale-badge'),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               border: Border.all(color: C.amber),
               borderRadius: BorderRadius.circular(Sz.rSm),

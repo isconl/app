@@ -175,7 +175,7 @@ class _ContextRingCardState extends State<ContextRingCard>
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                   decoration: BoxDecoration(
                                     color: _mode == ConsoleMode.recorder ? C.redBg : urgency.bg,
                                     borderRadius: BorderRadius.circular(4),
