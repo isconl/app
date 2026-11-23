@@ -4,12 +4,14 @@ import 'package:isconl/api/client.dart';
 import 'package:isconl/data/db.dart';
 import 'package:isconl/data/lesson_notes.dart';
 import 'package:isconl/data/mutations.dart';
+import 'package:isconl/data/note_doc.dart';
 import 'package:isconl/data/outbox.dart';
 import 'package:isconl/data/store.dart';
 import 'package:isconl/data/sync.dart';
 import 'package:isconl/theme.dart';
 import 'package:isconl/ui/widgets/brand.dart';
 import 'package:isconl/ui/views/learning.dart';
+import 'package:isconl/ui/widgets/lesson_notes_editor.dart' show NoteCard, NoteCardFrame;
 import 'package:isconl/ui/widgets/common.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -67,6 +69,12 @@ class FakeLessonNotesRepository implements LessonNotesRepository {
     drafts++;
     lastSavedText = text;
   }
+
+  @override
+  int waiting = 0;
+
+  @override
+  Future<int> pushAll() async => 0;
 
   @override
   Future<MutationResult> pushOne({required String course, required String file}) async =>
@@ -294,18 +302,19 @@ void main() {
     });
   });
 
-  group('BI26092614: LessonNotes UI widget', () {
-    testWidgets('renders note editor, autosaves, and saves on the button', (tester) async {
+  group('BI26112301: the floating note card', () {
+    testWidgets('typing saves on the phone, Save turns it into a timestamped entry and sends it', (tester) async {
       final repo = FakeLessonNotesRepository();
 
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
-          body: SingleChildScrollView(
-            child: LessonNotes(
+          body: NoteCardFrame(
+            child: NoteCard(
               course: 'corp-law',
               file: '02-contracts.md',
-              anchor: 4,
-              inSheet: true,
+              title: 'Contracts',
+              paragraph: 4,
+              paragraphText: 'An indemnity clause moves a loss from one party to the other.',
               repository: repo,
             ),
           ),
@@ -314,11 +323,13 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('NOTES'), findsOneWidget);
-      expect(find.textContaining('Anchored to paragraph 5'), findsOneWidget);
-      expect(find.text('Save and close'), findsOneWidget);
+      // Save, Sync, New note and All notes sit in the card's top row.
+      for (final k in ['note-save', 'note-sync', 'note-new', 'note-all']) {
+        expect(find.byKey(Key(k)), findsOneWidget, reason: k);
+      }
+      expect(find.textContaining('Paragraph 5: An indemnity clause'), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField), 'Important indemnity clause notes.');
+      await tester.enterText(find.byKey(const Key('note-field')), 'Important indemnity clause notes.');
       await tester.pump(const Duration(milliseconds: 800));
       expect(repo.drafts, 1, reason: 'a pause in typing saves on the phone');
       expect(find.text('Saved on this phone'), findsOneWidget);
@@ -329,9 +340,75 @@ void main() {
 
       expect(repo.lastSavedCourse, 'corp-law');
       expect(repo.lastSavedFile, '02-contracts.md');
-      expect(repo.lastSavedText, 'Important indemnity clause notes.');
       expect(repo.lastSavedAnchor, 4);
+      final doc = NoteDoc.parse(repo.lastSavedText!);
+      expect(doc.notes.single.saved.single.text, 'Important indemnity clause notes.');
+      expect(doc.notes.single.draft, isNull, reason: 'Save finishes the entry');
+      // The entry shows its time, and the field is cleared for the next one.
+      expect(find.byKey(const Key('note-entry-stamp')), findsOneWidget);
+      expect(tester.widget<TextField>(find.byKey(const Key('note-field'))).controller!.text, isEmpty);
       expect(find.textContaining('Synced'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('notes on two paragraphs of one module stay separate', (tester) async {
+      final repo = FakeLessonNotesRepository();
+      Future<void> write(int paragraph, String quote, String text) async {
+        await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+            body: NoteCardFrame(
+              child: NoteCard(
+                key: UniqueKey(),
+                course: 'c',
+                file: 'm.md',
+                paragraph: paragraph,
+                paragraphText: quote,
+                repository: repo,
+              ),
+            ),
+          ),
+        ));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.enterText(find.byKey(const Key('note-field')), text);
+        await tester.tap(find.byKey(const Key('note-save')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      await write(2, 'Price discovery starts with the buyer.', 'first thought');
+      await write(9, 'Margins hide in freight.', 'second thought');
+      await write(2, 'Price discovery starts with the buyer.', 'a later thought');
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 5));
+
+      final doc = NoteDoc.parse(repo.lastSavedText!);
+      expect(doc.notes.length, 2);
+      final p2 = doc.forParagraph(2, paragraphQuote('Price discovery starts with the buyer.'))!;
+      final p9 = doc.forParagraph(9, paragraphQuote('Margins hide in freight.'))!;
+      expect(p2.saved.map((e) => e.text), ['first thought', 'a later thought']);
+      expect(p9.saved.map((e) => e.text), ['second thought']);
+    });
+
+    testWidgets('with the keyboard up the card sits just above it', (tester) async {
+      tester.view.physicalSize = const Size(1080, 2340);
+      tester.view.devicePixelRatio = 3;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 900);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          resizeToAvoidBottomInset: false,
+          body: NoteCardFrame(
+            child: NoteCard(course: 'c', file: 'm.md', repository: FakeLessonNotesRepository()),
+          ),
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 300));
+      const screen = 2340 / 3, keyboardTop = screen - 900 / 3;
+      final card = tester.getRect(find.byKey(const Key('note-card')));
+      expect(card.bottom, lessThanOrEqualTo(keyboardTop));
+      expect(card.bottom, greaterThan(keyboardTop - 24), reason: 'just above the keyboard, not floating far from it');
+      expect(tester.getRect(find.byKey(const Key('note-save'))).bottom, lessThan(keyboardTop));
       await tester.pump(const Duration(seconds: 5));
     });
   });

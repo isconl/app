@@ -124,25 +124,8 @@ class _StudyNotesViewState extends State<StudyNotesView> {
   }
 
   Future<void> _edit(String course, String file, String? title) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: C.panel,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
-        side: BorderSide(color: C.border),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
-            child: LessonNotes(
-                course: course, file: file, title: title, inSheet: true),
-          ),
-        ),
-      ),
-    );
+    // BI26112301: the same floating note card the reader uses.
+    await openNoteCard(context, course: course, file: file, title: title);
     await _load();
   }
 
@@ -206,7 +189,7 @@ class _StudyNotesViewState extends State<StudyNotesView> {
               Text('${n.course} · ${_ago(n.updatedAt)}',
                   style: T.tiny.copyWith(color: C.text3)),
               const SizedBox(height: 8),
-              Text(n.text.trim(),
+              Text(n.readable,
                   maxLines: open ? null : 3,
                   overflow: open ? null : TextOverflow.ellipsis,
                   style: T.body2.copyWith(color: C.text2, height: 1.55)),
@@ -220,13 +203,13 @@ class _StudyNotesViewState extends State<StudyNotesView> {
                   ),
                   OutlinedButton.icon(
                     onPressed: () => _toInbox('Study note: $title',
-                        '${n.text.trim()}\n\n(${n.course}/${n.file})'),
+                        '${n.readable}\n\n(${n.course}/${n.file})'),
                     icon: const Icon(Icons.move_to_inbox_rounded, size: 16),
                     label: const Text('To inbox'),
                   ),
                   OutlinedButton.icon(
                     onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: n.text));
+                      await Clipboard.setData(ClipboardData(text: n.readable));
                       if (mounted) toast(context, 'Note copied');
                     },
                     icon: const Icon(Icons.copy_rounded, size: 16),

@@ -4,6 +4,7 @@ import '../api/client.dart';
 import '../util/fmt.dart' as fmt;
 import 'db.dart';
 import 'mutations.dart';
+import 'note_doc.dart';
 import '../services/notes_sync_worker.dart';
 
 /// Where a note stands against the server.
@@ -39,6 +40,12 @@ class LessonNote {
           !updatedAt!.isAfter(syncedAt!))
       ? NoteSync.synced
       : NoteSync.waiting;
+
+  /// BI26112301: the module's notes as a document of anchored, timestamped notes.
+  NoteDoc get doc => NoteDoc.parse(text, legacyAnchor: anchor, legacyAt: updatedAt);
+
+  /// The notes as people read them: a heading per note, a time per entry, no app comments.
+  String get readable => doc.readable();
 
   /// A readable name: the module title when known, else the file name tidied.
   String get displayTitle {
@@ -139,6 +146,14 @@ class LessonNotesRepository extends ChangeNotifier {
     if (localNote == null) return null;
     if (localNote.text.isEmpty && localNote.anchor == null) return null;
     return localNote;
+  }
+
+  /// BI26112301: the module's notes as stored on the phone, without asking the server. For views that redraw on
+  /// every save.
+  Future<NoteDoc> localDoc({required String course, required String file}) async {
+    final row = await db.lessonNoteLocal(course: course, file: file);
+    if (row == null) return NoteDoc();
+    return LessonNote.fromRow(row).doc;
   }
 
   /// Saves on the phone only. Cheap; call it as the reader types.
@@ -267,7 +282,7 @@ class LessonNotesRepository extends ChangeNotifier {
         final when = n.updatedAt?.toIso8601String().substring(0, 16).replaceFirst('T', ' ') ?? '';
         b.writeln('### ${n.displayTitle}\n');
         b.writeln('_${n.file}${when.isEmpty ? '' : ', $when'}_\n');
-        b.writeln('${n.text.trim()}\n');
+        b.writeln('${n.doc.readable(level: 4)}\n');
       }
     }
     return b.toString();

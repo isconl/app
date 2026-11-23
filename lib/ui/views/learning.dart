@@ -1849,67 +1849,47 @@ class _LessonScreenState extends State<LessonScreen> {
     );
   }
 
-  /// BI26092614: calculates the index of the topmost visible block/paragraph.
-  int _computeTopmostBlockIndex() {
-    if (_currentContent == null || _currentContent!.isEmpty || !_scroll.hasClients) {
-      return 0;
-    }
-    final maxExtent = _scroll.position.maxScrollExtent;
-    if (maxExtent <= 0) return 0;
-    final paragraphs = _currentContent!
-        .split(RegExp(r'\n\s*\n'))
-        .where((p) => p.trim().isNotEmpty)
-        .toList();
-    if (paragraphs.isEmpty) return 0;
-    final progress = (_scroll.offset / maxExtent).clamp(0.0, 1.0);
-    return (progress * paragraphs.length).floor().clamp(0, paragraphs.length - 1);
+  /// BI26112301: the notes button opens the floating note card on the note last written in this module.
+  void _openNotesSheet(BuildContext context) {
+    openNoteCard(context, course: widget.course, file: widget.file, title: widget.title);
   }
 
-  /// BI26092614: opens the notes bottom sheet with block anchor context.
-  void _openNotesSheet(BuildContext context) {
+  /// BI26112301: a long-press on a paragraph offers a note anchored to it, or a question for the tutor.
+  Future<void> _paragraphActions(int index, String text) async {
     HapticFeedback.selectionClick();
-    final anchor = _computeTopmostBlockIndex();
-    showModalBottomSheet(
+    final choice = await showModalBottomSheet<String>(
       context: context,
-      isScrollControlled: true,
       backgroundColor: C.panel,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
         side: BorderSide(color: C.border),
       ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 14),
-                    decoration: BoxDecoration(
-                      color: C.borderMid,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                _LessonNotes(
-                  course: widget.course,
-                  file: widget.file,
-                  title: widget.title,
-                  anchor: anchor,
-                  inSheet: true,
-                ),
-              ],
-            ),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 8),
+          ListTile(
+            key: const Key('para-note'),
+            leading: const Icon(Icons.edit_note_rounded, color: C.green),
+            title: const Text('Note on this paragraph'),
+            onTap: () => Navigator.of(ctx).pop('note'),
           ),
-        ),
+          ListTile(
+            key: const Key('para-tutor'),
+            leading: const Icon(Icons.school_outlined, color: C.cyan),
+            title: const Text('Ask the tutor'),
+            onTap: () => Navigator.of(ctx).pop('tutor'),
+          ),
+          const SizedBox(height: 8),
+        ]),
       ),
     );
+    if (!mounted) return;
+    if (choice == 'note') {
+      await openNoteCard(context,
+          course: widget.course, file: widget.file, title: widget.title, paragraph: index, paragraphText: text);
+    } else if (choice == 'tutor') {
+      await askTutorAbout(context, _tutor, index, text);
+    }
   }
 
   /// Jumps to the locally-saved scroll position once the content has laid
@@ -2032,7 +2012,7 @@ class _LessonScreenState extends State<LessonScreen> {
       );
 
   ParagraphHook _paragraphHook() => ParagraphHook(
-        onLongPress: (i, t) => askTutorAbout(context, _tutor, i, t),
+        onLongPress: _paragraphActions,
         footer: (i, t) => TutorFooter(controller: _tutor, paragraph: i, text: t),
       );
 
