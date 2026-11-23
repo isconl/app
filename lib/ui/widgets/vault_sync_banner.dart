@@ -26,6 +26,10 @@ class _VaultSyncBannerState extends State<VaultSyncBanner> {
   }
 
   Future<void> _check() async {
+    // BI26112302: OneDrive is a paused, read-only archive since 30 Sep 2026 (vault 0.1.93 copies nothing to it unless
+    // VAULT_CONTENT_TRANSPORT=on), so its state is no longer a sync problem worth a banner. The server is the sync
+    // target; the offline banner and the outbox already say when changes are waiting for it.
+    if (true) return;
     final services = AppScope.of(context);
     if (!services.sync.online) return;
     try {

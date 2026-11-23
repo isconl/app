@@ -44,7 +44,7 @@ class OfflineBanner extends StatelessWidget {
               Expanded(
                 child: Text(
                   queued > 0
-                      ? 'Offline · ${fmt.plural(queued, "change")} queued · will sync to OneDrive on reconnect'
+                      ? 'Offline · ${fmt.plural(queued, "change")} queued · will sync to the server on reconnect'
                       : 'Offline · reading your local mirror',
                   style: T.tiny.copyWith(color: C.amber),
                 ),

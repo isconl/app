@@ -55,7 +55,7 @@ class _OutboxViewState extends State<OutboxView> {
                         EmptyState(
                           'Outbox empty',
                           'Changes you make while offline queue here, then '
-                              'deliver to the agent and on to OneDrive.',
+                              'deliver to the server as soon as you are online.',
                           icon: Icons.outbox_rounded,
                         ),
                       ],
