@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../app_scope.dart';
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 
@@ -29,30 +28,7 @@ class _VaultSyncBannerState extends State<VaultSyncBanner> {
     // BI26112302: OneDrive is a paused, read-only archive since 30 Sep 2026 (vault 0.1.93 copies nothing to it unless
     // VAULT_CONTENT_TRANSPORT=on), so its state is no longer a sync problem worth a banner. The server is the sync
     // target; the offline banner and the outbox already say when changes are waiting for it.
-    if (true) return;
-    final services = AppScope.of(context);
-    if (!services.sync.online) return;
-    try {
-      final res =
-          fmt.m(await services.api.getJson('/api/vault/sync/status', cold: true));
-      if (!mounted) return;
-      final onedrive = fmt.b(res['onedrive']);
-      final status = fmt.s(res['status']);
-      String? bad;
-      if (!onedrive) {
-        bad = 'OneDrive is not connected - nothing is syncing. Your data is '
-            'only on this work machine until you reconnect (Settings -> '
-            'Microsoft 365).';
-      } else if (status == 'offline') {
-        final err = fmt.s(res['error']).isEmpty ? 'unreachable' : fmt.s(res['error']);
-        bad = 'OneDrive sync is failing ($err) - changes are staying on this '
-            'work machine until it recovers.';
-      }
-      setState(() => _message = bad);
-    } catch (_) {
-      // Server unreachable - the rest of the UI already surfaces that; this
-      // banner just stays quiet rather than adding a second warning for it.
-    }
+    if (mounted && _message != null) setState(() => _message = null);
   }
 
   @override
