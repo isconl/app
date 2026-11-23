@@ -4,6 +4,7 @@ import '../api/client.dart';
 import '../util/fmt.dart' as fmt;
 import 'db.dart';
 import 'mutations.dart';
+import '../services/notes_sync_worker.dart';
 
 /// Where a note stands against the server.
 enum NoteSync {
@@ -166,7 +167,10 @@ class LessonNotesRepository extends ChangeNotifier {
   }) async {
     await saveDraft(
         course: course, file: file, text: text, anchor: anchor, title: title);
-    return pushOne(course: course, file: file);
+    final r = await pushOne(course: course, file: file);
+    // BI26112302: not sent now, so Android sends it the moment there is a network, even with the app closed.
+    if (r.queued) await requestNotesSyncSoon();
+    return r;
   }
 
   Future<MutationResult> pushOne({

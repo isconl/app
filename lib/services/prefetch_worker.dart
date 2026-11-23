@@ -15,6 +15,7 @@ import '../data/store.dart';
 import '../util/fmt.dart' as fmt;
 import 'alerts.dart';
 import 'close_feed.dart';
+import 'notes_sync_worker.dart';
 import 'prefetch.dart';
 import 'session.dart';
 
@@ -57,6 +58,8 @@ void prefetchDispatcher() {
   Workmanager().executeTask((task, input) async {
     // BI26101529: WorkManager has one dispatcher per app, so the slate-close poll shares this one.
     if (task == closeFeedTaskName) return runCloseFeedBackground();
+    // BI26112302: notes and the outbox leave the phone whenever it has a network, app open or not.
+    if (task == notesSyncTaskName) return runNotesSyncBackground();
     try {
       final db = await AppDb.open();
       final session = SessionService();

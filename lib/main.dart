@@ -19,6 +19,7 @@ import 'services/close_feed.dart';
 import 'services/day_close_planner.dart';
 import 'services/platform.dart';
 import 'services/prefetch.dart';
+import 'services/notes_sync_worker.dart';
 import 'services/prefetch_worker.dart';
 import 'services/home_widget.dart';
 import 'services/share_intake.dart';
@@ -231,6 +232,8 @@ class _RootGateState extends State<RootGate> with WidgetsBindingObserver {
       final s = AppScope.of(context);
       final settings = await DbPrefetchStore(s.db).settings();
       await syncPrefetchSchedule(settings);
+      // BI26112302: notes and queued writes sync in the background whenever there is a network.
+      await syncNotesSchedule();
       unawaited(prefetchNow(s));
     });
     AlertService.instance.onDayClose = () => rootNavigatorKey.currentState
