@@ -12,7 +12,7 @@ void main() {
         ),
       ),
     ));
-    final text = tester.widgetList<RichText>(find.byType(RichText)).map((r) => r.text.toPlainText()).join('\n');
+    final text = tester.widgetList<RichText>(find.byType(RichText)).map((r) => r.text.toPlainText(includeSemanticsLabels: false)).join('\n');
     expect(text, contains('[finance.yahoo.com]'));
     expect(text, isNot(contains('https://')));
     expect(text, contains('Yahoo Finance.'));
@@ -22,7 +22,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(body: SingleChildScrollView(child: Markdown('See [the report](https://example.org/r) for detail.'))),
     ));
-    final text = tester.widgetList<RichText>(find.byType(RichText)).map((r) => r.text.toPlainText()).join('\n');
+    final text = tester.widgetList<RichText>(find.byType(RichText)).map((r) => r.text.toPlainText(includeSemanticsLabels: false)).join('\n');
     expect(text, contains('the report'));
     expect(text, isNot(contains('[example.org]')));
   });
