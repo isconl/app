@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
-import '../../util/fmt.dart' as fmt;
 
 /// The persistence-layer warning, ported from dashboard/app.js's
 /// checkVaultLink() (~line 617): a broken OneDrive link isn't a degraded
