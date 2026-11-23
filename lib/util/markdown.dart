@@ -938,7 +938,7 @@ class Markdown extends StatelessWidget {
     // afterwards -- that keeps every existing two-field marker matching
     // exactly as before rather than needing a second pattern.
     final pattern = RegExp(
-        r'(\[\[link:([^|\]]+)\|((?:https?://|module:)[^\]]+)\]\])|(\[\[([^|\]]+)\|([^\]]+)\]\])|(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))|(\[\[([^|\]:]+)\]\])',
+        r'(\[\[link:([^|\]]+)\|((?:https?://|module:)[^\]]+)\]\])|(\[\[([^|\]]+)\|([^\]]+)\]\])|(\*\*(.+?)\*\*)|(\*([^*]+?)\*)|(_([^_]+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))|(\[\[([^|\]:]+)\]\])|(https?://[^\s<>\])]+)',
         caseSensitive: false);
     var pos = 0;
     for (final match in pattern.allMatches(text)) {
@@ -989,6 +989,14 @@ class Markdown extends StatelessWidget {
         spans.add(TextSpan(
             text: match.group(19)!.trim(),
             style: TextStyle(color: C.violet, fontWeight: FontWeight.w500)));
+      } else if (match.group(20) != null) {
+        // BI26112305: a bare URL (a reference line's source) is a citation: the site's short name, smaller, blue and
+        // tappable, set apart from the sentence, never the whole address printed raw. Trailing punctuation stays text.
+        var url = match.group(20)!;
+        final trail = RegExp(r'[.,;:!?]+$').firstMatch(url)?.group(0) ?? '';
+        url = url.substring(0, url.length - trail.length);
+        spans.add(_citationSpan(url, style));
+        if (trail.isNotEmpty) spans.add(TextSpan(text: trail));
       }
       pos = match.end;
     }
@@ -1004,6 +1012,25 @@ class Markdown extends StatelessWidget {
   /// unchanged rather than rebuilt around a `WidgetSpan` -- there is no
   /// context-dependent popup here the way the jargon span needs, so the
   /// simpler mechanism that was already working is the right one to reuse.
+  /// BI26112305 (Sconl, study note on one-decade-bet m01): sources read as citations, "smaller text, blue ... still
+  /// clickable", showing where the source lives rather than its full address.
+  TextSpan _citationSpan(String url, TextStyle style) {
+    final host = Uri.tryParse(url)?.host.replaceFirst(RegExp(r'^www\.'), '') ?? '';
+    return TextSpan(children: [
+      const TextSpan(text: ' '),
+      TextSpan(
+        text: '[${host.isEmpty ? 'source' : host}]',
+        semanticsLabel: 'Source: ${host.isEmpty ? url : host}',
+        style: TextStyle(color: C.blue, fontSize: (style.fontSize ?? 14) * 0.82, fontWeight: FontWeight.w500),
+        recognizer: TapGestureRecognizer()
+          ..onTap = () {
+            final uri = Uri.tryParse(url);
+            if (uri != null) launchUrl(uri, mode: LaunchMode.externalApplication);
+          },
+      ),
+    ]);
+  }
+
   TextSpan _externalLinkSpan(String text, String url) => TextSpan(
         text: text,
         style: const TextStyle(
