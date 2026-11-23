@@ -526,6 +526,9 @@ class TrackCard extends StatelessWidget {
     } catch (_) {}
     final stats = _TrackStats(courses, lib);
     final pct = group.progressPct / 100;
+    // BI26112304: counted from the track's own course list when it is here; the server's total otherwise.
+    final archivedCount = courses.where(isArchivedCourse).length;
+    final activeCount = courses.isEmpty ? group.courseCount : courses.length - archivedCount;
     final allOffline = stats.totalModules > 0 &&
         stats.offlineModules == stats.totalModules &&
         stats.staleModules == 0;
@@ -612,11 +615,17 @@ class TrackCard extends StatelessWidget {
                         TextSpan(
                           style: T.small.copyWith(color: C.text),
                           children: [
+                            // BI26112304: active courses are the main number; archived ones follow, quieter, in grey.
                             TextSpan(
-                              text: '${group.courseCount} '
-                                  '${group.courseCount == 1 ? 'course' : 'courses'} · '
-                                  '${group.moduleCount} modules · ',
+                              text: '$activeCount ${activeCount == 1 ? 'course' : 'courses'}',
+                              style: T.small.copyWith(color: C.text, fontWeight: FontWeight.w700),
                             ),
+                            if (archivedCount > 0)
+                              TextSpan(
+                                text: ' · $archivedCount archived',
+                                style: T.small.copyWith(color: C.text3),
+                              ),
+                            TextSpan(text: ' · ${group.moduleCount} modules · '),
                             TextSpan(
                               text: '${group.progressPct}%',
                               style: T.small.copyWith(

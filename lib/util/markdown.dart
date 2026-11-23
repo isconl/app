@@ -259,7 +259,7 @@ class Markdown extends StatelessWidget {
                     style: style.copyWith(
                         color: block.watch ? C.callWatch : C.green, fontWeight: FontWeight.w600)),
               ),
-              Expanded(child: Text.rich(_inline(block.text, style))),
+              Expanded(child: Text.rich(_inline(block.text, style, leadColor: block.watch ? C.callWatch : null))),
             ],
           ),
         );
@@ -930,7 +930,7 @@ class Markdown extends StatelessWidget {
   /// externally, matching the same `[text](url)` link style below), and
   /// this was the one live gap -- `structural-leverage` module 07 rendered
   /// its `[[link:...]]` as a jargon popup showing a bare URL until this fix.
-  TextSpan _inline(String text, TextStyle style) {
+  TextSpan _inline(String text, TextStyle style, {Color? leadColor}) {
     final spans = <InlineSpan>[];
     // BL26091115: the jargon marker grew from `[[term|definition]]` to
     // `[[term|definition|etymology|example]]`. Etymology and example are
@@ -959,13 +959,12 @@ class Markdown extends StatelessWidget {
       } else if (match.group(7) != null) {
         // A glossary marker inside bold must still resolve, not show raw `[[`.
         final inner = match.group(8)!;
+        // BI26112190: a failure item's bold lead wears the failure callout's colour, as its number already does.
+        final isLead = leadColor != null && text.substring(0, match.start).trim().isEmpty;
+        final boldStyle = TextStyle(fontWeight: FontWeight.w600, color: isLead ? leadColor : null);
         spans.add(inner.contains('[[')
-            ? TextSpan(
-                style: const TextStyle(fontWeight: FontWeight.w600),
-                children: [_inline(inner, style)])
-            : TextSpan(
-                text: inner,
-                style: const TextStyle(fontWeight: FontWeight.w600)));
+            ? TextSpan(style: boldStyle, children: [_inline(inner, style)])
+            : TextSpan(text: inner, style: boldStyle));
       } else if (match.group(9) != null) {
         spans.add(TextSpan(
             text: match.group(10),
