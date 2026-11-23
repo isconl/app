@@ -85,7 +85,9 @@ void main() {
     expect(labels.where((l) => l!.contains('KEY IDEA')).length, 2);
     expect(labels.any((l) => l!.contains('PLAYER')), isTrue);
     expect(labels.any((l) => l!.contains('ON RECORD')), isTrue);
-    expect(labels.any((l) => l!.contains('KEY POINTS')), isTrue);
+    // BI26112306: key points read like every other module's, a subheading and plain bullets, never a callout box.
+    expect(labels.any((l) => l!.contains('KEY POINTS')), isFalse);
+    expect(_text(t), contains('Key Points'));
     // no k.j numbers in a chronicle
     expect(labels.any((l) => RegExp(r'^\d+\.\d+').hasMatch(l!)), isFalse);
     // the dateline is a small line, not a box
@@ -93,8 +95,8 @@ void main() {
     expect(t.takeException(), isNull);
     expect(_text(t), contains('Toulouse, Summer · 1654'));
     expect(_text(t), contains('Paris, Summer · 1654'));
-    // the key points box holds its list
-    expect(_text(t), contains('• Counting futures settles arguments.'));
+    // the key points list is still there, as plain bullets
+    expect(_text(t), contains('Counting futures settles arguments.'));
   });
 }
 

@@ -2782,7 +2782,7 @@ List<_Block> _parseBlocks(String source, [List<ChangeNote>? changeNotes]) {
 }
 
 /// BI26111891 (4.9.0 §8.5): callouts drawn in their own box whatever else the section holds.
-const _ownBoxKinds = {'keyidea', 'takeaway', 'keypoints', 'carry', 'dateline', 'source'};
+const _ownBoxKinds = {'keyidea', 'takeaway', 'carry', 'dateline', 'source'};
 
 /// BI26111891 (4.9.0 §19): a Chronicle section (prologue, chapter, epilogue) keeps every callout it has: the standard
 /// already limits them to the key idea and at most three others, so none is demoted to prose.
@@ -2794,19 +2794,19 @@ bool _chronicleSection(List<_Block> blocks, int start) {
   return false;
 }
 
-/// BI26111891 (4.9.0 §19): `**{keypoints} Two Words:**` is followed by a bullet list; the box holds the list.
+/// BI26111891 (4.9.0 §19): `**{keypoints} Two Words:**` is followed by a bullet list.
+/// BI26112306 (Sconl, study note on wabba-position-plays m17): the key points no longer sit in a callout box, which
+/// "looks unnatural"; they read like every other module's: a small subheading with the label, then plain bullets.
 List<_Block> _keyPointsTakeTheirList(List<_Block> blocks) {
   final out = <_Block>[];
-  for (var i = 0; i < blocks.length; i++) {
-    final b = blocks[i];
-    out.add(b);
-    if (b.kind != _Kind.callout || b.elementId != 'keypoints') continue;
-    final points = <String>[if (b.text.trim().isNotEmpty) b.text.trim()];
-    while (i + 1 < blocks.length && blocks[i + 1].kind == _Kind.listItem) {
-      points.add('• ${blocks[i + 1].text.trim()}');
-      i++;
+  for (final b in blocks) {
+    if (b.kind != _Kind.callout || b.elementId != 'keypoints') {
+      out.add(b);
+      continue;
     }
-    b.text = points.join('\n');
+    final label = b.uiLabel.trim().isEmpty ? 'Key points' : b.uiLabel.trim();
+    out.add(_Block(_Kind.heading, text: label, level: 3));
+    if (b.text.trim().isNotEmpty) out.add(_Block(_Kind.paragraph, text: b.text.trim()));
   }
   return out;
 }
