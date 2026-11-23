@@ -70,6 +70,12 @@ class ModuleLibrary extends ChangeNotifier {
   /// course/file -> revision of the copy on this device.
   final Map<String, String> _local = {};
 
+  /// BI26112303: course/file -> the revision last opened in the reader, so a module republished since reads as
+  /// Updated. Kept on the phone (snapshot [readKey]); the prefetcher refreshing a copy does not touch it.
+  final Map<String, String> _read = {};
+  static const readKey = 'module_read';
+  bool _readSaveQueued = false;
+
   bool _loaded = false;
   bool busy = false;
   DateTime? checkedAt;
@@ -177,6 +183,10 @@ class ModuleLibrary extends ChangeNotifier {
     if (_loaded) return;
     _loaded = true;
     await _rescanLocal();
+    final read = await _db.getSnapshot(readKey);
+    if (read != null) {
+      fmt.m(read.$1).forEach((k, v) => _read[k] = fmt.s(v));
+    }
     // The manifest the server last sent, so a restart with no server still lists the whole library
     // (Sconl, 27 Oct 2026). A later check() replaces it only with a newer good answer.
     final kept = await _db.getSnapshot(DbResponseCache.keyOf(manifestPath));
@@ -185,6 +195,46 @@ class ModuleLibrary extends ChangeNotifier {
   }
 
   static const manifestPath = '/api/learning/manifest';
+
+  /// BI26112303: true when a module already opened, in progress or done has been republished since it was last
+  /// opened on this phone. A module never seen by this check before (opened before this existed) is taken as read
+  /// at its current revision, so the first run does not flag the whole library.
+  bool isUpdated(String course, String file, String status) {
+    final s = status.toLowerCase();
+    if (s != 'opened' && s != 'learning' && s != 'done') return false;
+    final live = fmt.s(manifestEntry(course, file)?['rev']);
+    if (live.isEmpty) return false;
+    final k = keyOf(course, file);
+    final seen = _read[k];
+    if (seen == null) {
+      _read[k] = live;
+      _queueReadSave();
+      return false;
+    }
+    return seen != live;
+  }
+
+  /// BI26112303: the module was opened at its current revision; an Updated pill goes back to its own status.
+  Future<void> markRead(String course, String file) async {
+    final live = fmt.s(manifestEntry(course, file)?['rev']);
+    if (live.isEmpty) return;
+    final k = keyOf(course, file);
+    if (_read[k] == live) return;
+    _read[k] = live;
+    await _db.putSnapshot(readKey, Map<String, String>.of(_read));
+    notifyListeners();
+  }
+
+  void _queueReadSave() {
+    if (_readSaveQueued) return;
+    _readSaveQueued = true;
+    Future.microtask(() async {
+      _readSaveQueued = false;
+      try {
+        await _db.putSnapshot(readKey, Map<String, String>.of(_read));
+      } catch (_) {}
+    });
+  }
 
   void _applyManifest(dynamic res) {
     final lessons = fmt.lm(fmt.m(res)['lessons']);
