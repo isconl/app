@@ -5,13 +5,14 @@ import 'package:slate_ui/slate_ui.dart';
 
 import '../../app_scope.dart';
 import '../../util/fmt.dart' as fmt;
+import '../../services/slate_docs.dart';
 import '../../services/slate_hub_client.dart';
 import 'slate_tabs.dart';
 
 /// BS26102104: Slate is three tabs on the phone: Overview (the dashboard), Grid (projects by type, a cell opens its rows)
 /// and Asks (decisions, manual activities, blockers, runbook approvals). Sessions and commands, Tasks and the Register
 /// open from the Overview. The tab last shown is remembered for the life of the app.
-enum SlateTab { overview, grid, asks }
+enum SlateTab { overview, grid, asks, docs }
 
 class SlateView extends StatelessWidget {
   const SlateView({super.key});
@@ -23,6 +24,8 @@ class SlateView extends StatelessWidget {
         SlateTab.overview => 'Overview',
         SlateTab.grid => 'Grid',
         SlateTab.asks => 'Asks',
+        // BI26112340: slate's docs, read like modules and annotated.
+        SlateTab.docs => 'Docs',
       };
 
   /// BI26101814: the search finds a task or a register row and sends Slate to the tab that holds it.
@@ -67,6 +70,7 @@ class SlateView extends StatelessWidget {
         )),
         SpaceTab(label(SlateTab.grid), SlateGridTab(client: client, writeStepUp: write)),
         SpaceTab(label(SlateTab.asks), SlateAsksTab(client: client, writeStepUp: write)),
+        SpaceTab(label(SlateTab.docs), SlateDocsTab(host: slateDocsHost(context))),
       ],
     );
   }

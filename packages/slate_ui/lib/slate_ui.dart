@@ -6,6 +6,7 @@ library slate_ui;
 export 'src/blockers_matrix_views.dart';
 export 'src/client.dart';
 export 'src/command_panel.dart';
+export 'src/docs.dart';
 export 'src/models.dart';
 export 'src/queue_views.dart';
 export 'src/rows_models.dart';

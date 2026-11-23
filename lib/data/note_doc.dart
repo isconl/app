@@ -121,7 +121,8 @@ class NoteDoc {
   }
 
   ModuleNote add({int? anchor, String quote = '', String title = '', DateTime? now}) {
-    final n = ModuleNote(id: newNoteId(), anchor: anchor, quote: quote, title: title, createdAt: now ?? DateTime.now());
+    // Stored as written to the comment line, so a note reads back exactly as it was made.
+    final n = ModuleNote(id: newNoteId(), anchor: anchor, quote: _attr(quote), title: _attr(title), createdAt: now ?? DateTime.now());
     notes.add(n);
     return n;
   }

@@ -603,12 +603,18 @@ class LessonNotes extends StatefulWidget {
     required this.file,
     this.title,
     this.repository,
+    this.label = 'Your notes',
+    this.blurb,
   });
 
   final String course;
   final String file;
   final String? title;
   final LessonNotesRepository? repository;
+
+  /// The section's heading, and the line shown while there are no notes yet.
+  final String label;
+  final String? blurb;
 
   @override
   State<LessonNotes> createState() => _LessonNotesState();
@@ -655,7 +661,7 @@ class _LessonNotesState extends State<LessonNotes> {
   Widget build(BuildContext context) {
     final notes = _doc.notes.where((n) => !n.isEmpty).toList();
     return ReadingSection(
-      label: 'Your notes',
+      label: widget.label,
       trailing: InkWell(
         key: const Key('note-write'),
         borderRadius: BorderRadius.circular(Sz.rSm),
@@ -671,8 +677,9 @@ class _LessonNotesState extends State<LessonNotes> {
       ),
       child: notes.isEmpty
           ? Text(
-              'What you made of it. Long-press a paragraph to note on it, or tap Write. Saved as you type, kept on '
-              'this phone until the server has it, and listed under All my notes.',
+              widget.blurb ??
+                  'What you made of it. Long-press a paragraph to note on it, or tap Write. Saved as you type, kept on '
+                      'this phone until the server has it, and listed under All my notes.',
               style: T.body2.copyWith(color: C.text3, height: 1.6),
             )
           : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

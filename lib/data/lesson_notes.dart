@@ -101,11 +101,16 @@ class LessonNotesRepository extends ChangeNotifier {
 
   bool _pushing = false;
   int waiting = 0;
+
+  /// BI26112340: which notes this repository sends. Module notes go to spark; annotations on slate docs
+  /// (course `slate:...`) are another repository's and go to slate.
+  bool owns(String course) => !course.startsWith('slate:');
   String? lastError;
 
   Future<void> refreshWaiting() async {
     try {
       waiting = (await db.unsyncedLessonNotes())
+          .where((r) => owns(r['course'] as String? ?? ''))
           .where((r) => (r['text'] as String? ?? '').trim().isNotEmpty ||
               r['synced_at'] != null)
           .length;
@@ -239,6 +244,7 @@ class LessonNotesRepository extends ChangeNotifier {
     var sent = 0;
     try {
       for (final row in await db.unsyncedLessonNotes()) {
+        if (!owns(row['course'] as String? ?? '')) continue;
         final text = (row['text'] as String? ?? '');
         // A note that was never sent and is still empty has nothing to say.
         if (text.trim().isEmpty && row['synced_at'] == null) continue;
@@ -258,6 +264,7 @@ class LessonNotesRepository extends ChangeNotifier {
     final rows = await db.allLessonNotes();
     return rows
         .map(LessonNote.fromRow)
+        .where((n) => owns(n.course))
         .where((n) => n.text.trim().isNotEmpty)
         .toList();
   }

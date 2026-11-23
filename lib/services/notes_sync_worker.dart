@@ -36,7 +36,12 @@ Future<bool> runNotesSyncBackground() async {
       final course = row['course'] as String;
       final file = row['file'] as String;
       try {
-        await apiOf().postJson('/api/learning/notes', {'course': course, 'file': file, 'text': text});
+        // BI26112340: annotations on slate docs go to slate, beside the doc; module notes go to spark.
+        if (course.startsWith('slate:')) {
+          await apiOf().postJson('/api/slate/docs/${Uri.encodeComponent('NOTES.$file')}', {'text': text});
+        } else {
+          await apiOf().postJson('/api/learning/notes', {'course': course, 'file': file, 'text': text});
+        }
         await db.markLessonNoteSynced(course: course, file: file, version: version);
       } on OfflineException {
         break; // no network after all: Android runs the task again when there is one
