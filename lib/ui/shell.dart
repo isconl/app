@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../app_scope.dart';
 import '../util/equicycle.dart';
+import '../data/destinations.dart';
 import '../data/store.dart' show Snapshot;
 import '../data/sync.dart' show SyncPhase;
 import '../main.dart' show BrandMark;
@@ -49,6 +50,7 @@ import 'widgets/brand.dart' show MonoBrandMark;
 import 'whats_new_sheet.dart';
 import 'widgets/command_palette.dart';
 import 'widgets/common.dart';
+import 'widgets/space_header.dart';
 import 'widgets/nav_bar.dart';
 import 'widgets/system_status.dart';
 
@@ -129,6 +131,7 @@ class _ShellState extends State<Shell> {
   // (240 ms); _sub is committed only in the sub PageView's onPageChanged.
   late final List<PageController> _subControllers;
   Snapshot? _nav;
+  late final DestinationsManifest _dests;
 
   @override
   void initState() {
@@ -142,6 +145,8 @@ class _ShellState extends State<Shell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final services = AppScope.of(context);
       _nav = services.store.nav;
+      _dests = DestinationsManifest(services.store);
+      _dests.load().then((_) { if (mounted) setState(() {}); });
       _nav!.hydrate();
       _nav!.addListener(_onNav);
       services.sync.onNewAlerts =
@@ -175,6 +180,23 @@ class _ShellState extends State<Shell> {
     });
   }
 
+  /// Wraps [view] in a SpaceView when the manifest has five destinations
+  /// for [destKey]. The existing view becomes the `overview` destination
+  /// builder; the remaining four show either their real screen (if one
+  /// exists in viewForNavRoute) or an honest empty state.
+  Widget _wrapIfSpace(String destKey, Widget view) {
+    final dests = _dests[destKey];
+    if (dests == null || dests.length != 5) return view;
+    final builders = <String, Widget Function()>{
+      'overview': () => view,
+    };
+    for (final d in dests) {
+      if (d.key == 'overview' || d.key == 'activity') continue;
+      final pair = viewForNavRoute(d.route);
+      if (pair != null) builders[d.key] = () => pair.;
+    }
+    return SpaceView(viewKey: destKey, destinations: dests, builders: builders);
+  }
   void _switchTab(int t) {
     if (_tab == t) {
       if (_sub != 0) {

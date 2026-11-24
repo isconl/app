@@ -145,6 +145,7 @@ class Store {
   Snapshot get backupOffsite => of('backupOffsite', '/api/vitals/backup');
   Snapshot get inboxUnknown => of('inboxUnknown', '/api/inbox/unknown');
   Snapshot get nav => of('nav', '/api/nav');
+  Snapshot get destinations => of('destinations', '/api/nav/destinations');
   Snapshot get checkpoint => of('checkpoint', '/api/checkpoint');
   Snapshot get opsStatus => of('opsStatus', '/api/ops/status');
   Snapshot get deckStudio => of('deckStudio', '/api/deck/studio');
