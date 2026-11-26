@@ -3,6 +3,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData, HapticFeed
 
 import '../../app_scope.dart';
 import '../../data/lesson_notes.dart';
+import '../../data/note_entries.dart' show readableNoteText;
 import '../../theme.dart';
 import '../../util/fmt.dart' as fmt;
 import '../shell.dart' show SecondaryScreen;
@@ -206,7 +207,7 @@ class _StudyNotesViewState extends State<StudyNotesView> {
               Text('${n.course} · ${_ago(n.updatedAt)}',
                   style: T.tiny.copyWith(color: C.text3)),
               const SizedBox(height: 8),
-              Text(n.text.trim(),
+              Text(readableNoteText(n.text).trim(),
                   maxLines: open ? null : 3,
                   overflow: open ? null : TextOverflow.ellipsis,
                   style: T.body2.copyWith(color: C.text2, height: 1.55)),
@@ -220,13 +221,13 @@ class _StudyNotesViewState extends State<StudyNotesView> {
                   ),
                   OutlinedButton.icon(
                     onPressed: () => _toInbox('Study note: $title',
-                        '${n.text.trim()}\n\n(${n.course}/${n.file})'),
+                        '${readableNoteText(n.text).trim()}\n\n(${n.course}/${n.file})'),
                     icon: const Icon(Icons.move_to_inbox_rounded, size: 16),
                     label: const Text('To inbox'),
                   ),
                   OutlinedButton.icon(
                     onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: n.text));
+                      await Clipboard.setData(ClipboardData(text: readableNoteText(n.text)));
                       if (mounted) toast(context, 'Note copied');
                     },
                     icon: const Icon(Icons.copy_rounded, size: 16),

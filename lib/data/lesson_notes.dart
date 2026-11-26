@@ -4,6 +4,7 @@ import '../api/client.dart';
 import '../util/fmt.dart' as fmt;
 import 'db.dart';
 import 'mutations.dart';
+import 'note_entries.dart' show readableNoteText;
 import '../services/notes_sync_worker.dart';
 
 /// Where a note stands against the server.
@@ -267,7 +268,7 @@ class LessonNotesRepository extends ChangeNotifier {
         final when = n.updatedAt?.toIso8601String().substring(0, 16).replaceFirst('T', ' ') ?? '';
         b.writeln('### ${n.displayTitle}\n');
         b.writeln('_${n.file}${when.isEmpty ? '' : ', $when'}_\n');
-        b.writeln('${n.text.trim()}\n');
+        b.writeln('${readableNoteText(n.text).trim()}\n');
       }
     }
     return b.toString();

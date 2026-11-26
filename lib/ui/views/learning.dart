@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
-import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../../app_scope.dart';
 import '../../services/audio_downloads.dart' show prettyBytes;
@@ -14,6 +13,7 @@ import '../../data/db.dart';
 import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink, ParagraphHook;
 import '../widgets/recall_card.dart';
 import '../../data/modules.dart';
+import '../../data/note_entries.dart' show quoteOf;
 import '../../study/cdm/cdm_lesson_body.dart';
 import '../../study/trajectory/trajectory_model.dart';
 import '../../study/trajectory/trajectory_section.dart';
@@ -36,6 +36,7 @@ import '../../services/study_extras.dart';
 import '../widgets/module_lifecycle.dart';
 import '../widgets/reader.dart';
 import '../widgets/lesson_notes_editor.dart';
+import '../widgets/note_card.dart';
 export '../widgets/lesson_notes_editor.dart' show LessonNotes;
 import '../widgets/standard_tag.dart';
 import '../../services/course_standard.dart';
@@ -1865,50 +1866,17 @@ class _LessonScreenState extends State<LessonScreen> {
     return (progress * paragraphs.length).floor().clamp(0, paragraphs.length - 1);
   }
 
-  /// BI26092614: opens the notes bottom sheet with block anchor context.
+  /// BI26112301: opens the floating note card on the topmost visible paragraph (was a bottom sheet, BI26092614).
   void _openNotesSheet(BuildContext context) {
-    HapticFeedback.selectionClick();
     final anchor = _computeTopmostBlockIndex();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: C.panel,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Sz.rXl)),
-        side: BorderSide(color: C.border),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 14),
-                    decoration: BoxDecoration(
-                      color: C.borderMid,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                _LessonNotes(
-                  course: widget.course,
-                  file: widget.file,
-                  title: widget.title,
-                  anchor: anchor,
-                  inSheet: true,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    final paragraphs = (_currentContent ?? '').split(RegExp(r'\n\s*\n')).where((p) => p.trim().isNotEmpty).toList();
+    showNoteCard(
+      context,
+      course: widget.course,
+      file: widget.file,
+      title: widget.title,
+      anchor: anchor,
+      quote: anchor < paragraphs.length ? quoteOf(paragraphs[anchor]) : '',
     );
   }
 
