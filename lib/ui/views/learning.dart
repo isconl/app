@@ -10,7 +10,7 @@ import '../../services/audio_downloads.dart' show prettyBytes;
 import '../../services/course_offline.dart';
 import '../../services/prefetch.dart' show DbPrefetchStore, markPrefetchOpened;
 import '../../data/db.dart';
-import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink, ParagraphHook;
+import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink, ParagraphHook, changeNotesOf;
 import '../widgets/recall_card.dart';
 import '../../data/modules.dart';
 import '../../data/note_entries.dart' show quoteOf;
@@ -1100,13 +1100,16 @@ class _CourseTileState extends State<CourseTile> {
       return 0;
     });
 
-    final done = lessons
-        .where((l) => fmt.s(l['status']).toLowerCase() == 'done')
-        .length;
-    final pct = lessons.isEmpty ? 0.0 : done / lessons.length;
     final courseId = fmt.s(widget.course['ID']).isEmpty
         ? fmt.s(widget.course['id'])
         : fmt.s(widget.course['ID']);
+    // BI26112303: a done module republished since it was read counts as unread again.
+    bool isDone(Map<String, dynamic> l) {
+      final st = fmt.s(l['status']).toLowerCase();
+      return st == 'done' && !(lib?.isUpdated(courseId, fmt.s(l['file']), st) ?? false);
+    }
+    final done = lessons.where(isDone).length;
+    final pct = lessons.isEmpty ? 0.0 : done / lessons.length;
 
     final files = lessons.map((l) => fmt.s(l['file'])).where((f) => f.isNotEmpty).toList();
     final offline = files
@@ -1117,7 +1120,7 @@ class _CourseTileState extends State<CourseTile> {
         .length;
     final allHere = files.isNotEmpty && offline == files.length && stale == 0;
 
-    final nextIndex = lessons.indexWhere((l) => fmt.s(l['status']).toLowerCase() != 'done');
+    final nextIndex = lessons.indexWhere((l) => !isDone(l));
 
     return Panel(
       child: Column(
@@ -1212,6 +1215,7 @@ class _CourseTileState extends State<CourseTile> {
 /// BI26100137: the module number carries the status. Grey is new, the track colour is opened, amber is in
 /// progress, green is done. One mapping, so every list of modules agrees.
 Color moduleStatusColor(String status, Color trackColor) => switch (status.toLowerCase()) {
+      'updated' => C.blue,
       'done' => C.green,
       'learning' => C.amber,
       'opened' => trackColor,
@@ -1221,6 +1225,8 @@ Color moduleStatusColor(String status, Color trackColor) => switch (status.toLow
 /// BI26100538: the chip colour for a status, legible on the dark surface: the track colour for Opened
 /// (lightened toward white when it is too dark to read), yellow for Learning, green for Done.
 Color statusChipColor(String status, Color trackColor) => switch (status.toLowerCase()) {
+      // BI26112303: republished since it was last opened. Its own colour, never grey: it reads as unread.
+      'updated' => C.blue,
       'done' => C.green,
       'learning' => C.amber,
       'opened' => legibleTrackColor(trackColor, C.bg),
@@ -1232,6 +1238,7 @@ Color statusChipColor(String status, Color trackColor) => switch (status.toLower
 Widget? _statusIcon(String status, Color trackColor) {
   final s = status.toLowerCase();
   final (icon, label) = switch (s) {
+    'updated' => (Icons.update_rounded, 'Updated'),
     'done' => (Icons.check_circle_rounded, 'Done'),
     'learning' => (Icons.auto_stories_rounded, 'Learning'),
     'opened' => (Icons.visibility_rounded, 'Opened'),
@@ -1255,7 +1262,7 @@ class ModuleStatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = statusChipColor(status, trackColor);
     final s = status.toLowerCase();
-    final label = s == 'done' ? 'Done' : (s == 'learning' ? 'Learning' : 'Opened');
+    final label = switch (s) { 'updated' => 'Updated', 'done' => 'Done', 'learning' => 'Learning', _ => 'Opened' };
     return Container(
       key: const Key('status-chip'),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1270,6 +1277,7 @@ class ModuleStatusChip extends StatelessWidget {
 }
 
 String moduleStatusWords(String status) => switch (status.toLowerCase()) {
+      'updated' => 'updated since you read it',
       'done' => 'done',
       'learning' => 'in progress',
       'opened' => 'opened',
@@ -1439,6 +1447,9 @@ class LessonRow extends StatelessWidget {
         ? rawStatus
         : (lastOpened.isNotEmpty ? 'opened' : 'new');
     final st = lib?.status(courseId, file) ?? const ModuleStatus(ModuleState.absent);
+    // BI26112303: republished since it was last opened here, so it shows Updated and reads as unread.
+    final updated = lib?.isUpdated(courseId, file, status) ?? false;
+    final shown = updated ? 'updated' : status;
 
     final tVal = fmt.s(lesson['TITLE']);
     final rawTitle = tVal.isNotEmpty ? tVal : fmt.s(lesson['title'] ?? file);
@@ -1476,6 +1487,7 @@ class LessonRow extends StatelessWidget {
                   lesson['reviewed_at'] ??
                   lesson['REVIEWED_AT']),
               version: moduleListVersion(fmt.s(lesson['version'] ?? lesson['VERSION']), file) ?? '',
+              updated: updated,
             ),
           ),
         ),
@@ -1494,13 +1506,13 @@ class LessonRow extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Semantics(
-                  label: 'Module $numStr, ${moduleStatusWords(status)}',
+                  label: 'Module $numStr, ${moduleStatusWords(shown)}',
                   excludeSemantics: true,
                   child: Text(
                     numStr,
                     key: const Key('module-number'),
                     style: T.small.copyWith(
-                      color: moduleStatusColor(status, trackColor),
+                      color: moduleStatusColor(shown, trackColor),
                       fontWeight: FontWeight.w800,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
@@ -1516,7 +1528,7 @@ class LessonRow extends StatelessWidget {
                       title,
                       key: const Key('module-title'),
                       style: T.w600(T.body2).copyWith(
-                        color: status == 'done' ? C.text3 : C.text,
+                        color: shown == 'done' ? C.text3 : C.text,
                       ),
                     ),
                     // BI26101803 (Sconl, 18 Oct, reversing 6 Oct): a subtitle under the heading, as tracks and courses have.
@@ -1570,10 +1582,10 @@ class LessonRow extends StatelessWidget {
                   child: Icon(Icons.sync_problem_rounded, size: 12, color: C.amber),
                 ),
               // BI26100538: the status chip. Opened is the track colour, Learning is yellow, Done is green.
-              if (status == 'opened' || status == 'learning' || status == 'done')
+              if (shown == 'opened' || shown == 'learning' || shown == 'done' || shown == 'updated')
                 Padding(
                   padding: const EdgeInsets.only(left: 6, top: 1),
-                  child: ModuleStatusChip(status: status, trackColor: trackColor),
+                  child: ModuleStatusChip(status: shown, trackColor: trackColor),
                 ),
               const SizedBox(width: 6),
               const Padding(
@@ -1643,7 +1655,11 @@ class LessonScreen extends StatefulWidget {
     this.initialParagraph,
     this.foundText,
     this.initialAnchor = '',
+    this.updated = false,
   });
+
+  /// BI26112303: the module was republished since it was last opened: it opens on what changed.
+  final bool updated;
 
   /// BI26100537: open at this section anchor (`grasp-1`, `week-7-2`), from a `module:` deep link.
   final String initialAnchor;
@@ -1741,6 +1757,8 @@ class _LessonScreenState extends State<LessonScreen> {
         eff = localStatus;
         setState(() => _status = eff);
       }
+      // BI26112303: opened at this revision, so it is no longer Updated.
+      unawaited(services.modules.markRead(widget.course, widget.file).catchError((_) {}));
       // BI26092613: Opening the module sets Opened (only if it was new/unstarted).
       if (eff.isEmpty || eff.toLowerCase() == 'new') {
         setState(() => _status = 'opened');
@@ -1864,6 +1882,19 @@ class _LessonScreenState extends State<LessonScreen> {
     if (paragraphs.isEmpty) return 0;
     final progress = (_scroll.offset / maxExtent).clamp(0.0, 1.0);
     return (progress * paragraphs.length).floor().clamp(0, paragraphs.length - 1);
+  }
+
+  bool _changesShown = false;
+
+  /// BI26112303: an Updated module opens on its newest change notes, once, after the body has drawn.
+  void _maybeShowChanges(String content) {
+    if (!widget.updated || _changesShown || content.isEmpty) return;
+    final notes = changeNotesOf(content);
+    if (notes.isEmpty) return;
+    _changesShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showModuleChangesSheet(context, notes);
+    });
   }
 
   /// BI26112301: opens the floating note card on the topmost visible paragraph (was a bottom sheet, BI26092614).
@@ -2233,6 +2264,7 @@ class _LessonScreenState extends State<LessonScreen> {
                 final docVersion = fmt.s(lessonMap['docVersion'] ?? lessonMap['doc_version']);
                 _currentContent = content;
                 _maybeRestoreResume();
+                _maybeShowChanges(content);
                 final archetype = moduleArchetype(content, fmt.s(lessonMap['archetype']));
                 final hasListen = content.isNotEmpty || (docId.isNotEmpty && docVersion.isNotEmpty);
                 return ReadingSurface(
