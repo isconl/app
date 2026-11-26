@@ -16,6 +16,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../api/client.dart' show ApiException;
 import '../app_scope.dart';
 import '../data/audio_library.dart';
 import '../data/db.dart';
@@ -68,7 +69,7 @@ class ConsoleServices {
     if (existing != null) return existing;
     final store = SnapshotKeyValue(services.db);
     final player = ConsolePlayer(JustAudioBackend.new, store);
-    final library = LibraryPlayback(MediaEngineSource(services.api), store);
+    final library = LibraryPlayback(SplitLibrarySource(music: HoldLibrarySource(services.api), other: MediaEngineSource(services.api)), store);
     player.resolver = library.resolve;
     final recorder = ConsoleRecorder(
       makeBackend: RecordBackend.new,
@@ -160,14 +161,20 @@ class LibraryPlayback {
       await _save();
       return ConsoleTrack(id: t.id, title: t.title, uri: f.path, isFile: true);
     }
-    final s = await source.streamFor(path);
-    if (_downloading.add(path)) _cache(path, s.url, f);
+    final ({String url, Map<String, String>? headers}) s;
+    try {
+      s = await source.streamFor(path);
+    } on ApiException catch (e) {
+      throw PlayFailure(e.status == 0 || e.status == 502 ? 'hold could not be reached. ${e.message}'.trim() : e.message);
+    }
+    if (_downloading.add(path)) _cache(path, s.url, f, s.headers);
     return ConsoleTrack(id: t.id, title: t.title, uri: s.url, headers: s.headers);
   }
 
-  Future<void> _cache(String path, String url, File f) async {
+  Future<void> _cache(String path, String url, File f, [Map<String, String>? headers]) async {
     try {
-      final res = await http.Client().send(http.Request('GET', Uri.parse(url)));
+      // The same headers as the stream (BI26112001: hold's file route needs the app's session).
+      final res = await http.Client().send(http.Request('GET', Uri.parse(url))..headers.addAll(headers ?? const {}));
       if (res.statusCode != 200) return;
       final sink = f.openWrite();
       await res.stream.pipe(sink);

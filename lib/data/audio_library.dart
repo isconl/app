@@ -1,6 +1,7 @@
 /// BI26101807: the console player's library. Three folders (Music, Recordings, Voice notes) read through one source
-/// interface. Today the source is the media engine (media.local.list and media.local.ticket, interim decision of
-/// 20 Oct 2026); when hold's file API lands (BH26102001) a hold source replaces it and nothing above this file changes.
+/// interface. Music comes from hold (BI26112001, 26 Nov 2026: [HoldLibrarySource], hub's /api/hold routes over hold's
+/// archive, the files a trusted machine opens on request); recordings and voice notes still come from the media engine
+/// (media.local.list and media.local.ticket, interim decision of 20 Oct 2026). Nothing above this file changes.
 ///
 /// A track's uri is stable ("media: plus the path") and is turned into a short-lived streaming url only when it is about to
 /// play, so a track queued for an hour never carries an expired ticket.
@@ -29,9 +30,10 @@ class LibraryTrack {
 
 const mediaUriPrefix = 'media:';
 
-/// The three folders under [root] (audio-music, audio-recordings, audio-voice-notes, per the hold folder tree canon).
-List<LibraryFolder> libraryFolders({String root = 'Audio'}) => [
-      LibraryFolder(LibraryFolderKind.music, 'Music', '$root/audio-music'),
+/// The three folders: Music is hold's one music folder ([music]); recordings and voice notes sit under [root]
+/// (audio-recordings, audio-voice-notes, per the hold folder tree canon).
+List<LibraryFolder> libraryFolders({String root = 'Audio', String music = holdMusicRoot}) => [
+      LibraryFolder(LibraryFolderKind.music, 'Music', music),
       LibraryFolder(LibraryFolderKind.recordings, 'Recordings', '$root/audio-recordings'),
       LibraryFolder(LibraryFolderKind.voiceNotes, 'Voice notes', '$root/audio-voice-notes'),
     ];
@@ -106,6 +108,114 @@ class MediaEngineSource implements AudioLibrarySource {
     return (url: '$base/stream?t=${Uri.encodeQueryComponent(t)}', headers: null);
   }
 }
+
+/// File types the player opens: audio, and mp4-family video (its audio track at least).
+const playableExtensions = {'mp3', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'wav', 'flac', 'mp4', 'm4v', 'mov', 'webm', '3gp'};
+
+bool isPlayableName(String name) {
+  final dot = name.lastIndexOf('.');
+  return dot > 0 && playableExtensions.contains(name.substring(dot + 1).toLowerCase());
+}
+
+/// Parses one hub /api/hold/list answer ({items:[{path,name,folder,size,modified}]}) into folders and playable files.
+({List<String> dirs, List<LibraryTrack> files}) parseHoldListing(dynamic json) {
+  final dirs = <String>[];
+  final files = <LibraryTrack>[];
+  for (final e in fmt.lm(fmt.m(json)['items'])) {
+    final path = fmt.s(e['path']);
+    final name = fmt.s(e['name']);
+    if (path.isEmpty) continue;
+    if (fmt.b(e['folder'])) {
+      dirs.add(path);
+    } else if (isPlayableName(name)) {
+      final secs = fmt.i(e['modified']);
+      files.add(LibraryTrack(
+          path: path,
+          title: _titleOf(name),
+          bytes: fmt.i(e['size']),
+          modified: secs > 0 ? DateTime.fromMillisecondsSinceEpoch(secs * 1000, isUtc: true) : null));
+    }
+  }
+  return (dirs: dirs, files: files);
+}
+
+/// BI26112001: the library read from hold through hub. Hold keeps the archive sealed: a file plays once the trusted
+/// machine has opened it for hold (asked with /api/hold/open, usually under a minute), then hub streams it with Range
+/// (/api/hold/file), so seeking works. The hold token stays in hub; the phone sends only its own session.
+class HoldLibrarySource implements AudioLibrarySource {
+  HoldLibrarySource(this.api,
+      {this.pollEvery = const Duration(seconds: 3), this.waitFor = const Duration(seconds: 150), this.maxFolders = 80});
+  final ApiClient api;
+  final Duration pollEvery, waitFor;
+  final int maxFolders;
+
+  Future<dynamic> _list(String path) => api.getJson('/api/hold/list?path=${Uri.encodeQueryComponent(path)}&sort=name');
+
+  /// Every playable file under [folder], walking sub-folders breadth first (at most [maxFolders] listings), deduplicated
+  /// by name and size, since the same song often sits in several pulls.
+  @override
+  Future<List<LibraryTrack>> files(LibraryFolder folder) async {
+    final queue = [folder.path];
+    final seen = <String>{};
+    final out = <LibraryTrack>[];
+    var listed = 0;
+    while (queue.isNotEmpty && listed < maxFolders) {
+      final l = parseHoldListing(await _list(queue.removeAt(0)));
+      listed++;
+      queue.addAll(l.dirs);
+      for (final f in l.files) {
+        if (seen.add('${f.title.toLowerCase()}|${f.bytes}')) out.add(f);
+      }
+    }
+    return orderTracks(folder.kind, out);
+  }
+
+  /// Asks hold to open [path] and waits until it is ready. Throws an [ApiException] with a message for the person when
+  /// hold is unreachable, the file is gone, or the archive machine has not opened it in time.
+  Future<void> ensureOpen(String path) async {
+    final q = '/api/hold/open?path=${Uri.encodeQueryComponent(path)}';
+    var st = fmt.s(fmt.m(await api.postJson(q, const {}))['status']);
+    final until = DateTime.now().add(waitFor);
+    while (st != 'ready') {
+      if (st == 'sealed') throw ApiException(409, 'This file is in the sealed tier and cannot be played on the phone.');
+      if (DateTime.now().isAfter(until)) {
+        throw ApiException(409, 'Hold is still fetching this file from the archive (the archive machine may be off). Try again in a minute.');
+      }
+      await Future<void>.delayed(pollEvery);
+      st = fmt.s(fmt.m(await api.getJson(q, stored: false))['status']);
+    }
+  }
+
+  @override
+  Future<({String url, Map<String, String>? headers})> streamFor(String path) async {
+    await ensureOpen(path);
+    final h = api.authHeaders;
+    return (url: api.uriFor('/api/hold/file?path=${Uri.encodeQueryComponent(path)}').toString(), headers: h.isEmpty ? null : h);
+  }
+}
+
+/// Music from one source, recordings and voice notes from another.
+class SplitLibrarySource implements AudioLibrarySource {
+  SplitLibrarySource({required this.music, required this.other});
+  final AudioLibrarySource music, other;
+  final Set<String> _musicPaths = {};
+
+  @override
+  Future<List<LibraryTrack>> files(LibraryFolder folder) async {
+    if (folder.kind != LibraryFolderKind.music) return other.files(folder);
+    final out = await music.files(folder);
+    _musicPaths.addAll(out.map((t) => t.path));
+    return out;
+  }
+
+  @override
+  Future<({String url, Map<String, String>? headers})> streamFor(String path) =>
+      (_musicPaths.contains(path) || path.startsWith('$holdMusicRoot/')) ? music.streamFor(path) : other.streamFor(path);
+}
+
+/// Where Sconl's music sits in hold's archive tree: one folder, gathered on 21 Nov 2026 (snapshot "music-library",
+/// folder music-all-20261121, 47 tracks; tree published to hold 26 Nov 2026). New pulls land beside it and are found too.
+const holdMusicRoot = 'music-library';
 
 /// A scripted source for tests.
 class FakeLibrarySource implements AudioLibrarySource {

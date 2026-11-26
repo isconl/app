@@ -28,7 +28,8 @@ void main() {
 
   test('three folders from the audio root', () {
     expect(libraryFolders().map((f) => f.label), ['Music', 'Recordings', 'Voice notes']);
-    expect(libraryFolders(root: 'sconl/Crate/Media/Audio').first.path, 'sconl/Crate/Media/Audio/audio-music');
+    expect(libraryFolders(root: 'sconl/Crate/Media/Audio').first.path, holdMusicRoot);
+    expect(libraryFolders(root: 'sconl/Crate/Media/Audio')[1].path, 'sconl/Crate/Media/Audio/audio-recordings');
   });
 
   group('AudioCacheIndex', () {

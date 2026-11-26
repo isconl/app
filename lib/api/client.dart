@@ -160,6 +160,12 @@ class ApiClient {
     return Uri.parse('$base$path');
   }
 
+  /// BI26112001: the full url of a hub path, for players and downloads that do their own HTTP.
+  Uri uriFor(String path) => _uri(path);
+
+  /// BI26112001: the auth header alone, for a player or download that fetches a hub url itself.
+  Map<String, String> get authHeaders => _headers(json: false);
+
   Map<String, String> _headers({bool json = true}) => {
         if (json) 'Content-Type': 'application/json',
         if (token.isNotEmpty) 'Authorization': 'Bearer $token',

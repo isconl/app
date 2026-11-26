@@ -15,6 +15,14 @@ import 'package:flutter/foundation.dart';
 import 'console_mode.dart';
 import 'ring_math.dart';
 
+/// BI26112001: a resolver failure with a reason the person should see (hold unreachable, still fetching, sealed).
+class PlayFailure implements Exception {
+  const PlayFailure(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 /// One thing in the queue. [uri] is a URL or, when [isFile], a local path.
 class ConsoleTrack {
   const ConsoleTrack({required this.id, required this.title, required this.uri, this.isFile = false, this.headers});
@@ -158,7 +166,7 @@ class ConsolePlayer extends ChangeNotifier {
         await b.play();
       }
     } catch (e) {
-      error = 'Could not play ${queue[i].title}.';
+      error = e is PlayFailure ? 'Could not play ${queue[i].title}: ${e.message}' : 'Could not play ${queue[i].title}.';
       playing = false;
     }
     loading = false;
