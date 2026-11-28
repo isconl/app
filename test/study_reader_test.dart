@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -26,6 +27,8 @@ class _TestApiClient extends ApiClient {
   final List<Map<String, dynamic>> recordedCalls = [];
   bool shouldFail = false;
   Map<String, dynamic>? lessonData;
+  // 28 Nov 2026: hold every POST until completed, to see what the screen shows while the server is slow.
+  Completer<void>? holdPosts;
 
   @override
   Future<dynamic> getJson(String path, {bool cold = false, bool stored = true}) async {
@@ -46,6 +49,7 @@ class _TestApiClient extends ApiClient {
   @override
   Future<dynamic> postJson(String path, Map<String, dynamic> body, {bool cold = false}) async {
     if (shouldFail) throw OfflineException();
+    if (holdPosts != null) await holdPosts!.future;
     recordedCalls.add({'path': path, 'body': body});
     return {'ok': true};
   }
@@ -508,6 +512,69 @@ void main() {
       await open('02-c.md');
       await tester.ensureVisible(find.byKey(const Key('previous-module')));
       expect(tester.widget<OutlinedButton>(find.descendant(of: find.byKey(const Key('next-module')), matching: find.byType(OutlinedButton))).onPressed, isNull);
+    });
+  });
+
+  group('28 Nov 2026: reading progress shows at once, before the server answers', () {
+    Map<String, dynamic> library() => {
+          'groups': [
+            {'id': 'med', 'label': 'Medicine', 'moduleCount': 4, 'progressPct': 25},
+          ],
+          'courses': [
+            {
+              'ID': 'med-anatomy',
+              'GROUP_ID': 'med',
+              'modulesTotal': 4,
+              'modulesDone': 1,
+              'lessons': [
+                {'file': '00-orientation.md', 'status': 'learning'},
+                {'file': '01-bones.md', 'status': 'done'},
+                {'file': '02-joints.md', 'status': 'new'},
+                {'file': '03-muscles.md', 'status': 'new'},
+              ],
+            },
+          ],
+        };
+
+    Future<void> seed(AppServices s) async {
+      await s.store.learning.patchLocal((_) => library());
+    }
+
+    Map<String, dynamic> course(AppServices s) => (s.store.learning.value['courses'] as List).first as Map<String, dynamic>;
+    num trackPct(AppServices s) => ((s.store.learning.value['groups'] as List).first as Map)['progressPct'] as num;
+
+    test('online with a slow server: status, course count and track bar move before the POST returns', () async {
+      final s = await buildTestServices();
+      await seed(s);
+      final api = s.session.api as _TestApiClient;
+      api.holdPosts = Completer<void>();
+      final pending = s.mutations.lessonProgress('med-anatomy', '00-orientation.md', 'done');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(api.recordedCalls, isEmpty, reason: 'the server has not answered yet');
+      expect(((course(s)['lessons'] as List).first as Map)['status'], 'done');
+      expect(course(s)['modulesDone'], 2);
+      expect(trackPct(s), 50);
+      api.holdPosts!.complete();
+      expect((await pending).queued, isFalse);
+    });
+
+    test('offline: the same, and the change is queued for the server', () async {
+      final s = await buildTestServices(online: false, shouldFail: true);
+      await seed(s);
+      final res = await s.mutations.lessonProgress('med-anatomy', '02-joints.md', 'done');
+      expect(res.queued, isTrue);
+      expect(course(s)['modulesDone'], 2);
+      expect(trackPct(s), 50);
+    });
+
+    test('Undo takes the bar back down; a lower status never lowers a done module by itself', () async {
+      final s = await buildTestServices(online: false, shouldFail: true);
+      await seed(s);
+      await s.mutations.lessonProgress('med-anatomy', '01-bones.md', 'opened');
+      expect(course(s)['modulesDone'], 1, reason: 'opened never downgrades done');
+      await s.mutations.lessonProgress('med-anatomy', '01-bones.md', 'learning', force: true);
+      expect(course(s)['modulesDone'], 0);
+      expect(trackPct(s), 0);
     });
   });
 }

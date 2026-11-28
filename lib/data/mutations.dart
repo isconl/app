@@ -1,3 +1,4 @@
+import 'learning_progress.dart';
 import '../api/client.dart';
 import '../util/fmt.dart' as fmt;
 import 'db.dart';
@@ -41,7 +42,10 @@ class Mutations {
     Snapshot? refresh,
     Future<void> Function()? optimistic,
     bool queueable = true,
+    bool optimisticFirst = false,
   }) async {
+    // The screen shows the change before the network is tried, not after it answers or fails.
+    if (optimisticFirst && optimistic != null) await optimistic();
     if (online) {
       try {
         final res = await _api().postJson(path, body);
@@ -62,7 +66,7 @@ class Mutations {
           'This action needs the live server - you are offline.');
     }
     await _outbox.enqueue(path: path, body: body, label: label, view: view);
-    if (optimistic != null) await optimistic();
+    if (optimistic != null && !optimisticFirst) await optimistic();
     return MutationResult.queued();
   }
 
@@ -638,34 +642,10 @@ class Mutations {
       view: 'learning',
       refresh: _store.learning,
       queueable: true,
-      optimistic: () => _store.learning.patchLocal((current) {
-        final map = fmt.m(current);
-        final courses = List<Map<String, dynamic>>.from(fmt.lm(map['courses']));
-        var updated = false;
-        for (var i = 0; i < courses.length; i++) {
-          final c = Map<String, dynamic>.from(courses[i]);
-          final cId = fmt.s(c['ID']).isNotEmpty ? fmt.s(c['ID']) : fmt.s(c['id']);
-          if (cId == course) {
-            final lessons = List<Map<String, dynamic>>.from(fmt.lm(c['lessons']));
-            for (var j = 0; j < lessons.length; j++) {
-              final l = Map<String, dynamic>.from(lessons[j]);
-              if (fmt.s(l['file']) == lesson) {
-                final cur = fmt.s(l['status']);
-                if (force || AppDb.statusRank(normStatus) >= AppDb.statusRank(cur)) {
-                  l['status'] = normStatus;
-                  lessons[j] = l;
-                  c['lessons'] = lessons;
-                  courses[i] = c;
-                  updated = true;
-                }
-                break;
-              }
-            }
-            if (updated) break;
-          }
-        }
-        return updated ? {...map, 'courses': courses} : current;
-      }),
+      // 28 Nov 2026: the bars, pills and counts move at once, before the server answers, online or not.
+      optimisticFirst: true,
+      optimistic: () => _store.learning
+          .patchLocal((current) => withLessonStatuses(current, {'$course/$lesson': normStatus}, force: force)),
     );
   }
 
