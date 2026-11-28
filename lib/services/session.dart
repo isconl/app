@@ -1,0 +1,458 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:crypto/crypto.dart' show sha256;
+import 'package:flutter/services.dart' show PlatformException;
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:local_auth/local_auth.dart';
+
+import '../api/client.dart';
+import 'passkey_client.dart';
+
+/// Auth + connection state. Tokens live in Android EncryptedSharedPreferences
+/// via flutter_secure_storage - never in plain prefs.
+class SessionService extends ChangeNotifier {
+  SessionService();
+
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    // WebCrypto-backed on web; the Android options above are simply ignored
+    // there. Spelled out rather than left implicit.
+    webOptions: WebOptions(),
+  );
+  /* THERE IS NO DEFAULT SERVER, AND THAT IS THE POINT.
+   *
+   * This used to be 'https://isconl-agent.onrender.com'. That host is declared in
+   * render.yaml as a layout instance - "FOR LOOKING AT THE INTERFACE, NOT FOR
+   * HOLDING ANYTHING REAL" - with no Bitwarden token, no vault, and
+   * ISCONL_DEMO_SEED=1 filling the board with invented placeholder tasks. So the
+   * shipped app opened onto fabricated data and looked like it was working.
+   *
+   * A wrong default is worse than no default: it fails silently and plausibly.
+   * An empty one fails immediately and says what it needs.
+   *
+   * ARCHITECT's instruction, 7 Aug 2026: "i especially do not want the client apps
+   * relying on the render server, eliminate this completely". This is step one of
+   * that - the client no longer carries the address of a box holding nothing.
+   *
+   * The web console is the one exception, and it is not really an exception:
+   * on web, "no default" and "same origin" are the same fact stated two ways.
+   * hub serves this build's own HTML/JS (see hub/lib/static.js), so the page's
+   * own origin IS the agent that just handed it to the browser - not a
+   * hardcoded guess at some other box that might be stale or fake, which is
+   * the actual thing the doctrine above forbids. In dev (`flutter run -d
+   * chrome`, served by Flutter's own tooling, not hub) the detected origin
+   * will be wrong; the server field stays editable either way, same as native.
+   */
+  // `isconl.acexoft.com` is the fleet's real production domain (Cloudflare
+  // in front of the local relay-hosted `hub`), not the retired Render box
+  // the 7 Aug 2026 doctrine above was written against - safe as a native
+  // default. The field stays editable either way.
+  static final defaultServer =
+      kIsWeb ? _webOrigin() : 'https://isconl.acexoft.com';
+
+  static String _webOrigin() {
+    try {
+      final origin = Uri.base.origin;
+      return origin.startsWith('http') ? origin : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  late final ApiClient api =
+      ApiClient(baseUrl: defaultServer)..onAuthFailure = _onAuthFailure;
+
+  bool ready = false; // storage loaded
+  bool authenticated = false;
+  bool biometricLock = false;
+  String serverUrl = defaultServer;
+  Map<String, dynamic>? serverHealth;
+
+  /// True when no agent address has been set yet. The shell uses it to ask for
+  /// one rather than firing requests at an empty base URL and reporting them as
+  /// network failures, which is what "no server" used to look like.
+  bool get needsServer => serverUrl.trim().isEmpty;
+
+  /* THE SPLASH THAT NEVER CLEARED (task #18, diagnosed on-device 10 Aug 2026)
+   *
+   * The Android Keystore key behind EncryptedSharedPreferences can go bad
+   * without Android ever telling Dart: a device logcat pull caught
+   * `KeyStoreException: Signature/MAC verification failed` from
+   * flutter_secure_storage's own Kotlin side, thrown inside a background
+   * HandlerThread callback that never calls back to the platform channel -
+   * so the plain `await _storage.read(...)` this used to be waited forever.
+   * Not an exception Dart could catch: a Future that simply never completes.
+   * runApp() never ran, so not even the Flutter spinner ever showed - only
+   * the native pre-Flutter splash, sitting there permanently. That is why
+   * the prior static read of this file found nothing: the bug isn't in this
+   * logic, it's a native plugin call this logic trusted to always return.
+   *
+   * A bounded read turns a hang into "no stored value", which this class
+   * already treats as a clean logged-out state.
+   */
+  Future<String?> _readSafe(String key) async {
+    try {
+      return await _storage.read(key: key).timeout(const Duration(seconds: 3));
+    } catch (_) {
+      _storageCorrupted = true;
+      return null;
+    }
+  }
+
+  bool _storageCorrupted = false;
+
+  /// BI26100157: in a browser the session is hub's HttpOnly cookie, so no token is written to browser storage
+  /// (anything on the page could read it there). On the phone it stays in the encrypted keystore as before.
+  static bool get persistsToken => !kIsWeb;
+
+  /// Moves a token a browser stored before this change into the cookie, then forgets it. Returns false when hub
+  /// refuses it (an expired session), in which case the reader signs in again.
+  Future<bool> _adoptStoredWebToken(String token) async {
+    if (token.isEmpty) return false;
+    try {
+      api.token = token;
+      await api.postJson('/api/auth/adopt', {});
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      api.token = '';
+      try {
+        await _storage.delete(key: 'token');
+      } catch (_) {}
+    }
+  }
+
+  /// Whether the browser's cookie is a live session, asked of hub (`/api/auth/verify`).
+  Future<bool> _cookieSessionLive() async {
+    try {
+      final r = await api.postJson('/api/auth/verify', {});
+      return r is Map && r['valid'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> load() async {
+    serverUrl = await _readSafe('serverUrl') ?? defaultServer;
+    var token = await _readSafe('token') ?? '';
+    if (!persistsToken) {
+      api.baseUrl = serverUrl;
+      if (token.isNotEmpty) await _adoptStoredWebToken(token);
+      token = '';
+      biometricLock = false;
+      authenticated = !needsServer && await _cookieSessionLive();
+      ready = true;
+      notifyListeners();
+      return;
+    }
+    biometricLock = (await _readSafe('bioLock')) == '1';
+    _bioChosen = (await _readSafe('bioChosen')) == '1';
+    if (_storageCorrupted) {
+      // Whatever was in there is already unreadable - clearing it is
+      // recovery, not loss, and lets writes (and the next launch's reads)
+      // succeed again instead of hanging the same way forever.
+      unawaited(_storage
+          .deleteAll()
+          .timeout(const Duration(seconds: 3), onTimeout: () {}));
+    } else {
+      // Updates come from the agent now, so the GitHub PAT this app used to
+      // keep has no remaining purpose. Delete it on sight rather than leave
+      // a live credential sitting on the phone after the upgrade that
+      // stopped using it.
+      await _storage.delete(key: 'ghPat');
+    }
+    api.baseUrl = serverUrl;
+    api.token = token;
+    // A token with nowhere to send it is not a working session. This used to
+    // read `token.isNotEmpty` alone: fine for a fresh install (nothing is
+    // stored, both are empty), but silent breakage for anyone who was
+    // already signed in the day `defaultServer` stopped being a real URL
+    // (see the comment above) - a stored token survived the upgrade, so
+    // `authenticated` stayed true and RootGate sent them straight into
+    // Shell, which can do nothing with an empty baseUrl. `needsServer`
+    // existed for exactly this (see its own doc comment) but nothing ever
+    // actually checked it. Falling through to LoginScreen instead - it
+    // already has the Server URL field this state needs filled in.
+    authenticated = token.isNotEmpty && !needsServer;
+    ready = true;
+    notifyListeners();
+  }
+
+  void _onAuthFailure() {
+    // Static tokens stay valid; only TOTP session tokens expire. Either way
+    // the server said 404 on a core route: force re-login.
+    if (!authenticated) return;
+    authenticated = false;
+    notifyListeners();
+  }
+
+  Future<void> setServer(String url) async {
+    serverUrl = url.trim().isEmpty ? defaultServer : url.trim();
+    api.baseUrl = serverUrl;
+    await _storage.write(key: 'serverUrl', value: serverUrl);
+    notifyListeners();
+  }
+
+  /// True once HE has decided, either way, in Settings. Until then the lock is
+  /// armed automatically - see _armBiometricsIfUnchosen.
+  bool _bioChosen = false;
+
+  Future<void> setBiometricLock(bool enabled) async {
+    biometricLock = enabled;
+    _bioChosen = true;
+    await _storage.write(key: 'bioLock', value: enabled ? '1' : '0');
+    await _storage.write(key: 'bioChosen', value: '1');
+    notifyListeners();
+  }
+
+  /* ── ONE CODE, THEN A FINGERPRINT ────────────────────────────────────────
+   *
+   * ARCHITECT's instruction, 7 Aug 2026: "i would like just one login with the
+   * code, after that, i would like the session to persist and to login with
+   * just biometrics".
+   *
+   * The session already persisted - sliding tokens landed earlier. What did not
+   * happen was the second half: biometricLock defaulted to FALSE and was an
+   * opt-in buried in Settings, so after the code the app simply opened. The
+   * device lock was the only thing standing between a picked-up phone and his
+   * entire vault.
+   *
+   * So the lock ARMS ITSELF on the first successful login, on a device that can
+   * actually do it. Deliberately not a prompt: he has already said he wants
+   * this, and a dialog asking him to confirm a preference he stated is a worse
+   * experience than the preference simply being true.
+   *
+   * It arms once and never fights him. The moment he touches the toggle in
+   * Settings, `bioChosen` is set and this never runs again - turning it off
+   * stays off, which is the whole difference between a default and a policy.
+   */
+  Future<void> _armBiometricsIfUnchosen() async {
+    // local_auth has no real web story - don't rely on how it happens to fail
+    // there, state the platform boundary outright.
+    if (_bioChosen || biometricLock || kIsWeb) return;
+    try {
+      final auth = LocalAuthentication();
+      final can = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+      if (!can) return;   // no sensor: arming it would lock him out of his own brain
+      biometricLock = true;
+      await _storage.write(key: 'bioLock', value: '1');
+      notifyListeners();
+    } catch (_) {
+      // A sensor that throws on probe is a sensor we do not trust to unlock.
+    }
+  }
+
+  /// Which login methods the server offers.
+  Future<Map<String, dynamic>> authMethods() async {
+    final res = await api.getJson('/api/auth/methods', cold: true);
+    return res is Map ? res.cast<String, dynamic>() : {};
+  }
+
+  /// Exchange a 6-digit TOTP code for a 12h session token.
+  Future<String?> loginTotp(String code) async {
+    try {
+      final res = await api.postJson('/api/auth/totp', {'code': code}, cold: true);
+      final map = res is Map ? res.cast<String, dynamic>() : <String, dynamic>{};
+      if (map['success'] == true && map['token'] is String) {
+        await _adopt(map['token'] as String);
+        return null;
+      }
+      return (map['error'] as String?) ?? 'Invalid or expired code';
+    } on ApiException catch (e) {
+      return e.message;
+    } on OfflineException {
+      return 'No connection - check network or server URL';
+    }
+  }
+
+  /// Exchange the quick PIN for a session. Deliberately weaker than TOTP and
+  /// the server treats it so - a shorter session, its own lockout bucket - so
+  /// this is the way in from a device with no Ente Auth app on it, not the
+  /// everyday door.
+  ///
+  /// Unlike everywhere else in this client, a rejected PIN really is a 401
+  /// rather than the usual 404: /api/auth/pin sits outside the gate, so it can
+  /// afford to say what went wrong, including how many attempts are left.
+  Future<String?> loginPin(String pin) async {
+    try {
+      final res = await api.postJson('/api/auth/pin', {'pin': pin}, cold: true);
+      final map = res is Map ? res.cast<String, dynamic>() : <String, dynamic>{};
+      if (map['success'] == true && map['token'] is String) {
+        await _adopt(map['token'] as String);
+        return null;
+      }
+      return (map['error'] as String?) ?? 'Incorrect PIN';
+    } on ApiException catch (e) {
+      return e.message;
+    } on OfflineException {
+      return 'No connection - check network or server URL';
+    }
+  }
+
+  /// PI26111401: whether this device can sign in with QAce ID. Android and iOS open the sign-in in the system
+  /// browser's own tab, which shares its id.acexoft.com sign-in, so a person already signed in anywhere in the estate
+  /// gets one tap ("Continue as") instead of a new sign-in.
+  static bool get acexoftSupported =>
+      !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
+
+  /// The app's own link scheme, registered in AndroidManifest.xml (RFC 8252 private-use scheme).
+  static const acexoftScheme = 'com.sconl.isconl';
+
+  /// PI26111401: sign in with QAce ID. A PKCE verifier stays in this method; hub sends back only a single-use code
+  /// through [acexoftScheme], and the code and verifier are traded for the session over POST, so nothing that can
+  /// open the account travels in a URL. [openBrowser] is for tests. Returns null on success, or a plain message.
+  Future<String?> loginAcexoft({Future<String> Function(String url, String scheme)? openBrowser}) async {
+    final rnd = Random.secure();
+    final verifier = base64UrlEncode(List<int>.generate(48, (_) => rnd.nextInt(256))).replaceAll('=', '');
+    final challenge = base64UrlEncode(sha256.convert(ascii.encode(verifier)).bytes).replaceAll('=', '');
+    var base = serverUrl.trim();
+    if (base.endsWith('/')) base = base.substring(0, base.length - 1);
+    final url = '$base/auth/guard/start?app_challenge=$challenge';
+    String result;
+    try {
+      result = await (openBrowser ??
+          (u, scheme) => FlutterWebAuth2.authenticate(url: u, callbackUrlScheme: scheme))(url, acexoftScheme);
+    } on PlatformException catch (e) {
+      return e.code == 'CANCELED' ? 'Sign-in was cancelled.' : 'Could not open the QAce ID sign-in.';
+    } catch (_) {
+      return 'Could not open the QAce ID sign-in.';
+    }
+    final q = Uri.tryParse(result)?.queryParameters ?? const <String, String>{};
+    if ((q['error'] ?? '').isNotEmpty) return q['error'];
+    final code = q['code'] ?? '';
+    if (code.isEmpty) return 'That sign-in could not be completed. Try again.';
+    try {
+      final res = await api.postJson('/auth/guard/app-exchange', {'code': code, 'verifier': verifier}, cold: true);
+      final map = res is Map ? res.cast<String, dynamic>() : <String, dynamic>{};
+      if (map['success'] == true && map['token'] is String) {
+        await _adopt(map['token'] as String);
+        return null;
+      }
+      return (map['error'] as String?) ?? 'That sign-in could not be completed. Try again.';
+    } on ApiException catch (e) {
+      return e.message;
+    } on OfflineException {
+      return 'No connection - check network or server URL';
+    }
+  }
+
+  /// Use the static dashboard token directly.
+  Future<String?> loginToken(String token) async {
+    final previous = api.token;
+    api.token = token.trim();
+    try {
+      await api.getJson('/api/state', cold: true);
+      await _adopt(token.trim());
+      return null;
+    } on ApiException {
+      api.token = previous;
+      return 'Token rejected';
+    } on OfflineException {
+      api.token = previous;
+      return 'No connection - check network or server URL';
+    }
+  }
+
+  /// BI26100204: the device's passkey client. Replaced by a fake in tests.
+  PasskeyClient passkeys = PlatformPasskeyClient();
+
+  /// Whether the sign-in screen should offer "Sign in with passkey": the server has one registered and this phone can
+  /// use it.
+  Future<bool> passkeyOffered(Map<String, dynamic> methods) async => methods['passkey'] == true && await passkeys.available();
+
+  Map<String, dynamic> _asMap(dynamic v) => v is Map ? v.cast<String, dynamic>() : <String, dynamic>{};
+
+  /// Sign in with a passkey: the server's options, the phone's prompt, then the server verifies the assertion and
+  /// returns the same session token a PIN sign-in does. Null on success, otherwise a plain sentence. Any failure leaves
+  /// the PIN field available, which is the screen's job.
+  Future<String?> loginPasskey() async {
+    try {
+      final opts = _asMap(await api.postJson('/api/auth/passkey/options', {}, cold: true));
+      if (opts['available'] != true || opts['options'] is! Map) return 'No passkey is set up for this app yet.';
+      final assertion = await passkeys.authenticate(_asMap(opts['options']));
+      final res = _asMap(await api.postJson('/api/auth/passkey/verify', {'response': assertion}, cold: true));
+      if (res['success'] == true && res['token'] is String) {
+        await _adopt(res['token'] as String);
+        return null;
+      }
+      return (res['error'] as String?) ?? 'Passkey sign-in did not work. Use your PIN.';
+    } on ApiException catch (e) {
+      return e.message;
+    } on OfflineException {
+      return 'No connection - check network or server URL';
+    } catch (e) {
+      return passkeyFailureFor(e).message;
+    }
+  }
+
+  /// The signed-in user's passkeys, revoked ones included (the list shows them as revoked).
+  Future<List<Map<String, dynamic>>> passkeyList() async {
+    final r = _asMap(await api.getJson('/api/auth/passkeys'));
+    final list = r['passkeys'];
+    return list is List ? [for (final p in list) if (p is Map) p.cast<String, dynamic>()] : <Map<String, dynamic>>[];
+  }
+
+  /// Add a passkey to the signed-in account, named [name]. Null on success, otherwise a plain sentence.
+  Future<String?> addPasskey(String name) async {
+    try {
+      final options = _asMap(await api.postJson('/api/auth/passkey/register/options', {}));
+      final attestation = await passkeys.register(options);
+      final res = _asMap(await api.postJson('/api/auth/passkey/register/verify', {'response': attestation, 'name': name}));
+      if (res['ok'] == true) return null;
+      return res['reason'] == 'already_registered' ? 'This passkey is already registered.' : 'The passkey could not be verified.';
+    } on ApiException {
+      return 'Could not start registration. Sign in again and retry.';
+    } on OfflineException {
+      return 'Adding a passkey needs the live server - you are offline.';
+    } catch (e) {
+      return passkeyFailureFor(e).message;
+    }
+  }
+
+  Future<String?> renamePasskey(String id, String name) => _passkeyWrite('/api/auth/passkeys/rename', {'id': id, 'name': name});
+
+  Future<String?> revokePasskey(String id) => _passkeyWrite('/api/auth/passkeys/revoke', {'id': id});
+
+  Future<String?> _passkeyWrite(String path, Map<String, dynamic> body) async {
+    try {
+      await api.postJson(path, body);
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } on OfflineException {
+      return 'This needs the live server - you are offline.';
+    }
+  }
+
+  Future<void> _adopt(String token) async {
+    // On the web the cookie hub just set carries the session; the token is kept in memory for this page only.
+    api.token = token;
+    if (persistsToken) await _storage.write(key: 'token', value: token);
+    authenticated = true;
+    notifyListeners();
+    // After the code, the fingerprint. Awaited after notifying so the shell
+    // paints immediately rather than waiting on a sensor probe.
+    await _armBiometricsIfUnchosen();
+  }
+
+  Future<void> logout() async {
+    try {
+      await api.postJson('/api/auth/logout', {});
+    } catch (_) {}
+    api.token = '';
+    await _storage.delete(key: 'token');
+    authenticated = false;
+    notifyListeners();
+  }
+
+  Future<void> probeHealth() async {
+    serverHealth = await api.health();
+    notifyListeners();
+  }
+}

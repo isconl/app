@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_now">NOW</string>
+    <string name="widget_next">NEXT</string>
+    <string name="widget_open_app">Open iSconl</string>
+    <string name="widget_capture">Capture</string>
+    <string name="widget_mic">Mic</string>
+    <string name="widget_description">The current day block, the next item due, and one-tap capture.</string>
+    <string name="shortcut_capture">Capture</string>
+    <string name="shortcut_today">Today</string>
+</resources>

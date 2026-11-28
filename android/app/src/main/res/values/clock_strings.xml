@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="clock_tile_label">Clock</string>
+    <string name="clock_widget_description">Clock in, break, back and clock out, with today\'s net worked.</string>
+</resources>

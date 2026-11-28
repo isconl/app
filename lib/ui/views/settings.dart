@@ -1,0 +1,803 @@
+import '../widgets/study_model_card.dart';
+import 'package:flutter/material.dart';
+
+import '../../app_scope.dart';
+import '../../services/branding.dart';
+import '../../theme.dart';
+import '../../util/fmt.dart' as fmt;
+import '../update_flow.dart';
+import '../widgets/apk_link_button.dart';
+import '../widgets/parity9c_widgets.dart';
+import '../widgets/common.dart';
+import '../widgets/slate_closes_card.dart';
+import '../widgets/standard_tag.dart';
+import '../widgets/integrations_section.dart';
+import '../widgets/journal_access.dart';
+import '../widgets/offline_narration.dart';
+import '../widgets/prefetch_card.dart';
+import '../widgets/widget_settings_card.dart';
+import '../../services/cx_grants.dart';
+import '../widgets/news_watch_card.dart';
+import '../widgets/passkeys_card.dart';
+import '../widgets/status_briefs_card.dart';
+import '../../services/day_close_planner.dart';
+import '../../util/day_close.dart';
+import '../widgets/space_header.dart';
+import 'learned_ranking.dart';
+import 'systems_dashboard.dart';
+
+/// Connection, security, sync, update-on-cue, appearance, about.
+///
+/// [showIntegrations] adds the full service-credential management section
+/// (Jira/M365/Buffer/Anthropic/Telegram/Signal/Groq + status grid) ported
+/// from the legacy dashboard's Settings page - desktop-only, same reasoning
+/// as Buffer's compose gate: a phone typing a Jira API token is a bad
+/// afternoon. DesktopShell passes true; the mobile Shell's default is false.
+class SettingsView extends StatefulWidget {
+  const SettingsView({super.key, this.showIntegrations = false, this.onOpenSub});
+  final bool showIntegrations;
+
+  /// Set on the Systems landing: shows the dashboard above the settings and
+  /// lets its tiles open Ops (2) and Backlog (3).
+  final void Function(int sub)? onOpenSub;
+
+  @override
+  State<SettingsView> createState() => _SettingsViewState();
+}
+
+/// Tab names and search hits, for the shared header and its tests.
+const settingsTabLabels = _SettingsViewState.tabLabels;
+List<SpaceHit> settingsHits(BuildContext context) => _SettingsViewState.hitsFor(context);
+
+class _SettingsViewState extends State<SettingsView> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final services = AppScope.of(context);
+      if (services.sync.online) services.session.probeHealth();
+    });
+  }
+
+  /// BI26101816: Settings is General (day close, automatic context, prefetch, appearance), Study and notes, and
+  /// Account and sync. Every section sits in exactly one tab, with its title unchanged.
+  static const tabLabels = ['General', 'Study and notes', 'Account and sync'];
+
+  /// Section titles and switch labels, with the tab that holds each, for the search.
+  static const searchTable = <(String, String, int)>[
+    ('Day close', 'the end-of-day review', 0),
+    ('Automatic context', 'M-Pesa messages from SMS', 0),
+    ('Prefetch', 'what the phone downloads ahead', 0),
+    ('Learned ranking', 'what dragging a task taught slate', 0),
+    ('Navigation', 'rail or tabs inside each space', 0),
+    ('General', 'appearance, local data and branding', 0),
+    ('Notifications', 'slate closes and alerts', 1),
+    ('iSpark', 'standard on list', 1),
+    ('Offline narration', 'downloaded course audio', 1),
+    ('Journal access', 'who may read the journal', 1),
+    ('News watch', 'topics followed', 1),
+    ('Status briefs', 'the morning and evening briefs', 1),
+    ('Account', 'server, sign out and biometric lock', 2),
+    ('Biometric lock', 'fingerprint to open the app', 2),
+    ('Passkeys', 'sign-in keys', 2),
+    ('Sync & updates', 'sync state, queued changes and app updates', 2),
+  ];
+
+  static List<SpaceHit> hitsFor(BuildContext context) => [
+        for (final (title, sub, tab) in searchTable) SpaceHit(title: title, subtitle: sub, tab: tab),
+      ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SpaceView(
+      space: 'settings',
+      searchHint: 'Search settings',
+      hits: hitsFor,
+      tabs: [for (var i = 0; i < tabLabels.length; i++) SpaceTab(tabLabels[i], _part(context, i))],
+    );
+  }
+
+  Widget _part(BuildContext context, int part) {
+    final services = AppScope.of(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 96),
+      child: ListenableBuilder(
+        listenable: Listenable.merge(
+            [services.session, services.sync, services.updater]),
+        builder: (context, _) {
+          final session = services.session;
+          final sync = services.sync;
+          final updater = services.updater;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (part == 0) ...[
+              if (widget.onOpenSub != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: SystemsDashboardHost(onOpenSub: widget.onOpenSub),
+                ),
+              // ---- the end-of-day review ----
+              const SectionLabel('Day close'),
+              _DayCloseSettings(
+                  onChanged: () => replanDayClose(services)),
+
+              // ---- automatic context ----
+              const SectionLabel('Automatic context'),
+              const SmsCard(),
+
+              ],
+              if (part == 2) ...[
+              // ---- account: connection + security, regrouped from two
+              // separate top-level sections into one - both are "who is
+              // signed in and how is that guarded", not two different topics.
+              const SectionLabel('Account'),
+              Panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    KvRow('Server',
+                        session.serverUrl
+                            .replaceFirst(RegExp(r'^https?://'), ''),
+                        mono: true),
+                    KvRow(
+                        'Status',
+                        sync.online
+                            ? 'online'
+                            : 'offline - local mirror active',
+                        vColor: sync.online ? C.green : C.amber),
+                    if (session.serverHealth != null)
+                      KvRow(
+                          'Agent',
+                          'v${fmt.s(session.serverHealth!['version'])} · ${fmt.s(session.serverHealth!['build'])}',
+                          mono: true),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () => _serverSheet(context),
+                          child: const Text('Change server'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () async {
+                            final narration = AppScope.of(context).narrator.downloads;
+                            final sure = await confirmDialog(
+                                context,
+                                'Sign out?',
+                                'The session token is discarded and downloaded narration is removed. Cached '
+                                    'data stays on this device.',
+                                action: 'Sign out');
+                            if (sure) {
+                              // Downloaded narration is private to this sign-in; the rest of the cache stays (above).
+                              try {
+                                await narration?.deleteAll();
+                              } catch (_) {}
+                              await session.logout();
+                            }
+                          },
+                          child: const Text('Sign out'),
+                        ),
+                      ],
+                    ),
+                    const Divider(),
+                    Row(
+                      children: [
+                        const Icon(Icons.fingerprint_rounded,
+                            size: 20, color: C.text2),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Biometric lock', style: T.body2),
+                              // Says what is true rather than what the switch
+                              // does. It arms itself after the first code, so
+                              // the useful information is that turning it OFF
+                              // is the decision.
+                              Text(
+                                session.biometricLock
+                                    ? 'On. You stay signed in - a fingerprint is all it asks for.'
+                                    : 'Off. The app opens without asking anything.',
+                                style: T.tiny),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: session.biometricLock,
+                          onChanged: (v) => session.setBiometricLock(v),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              ],
+              if (part == 1) ...[
+              const SectionLabel('Notifications'),
+              const SlateClosesCard(),
+              ],
+              if (part == 0) ...[
+              const SectionLabel('Prefetch'),
+              const PrefetchCard(),
+              const SizedBox(height: 10),
+              const WidgetSettingsCard(),
+              const SectionLabel('Learned ranking'),
+              ListTile(
+                key: const Key('learned-ranking'),
+                title: const Text('Learned ranking'),
+                subtitle: const Text('What dragging a task taught slate, with undo'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LearnedRankingPage())),
+              ),
+              ],
+              if (part == 1) ...[
+              const SectionLabel('iSpark'),
+              const Panel(child: StandardOnListSwitch()),
+              const SizedBox(height: 10),
+              const StudyModelSettingCard(),
+              const SectionLabel('Offline narration'),
+              const OfflineNarrationCard(),
+              const SectionLabel('Journal access'),
+              JournalAccessCard(client: HubCxGrantsClient(AppScope.of(context).api, AppScope.of(context).session.passkeys)),
+              ],
+              if (part == 2) ...[
+              const SectionLabel('Google'),
+              const GoogleConnectCard(),
+              const SectionLabel('PIN'),
+              const PinCard(),
+              const SectionLabel('Passkeys'),
+              const PasskeysCard(),
+              ],
+              if (part == 1) ...[
+              const SectionLabel('News watch'),
+              const NewsWatchCard(),
+              const SectionLabel('Status briefs'),
+              const StatusBriefsCard(),
+              ],
+              if (part == 2) ...[
+              if (widget.showIntegrations) ...[
+                const IntegrationsSection(),
+              ],
+
+              // ---- sync & updates: regrouped from two separate sections
+              // into one - "keeping this phone current" is one topic whether
+              // it's data or the app binary itself.
+              const SectionLabel('Sync & updates'),
+              Panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: KvRow('State', sync.statusLine)),
+                        ListenableBuilder(
+                          listenable: services.outbox,
+                          builder: (context, _) => services.outbox.pending > 0
+                              ? Badge2('${services.outbox.pending}',
+                                  color: C.amberBg, textColor: C.amber)
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ),
+                    ListenableBuilder(
+                      listenable: services.outbox,
+                      builder: (context, _) => KvRow(
+                          'Queued',
+                          services.outbox.pending == 0
+                              ? 'nothing waiting'
+                              : fmt.plural(
+                                  services.outbox.pending, 'change')),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: sync.online
+                              ? () async {
+                                  await sync.fullSync();
+                                  await services.modules.check(force: true);
+                                  await services.modules.prefetchAll();
+                                  if (context.mounted) {
+                                    toast(context, 'Full offline mirror updated (${services.modules.downloadedCount} modules cached)');
+                                  }
+                                }
+                              : null,
+                          icon: const Icon(Icons.download_for_offline_rounded, size: 16),
+                          label: const Text('Download all for offline'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: sync.online
+                              ? () => sync.fullSync()
+                              : null,
+                          icon: const Icon(Icons.sync_rounded, size: 16),
+                          label: const Text('Sync now'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: sync.online
+                              ? () async {
+                                  try {
+                                    await services.mutations
+                                        .post('/api/vault/sync', {});
+                                    if (context.mounted) {
+                                      toast(context,
+                                          'Vault -> OneDrive sync started');
+                                    }
+                                  } catch (_) {
+                                    if (context.mounted) {
+                                      toast(context, 'Could not start',
+                                          error: true);
+                                    }
+                                  }
+                                }
+                              : null,
+                          icon: const Icon(Icons.cloud_upload_rounded,
+                              size: 16),
+                          label: const Text('Push to OneDrive'),
+                        ),
+                      ],
+                    ),
+                    ListenableBuilder(
+                      listenable: services.modules,
+                      builder: (context, _) {
+                        final mod = services.modules;
+                        if (mod.prefetching) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Downloading offline library: ${mod.prefetchDone}/${mod.prefetchTotal} modules…',
+                                    style: T.tiny.copyWith(color: C.cyan)),
+                                const SizedBox(height: 4),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(3),
+                                  child: LinearProgressIndicator(
+                                    value: mod.prefetchTotal > 0 ? mod.prefetchDone / mod.prefetchTotal : null,
+                                    minHeight: 4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Offline status: ${mod.downloadedCount}/${mod.knownCount} learning modules, tasks, calendar & full vault cached locally in SQLite.',
+                            style: T.tiny.copyWith(color: C.text3),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(),
+                    KvRow('Installed', 'v${updater.installedVersion}',
+                        mono: true),
+                    if (updater.latestVersion != null)
+                      KvRow('Latest', 'v${updater.latestVersion}',
+                          mono: true),
+                    if (updater.state != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(updater.state!,
+                            style: T.small.copyWith(color: C.text3)),
+                      ),
+                    if (updater.busy && updater.progress > 0) ...[
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                            value: updater.progress, minHeight: 5),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: updater.busy || !sync.online
+                              ? null
+                              : () => runUpdateFlow(context, updater),
+                          icon: updater.busy
+                              ? const MiniSpinner()
+                              : const Icon(Icons.system_update_rounded,
+                                  size: 16),
+                          label: const Text('Check for update'),
+                        ),
+                        const ApkLinkButton(),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Updates come from your own agent, not an app store and '
+                      'not GitHub directly - so this phone holds no second '
+                      'credential. Every build is signed with the same key, '
+                      'which is what lets it install over the last one.',
+                      style: T.tiny,
+                    ),
+                  ],
+                ),
+              ),
+
+              ],
+              if (part == 0) ...[
+              // ---- general: appearance + local data, regrouped from two
+              // separate sections into one - both are "how this device's
+              // copy of the app looks and holds", the lightest-touch settings
+              // that were previously getting a full section each.
+              // BI26102802: how every space moves between its destinations, changed live.
+              const SectionLabel('Navigation'),
+              Panel(
+                key: const Key('space-nav-setting'),
+                child: ValueListenableBuilder<SpaceNav>(
+                  valueListenable: SpaceNavMode.mode,
+                  builder: (context, mode, _) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        mode == SpaceNav.rail
+                            ? 'Rail: a column of icons on the right edge, above the buttons. Hold an icon to see its name.'
+                            : 'Tabs: a row of tabs under the search.',
+                        style: T.small.copyWith(color: C.text3),
+                      ),
+                      const SizedBox(height: 10),
+                      Segmented(
+                        options: const ['Rail', 'Tabs'],
+                        value: mode == SpaceNav.rail ? 'Rail' : 'Tabs',
+                        onChanged: (v) => SpaceNavMode.set(services.db, v == 'Rail' ? SpaceNav.rail : SpaceNav.tabs),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SectionLabel('General'),
+              Panel(
+                child: ListenableBuilder(
+                  listenable: BrandingService.instance,
+                  builder: (context, _) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'In-app logo. The launcher icon itself is baked per '
+                        'build: drop branding/icon.png in the repo and the '
+                        'next build adopts it.',
+                        style: T.small.copyWith(color: C.text3),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final ok = await BrandingService.instance
+                                  .pickAndSet();
+                              if (context.mounted) {
+                                toast(
+                                    context,
+                                    ok
+                                        ? 'Logo updated'
+                                        : 'No image chosen (max 2 MB)');
+                              }
+                            },
+                            icon: const Icon(Icons.image_rounded, size: 16),
+                            label: const Text('Choose logo'),
+                          ),
+                          if (BrandingService.instance.logoBytes != null)
+                            OutlinedButton(
+                              onPressed: () =>
+                                  BrandingService.instance.reset(),
+                              child: const Text('Reset to default'),
+                            ),
+                        ],
+                      ),
+                      const Divider(),
+                      Text(
+                        'The local mirror is cache - the vault on the server '
+                        'remains the single source of truth.',
+                        style: T.small.copyWith(color: C.text3),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final sure = await confirmDialog(
+                              context,
+                              'Clear local mirror?',
+                              'Cached snapshots are wiped and re-pulled on '
+                                  'the next sync. Queued changes are kept.',
+                              action: 'Clear');
+                          if (!sure) return;
+                          await services.store.clearAll();
+                          if (context.mounted) {
+                            toast(context, 'Local mirror cleared');
+                          }
+                          if (sync.online) sync.fullSync();
+                        },
+                        icon: const Icon(Icons.cleaning_services_rounded,
+                            size: 16),
+                        label: const Text('Clear cached snapshots'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Center(
+                child: Text(
+                  'iSconl · native client v${updater.installedVersion}\n'
+                  'offline-first · vault-backed · gate-armed',
+                  textAlign: TextAlign.center,
+                  style: T.monoSmall,
+                ),
+              ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _serverSheet(BuildContext context) {
+    final services = AppScope.of(context);
+    final controller =
+        TextEditingController(text: services.session.serverUrl);
+    return showFormSheet(
+      context,
+      title: 'Server URL',
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Field(
+              label: 'URL',
+              controller: controller,
+              hint: 'https://isconl.acexoft.com',
+              keyboardType: TextInputType.url),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await services.session.setServer(controller.text);
+              if (context.mounted) {
+                toast(context, 'Server updated - sign in again if needed');
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+}
+
+/// M-Pesa context from SMS.
+///
+/// Every number here is reported rather than implied, because "is this working"
+/// deserves an answer that is not a feeling. The copy is explicit about scope:
+/// only M-Pesa messages are ever read, his conversations are untouched, and the
+/// app holds no permission to send an SMS at all.
+class SmsCard extends StatefulWidget {
+  const SmsCard({super.key});
+
+  @override
+  State<SmsCard> createState() => _SmsCardState();
+}
+
+class _SmsCardState extends State<SmsCard> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppScope.of(context).sms.refreshPermission();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sms = AppScope.of(context).sms;
+    return ListenableBuilder(
+      listenable: sms,
+      builder: (context, _) => Panel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(sms.granted ? Icons.sms_rounded : Icons.sms_failed_rounded,
+                    size: 17, color: sms.granted ? C.green : C.text3),
+                const SizedBox(width: 10),
+                Expanded(child: Text('M-Pesa from SMS', style: T.w600(T.body2))),
+                if (sms.busy) const MiniSpinner(),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              sms.granted
+                  ? 'Reading M-Pesa messages only. Every movement becomes a '
+                    'transaction, and money moving to or from someone in your '
+                    'circle also becomes a touchpoint.'
+                  : 'Grant permission and every M-Pesa message becomes a QFloat '
+                    'entry automatically. Only messages from M-PESA are read - '
+                    'your conversations are never touched, and the app cannot '
+                    'send an SMS at all.',
+              style: T.small.copyWith(color: C.text3, height: 1.5),
+            ),
+            if (sms.granted) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _Stat('imported', '${sms.imported}'),
+                  _Stat('duplicates skipped', '${sms.skippedDuplicate}'),
+                  _Stat('not recognised', '${sms.unparsedCount}'),
+                ],
+              ),
+              if (sms.lastRun != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text('last read ${fmt.ago(sms.lastRun!.toIso8601String())}',
+                      style: T.monoSmall),
+                ),
+            ],
+            if (sms.lastError != null) ...[
+              const SizedBox(height: 10),
+              Text(sms.lastError!, style: T.tiny.copyWith(color: C.amber, height: 1.5)),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (!sms.granted)
+                  FilledButton.icon(
+                    onPressed: () async {
+                      final ok = await sms.request();
+                      if (!context.mounted) return;
+                      if (ok) {
+                        final n = await sms.run();
+                        if (!context.mounted) return;
+                        toast(context, n > 0
+                            ? '$n movement${n == 1 ? '' : 's'} imported'
+                            : 'Nothing new to import');
+                      }
+                    },
+                    icon: const Icon(Icons.check_rounded, size: 16),
+                    label: const Text('Allow and import'),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: sms.busy ? null : () async {
+                      final n = await sms.run();
+                      if (!context.mounted) return;
+                      toast(context, n > 0
+                          ? '$n movement${n == 1 ? '' : 's'} imported'
+                          : 'Nothing new to import');
+                    },
+                    icon: const Icon(Icons.refresh_rounded, size: 15),
+                    label: const Text('Import now'),
+                  ),
+                const Spacer(),
+                if (sms.granted)
+                  TextButton(
+                    // Safe by construction: the agent deduplicates on the M-Pesa
+                    // code, so a re-read reconciles rather than duplicates.
+                    onPressed: sms.busy ? null : () async {
+                      await sms.resetMark();
+                      if (!context.mounted) return;
+                      toast(context, 'Will re-read the last 90 days on the next import');
+                    },
+                    child: const Text('Re-read 90 days'),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat(this.label, this.value);
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value, style: T.mono.copyWith(color: C.text, fontSize: 15)),
+          Text(label, style: T.tiny.copyWith(fontSize: 9.5)),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// BI26100143: when the end-of-day review notification fires, and whether weekends are skipped.
+class _DayCloseSettings extends StatefulWidget {
+  const _DayCloseSettings({required this.onChanged});
+  final VoidCallback onChanged;
+
+  @override
+  State<_DayCloseSettings> createState() => _DayCloseSettingsState();
+}
+
+class _DayCloseSettingsState extends State<_DayCloseSettings> {
+  @override
+  void initState() {
+    super.initState();
+    DayClosePrefs.instance.addListener(_refresh);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) DayClosePrefs.instance.ensureLoaded(AppScope.of(context).db);
+    });
+  }
+
+  @override
+  void dispose() {
+    DayClosePrefs.instance.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = DayClosePrefs.instance;
+    final db = AppScope.of(context).db;
+    final time = '${p.hour.toString().padLeft(2, '0')}:${p.minute.toString().padLeft(2, '0')}';
+    // ListTiles paint on the nearest Material; the Panel's decoration would hide them.
+    return Panel(
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(children: [
+        SwitchListTile(
+          key: const Key('dayclose-enabled'),
+          contentPadding: EdgeInsets.zero,
+          title: Text('End-of-day review', style: T.body2),
+          subtitle: Text('One notification to close the day', style: T.tiny),
+          value: p.enabled,
+          onChanged: (v) async {
+            await p.update(enabled: v, db: db);
+            widget.onChanged();
+          },
+        ),
+        ListTile(
+          key: const Key('dayclose-time'),
+          contentPadding: EdgeInsets.zero,
+          enabled: p.enabled,
+          title: Text('Time', style: T.body2),
+          trailing: Text(time, style: T.mono),
+          onTap: !p.enabled
+              ? null
+              : () async {
+                  final picked = await showTimePicker(
+                      context: context, initialTime: TimeOfDay(hour: p.hour, minute: p.minute));
+                  if (picked == null) return;
+                  await p.update(hour: picked.hour, minute: picked.minute, db: db);
+                  widget.onChanged();
+                },
+        ),
+        SwitchListTile(
+          key: const Key('dayclose-weekends'),
+          contentPadding: EdgeInsets.zero,
+          title: Text('Skip weekends', style: T.body2),
+          value: p.skipWeekends,
+          onChanged: !p.enabled
+              ? null
+              : (v) async {
+                  await p.update(skipWeekends: v, db: db);
+                  widget.onChanged();
+                },
+        ),
+      ]),
+      ),
+    );
+  }
+}

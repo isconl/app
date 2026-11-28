@@ -1,0 +1,2582 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
+
+import '../../app_scope.dart';
+import '../../services/audio_downloads.dart' show prettyBytes;
+import '../../services/course_offline.dart';
+import '../../services/prefetch.dart' show DbPrefetchStore, markPrefetchOpened;
+import '../../data/db.dart';
+import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink, ParagraphHook, changeNotesOf;
+import '../widgets/recall_card.dart';
+import '../../data/modules.dart';
+import '../../data/note_entries.dart' show quoteOf;
+import '../../study/cdm/cdm_lesson_body.dart';
+import '../../study/trajectory/trajectory_model.dart';
+import '../../study/trajectory/trajectory_section.dart';
+import '../../theme.dart';
+import '../../util/fmt.dart' as fmt;
+import '../../util/reader_prefs.dart';
+import '../../util/spaced_review.dart';
+import 'study_search_view.dart';
+import 'course_standards_view.dart' show openCourseStandards;
+import '../shell.dart' show ShellAppBar, openMenu;
+export '../widgets/reader_comfort.dart' show showReaderComfortSheet;
+import '../widgets/common.dart';
+import '../widgets/offline_banner.dart';
+import '../widgets/course_controls.dart';
+import '../widgets/listen_bar.dart';
+import '../widgets/space_header.dart';
+import '../widgets/study_extras.dart';
+import '../widgets/track_grid.dart';
+import '../widgets/study_pick_card.dart';
+import '../../services/study_extras.dart';
+import '../widgets/module_lifecycle.dart';
+import '../widgets/reader.dart';
+import '../widgets/lesson_notes_editor.dart';
+import '../widgets/note_card.dart';
+export '../widgets/lesson_notes_editor.dart' show LessonNotes;
+import '../widgets/standard_tag.dart';
+import '../../services/course_standard.dart';
+import '../../util/module_standard.dart';
+import '../widgets/track_admin.dart';
+import 'learning_export_stub.dart'
+    if (dart.library.io) 'learning_export_native.dart' as export_impl;
+
+/// Courses -> lessons -> reader.
+///
+/// A module downloaded here stays on the device until its content changes. The
+/// state of every module is visible rather than implied, because "can I read
+/// this on the train" is a question the UI should answer before the train and
+/// not at the moment of failure. See lib/data/modules.dart.
+class LearningView extends StatefulWidget {
+  const LearningView({super.key});
+
+  @override
+  State<LearningView> createState() => _LearningViewState();
+}
+
+class _LearningViewState extends State<LearningView> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final lib = AppScope.of(context).modules;
+      // Check manifest first, then immediately pull anything missing/stale.
+      // This is what puts the whole library on the device without the user
+      // having to open every module manually.
+      await lib.check();
+      if (mounted) lib.prefetchAll();
+    });
+  }
+
+  /// BI26101519: Study has three tabs, Map, Campus and Tracks, opening on Campus (what to read now). The
+  /// last one chosen is remembered on the device. Each tab scrolls on its own under the fixed tab bar.
+  /// BI26101802: the header is the shared SpaceView, the pattern every sub-tab space now wears.
+  static const _tabLabels = ['Map', 'Campus', 'Tracks'];
+  static const _defaultTab = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final services = AppScope.of(context);
+    Widget tab(int t) => ListenableBuilder(
+          listenable: services.modules,
+          builder: (context, _) => SnapshotView(
+            snapshot: services.store.learning,
+            builder: (context, data) => _body(context, data, t),
+          ),
+        );
+    return SpaceView(
+      space: 'study',
+      searchHint: 'Search modules, terms and text',
+      searchKey: const Key('study-search-entry'),
+      initialTab: _defaultTab,
+      onSearch: (ctx) => Navigator.push<void>(ctx, MaterialPageRoute(builder: (_) => const StudySearchScreen())),
+      tabs: [for (var i = 0; i < _tabLabels.length; i++) SpaceTab(_tabLabels[i], tab(i))],
+    );
+  }
+
+  Widget _body(BuildContext context, dynamic data, int tab) {
+    final services = AppScope.of(context);
+    return Builder(
+        builder: (context) {
+          final courses = fmt.lm(fmt.m(data)['courses']);
+          // BI26100538: a library with no courses but with tracks still shows its tracks.
+          if (courses.isEmpty && fmt.lm(fmt.m(data)['groups']).isEmpty) {
+            return const EmptyState(
+              'No courses yet',
+              'Courses live in the vault under memory/learning.',
+              icon: Icons.school_rounded,
+            );
+          }
+          final lib = services.modules;
+
+          // BN26090604, BI26092611: groups come straight from /api/learning's own
+          // `groups` array -- the same live taxonomy the web renders from, in
+          // SORT_ORDER. Zero hardcoded track names/order/color; do not re-sort
+          // in the client.
+          final apiGroups = fmt.lm(fmt.m(data)['groups'])
+              .map(LearningGroup.fromApi)
+              .toList();
+          final groupsById = {for (final g in apiGroups) g.id: g};
+
+          final Map<String, List<Map<String, dynamic>>> byGroup = {};
+          final ungrouped = <Map<String, dynamic>>[];
+          for (final c in courses) {
+            final groupId = fmt.s(c['GROUP_ID']);
+            if (groupId.isNotEmpty && groupsById.containsKey(groupId)) {
+              byGroup.putIfAbsent(groupId, () => []).add(c);
+            } else {
+              // A course with no real GROUP_ID is a genuine data problem
+              // (per OI26090601 -- every course should resolve to a real
+              // group now) -- surfaced visibly, never silently folded into
+              // a fabricated "Other" bucket.
+              ungrouped.add(c);
+            }
+          }
+          // BI26100538: nothing disappears. Every track spark returns is shown, an empty one with its
+          // empty state, in spark's order.
+          final tracks = [
+            ...apiGroups,
+            if (ungrouped.isNotEmpty) LearningGroup.ungrouped,
+          ];
+          final coursesForTrack = {
+            for (final g in apiGroups) g.id: byGroup[g.id] ?? const [],
+            LearningGroup.ungrouped.id: ungrouped,
+          };
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Map tab: the study activity map.
+              if (tab == 0)
+                ContributionsCard(title: 'Study activity', loader: (_) => HubStudyExtrasApi(services.api).studyContributions()),
+              // Campus tab: what to read right now.
+              // BI26101604: the on-phone pick, offline, with its reason.
+              if (tab == 1) StudyPickCard(
+                data: fmt.m(data),
+                onOpen: (courseId, lesson) {
+                  final course = courses.firstWhere(
+                      (c) => (fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID'])) == courseId,
+                      orElse: () => const <String, dynamic>{});
+                  final lessons = fmt.lm(course['lessons']);
+                  final l = lessons.firstWhere((x) => fmt.s(x['file']) == lesson, orElse: () => const <String, dynamic>{});
+                  final rawTitle = fmt.s(l['title']).isEmpty ? lesson : fmt.s(l['title']);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => LessonScreen(
+                        course: courseId,
+                        file: lesson,
+                        title: safeModuleTitle(stripEmoji(rawTitle), lesson),
+                        status: fmt.s(l['status']).isEmpty ? 'new' : fmt.s(l['status']),
+                        allLessons: lessons,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              // BI26101109: spaced recall. Shows only when a question is due.
+              if (tab == 1) RecallCard(onReopen: (t) {
+                final course = courses.firstWhere(
+                    (c) => (fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID'])) == t.course,
+                    orElse: () => const <String, dynamic>{});
+                final lessons = fmt.lm(course['lessons']);
+                final l = lessons.firstWhere((x) => fmt.s(x['file']) == t.lesson, orElse: () => const <String, dynamic>{});
+                final rawTitle = fmt.s(l['title']).isEmpty ? t.lesson : fmt.s(l['title']);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LessonScreen(
+                      course: t.course,
+                      file: t.lesson,
+                      title: safeModuleTitle(stripEmoji(rawTitle), t.lesson),
+                      status: fmt.s(l['status']).isEmpty ? 'done' : fmt.s(l['status']),
+                      allLessons: lessons,
+                      initialAnchor: t.anchor,
+                    ),
+                  ),
+                );
+              }),
+              // BI26101605: Announcements section, collapsed by default, fed by campus.tsv (CampusCard).
+              if (tab == 1)
+                Container(
+                  key: const Key('campus-announcements'),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(border: Border.all(color: C.border), borderRadius: BorderRadius.circular(Sz.rMd)),
+                  child: Theme(
+                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      initiallyExpanded: false,
+                      tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      leading: const Icon(Icons.campaign_outlined, size: 20, color: C.text2),
+                      title: Text('Announcements', style: T.label),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          child: CampusCard(onOpen: (courseId, lesson) {
+                            if (lesson.isEmpty) return;
+                            final course = courses.firstWhere(
+                                (c) => (fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID'])) == courseId,
+                                orElse: () => const <String, dynamic>{});
+                            final lessons = fmt.lm(course['lessons']);
+                            final l = lessons.firstWhere((x) => fmt.s(x['file']) == lesson, orElse: () => const <String, dynamic>{});
+                            final rawTitle = fmt.s(l['title']).isEmpty ? lesson : fmt.s(l['title']);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => LessonScreen(
+                                  course: courseId,
+                                  file: lesson,
+                                  title: safeModuleTitle(stripEmoji(rawTitle), lesson),
+                                  status: fmt.s(l['status']).isEmpty ? 'new' : fmt.s(l['status']),
+                                  allLessons: lessons,
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              // Tracks tab: the track cards and the offline progress.
+              // ── transient prefetch progress only - the idle summary moved
+              // down to each track card, where "how much of THIS is offline"
+              // is actually actionable rather than one global number nobody
+              // can act on from the landing screen.
+              if (tab == 2 && lib.prefetching)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10, left: 2),
+                  child: Row(
+                    children: [
+                      const MiniSpinner(),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Taking the library offline · ${lib.prefetchDone} of ${lib.prefetchTotal}',
+                          style: T.tiny.copyWith(color: C.text2),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // ── landing: 2-column staggered grid (BI26092611) ─────────────
+              // Sconl 26 Sep 2026: emoji-free, colour-coded track cards.
+              // A square card takes one cell at about 1:1; a wide card spans both
+              // columns at about 2:1. If tile is missing, square is used.
+              if (tab == 2)
+                TrackGrid(groups: tracks, coursesFor: (g) => coursesForTrack[g.id] ?? const []),
+
+              // BI26100538: when the library was last synced from the vault. Amber past 24 hours, so a
+              // stalled sync is seen the same day.
+              if (tab == 2) LibraryFreshness(syncedAt: fmt.m(data)['librarySyncedAt'] ?? fmt.m(data)['syncedAt']),
+
+              // BI26100510: create, edit, archive and restore tracks.
+              if (tab == 2)
+                Center(
+                  child: TextButton(
+                    key: const Key('manage-tracks'),
+                    onPressed: () => showTrackAdmin(context, fmt.lm(fmt.m(data)['groups'])),
+                    child: Text('Manage tracks', style: T.tiny.copyWith(color: C.text3)),
+                  ),
+                ),
+              // BI26112307: every archetype of the course standard, explained, each with a live example.
+              if (tab == 2)
+                Center(
+                  child: TextButton(
+                    key: const Key('open-course-standards'),
+                    onPressed: () => openCourseStandards(context),
+                    child: Text('Course standards', style: T.tiny.copyWith(color: C.text3)),
+                  ),
+                ),
+              // ── low-emphasis library-wide action, moved off the top ──────
+              if (tab == 2 && !lib.prefetching &&
+                  (lib.staleCount > 0 || lib.downloadedCount < lib.knownCount))
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Center(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(Sz.rSm),
+                      onTap: () => lib.prefetchAll(),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        child: Text(
+                          lib.staleCount > 0
+                              ? 'Refresh everything (${lib.staleCount} updated)'
+                              : 'Download the whole library',
+                          style: T.tiny.copyWith(
+                              color: C.green, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+    );
+  }
+}
+
+/// BI26100404: a module title is never a front-matter line. The server derives titles from the
+/// front matter or the first heading; this guards a cached or older response that still carries
+/// `---`, falling back to the humanised file name.
+String safeModuleTitle(String title, String file) {
+  final t = title.trim();
+  if (t.isNotEmpty && !t.startsWith('---')) return t;
+  final base = file
+      .replaceAll(RegExp(r'\.md$', caseSensitive: false), '')
+      .replaceFirst(RegExp(r'^\d{8}_'), '')
+      .replaceFirst(RegExp(r'_v\d+_\d+_\d+$', caseSensitive: false), '')
+      .replaceFirst(RegExp(r'^\d+[-_]'), '')
+      .replaceAll(RegExp(r'[_-]+'), ' ')
+      .trim();
+  if (base.isEmpty) return file;
+  return base[0].toUpperCase() + base.substring(1);
+}
+
+/// Strips emoji codepoints from [text] (BI26092611).
+String stripEmoji(String text) {
+  if (text.isEmpty) return text;
+  final emojiRegex = RegExp(
+    r'[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1FA00}-\u{1FAFF}]',
+    unicode: true,
+  );
+  return text.replaceAll(emojiRegex, '').replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
+/// A track colour as text on [background]: the colour itself when it reads (contrast of at least
+/// 3:1), else a variant lightened 25% toward white (BI26100111).
+Color legibleTrackColor(Color c, Color background) {
+  double contrast(Color a, Color b) {
+    final la = a.computeLuminance(), lb = b.computeLuminance();
+    final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  return contrast(c, background) >= 3.0 ? c : Color.lerp(c, Colors.white, 0.25)!;
+}
+
+/// Parses a hex color string, falling back to [fallback] (defaulting to [C.green]).
+/// Accepts 6-hex digits with or without leading '#'.
+Color hexColor(String? hex, {Color fallback = C.green}) {
+  if (hex == null || hex.isEmpty) return fallback;
+  final h = hex.replaceFirst('#', '').trim();
+  if (h.length != 6) return fallback;
+  final v = int.tryParse(h, radix: 16);
+  return v == null ? fallback : Color(0xFF000000 | v);
+}
+
+/// One entry from /api/learning's `groups` array -- label, color, tile,
+/// sort order, and aggregate counts (BI26092611).
+class LearningGroup {
+  const LearningGroup({
+    required this.id,
+    required this.label,
+    required this.description,
+    required this.color,
+    required this.tile,
+    required this.sortOrder,
+    required this.courseCount,
+    required this.moduleCount,
+    required this.progressPct,
+    required this.status,
+    this.coursesOwed = 0,
+  });
+
+  factory LearningGroup.fromApi(Map<String, dynamic> g) {
+    final tileRaw = fmt.s(g['tile'] ?? g['TILE']).toLowerCase();
+    final tile = tileRaw == 'wide' ? 'wide' : 'square';
+    final sortOrderRaw = g['SORT_ORDER'] ?? g['sortOrder'];
+    final sortOrder = (sortOrderRaw is num) ? sortOrderRaw.toInt() : 99;
+    final colorHex = fmt.s(g['color'] ?? g['COLOR']);
+
+    return LearningGroup(
+      id: fmt.s(g['id'] ?? g['ID']),
+      label: fmt.s(g['label'] ?? g['LABEL']).isEmpty
+          ? fmt.s(g['id'] ?? g['ID'])
+          : fmt.s(g['label'] ?? g['LABEL']),
+      description: fmt.s(g['description'] ?? g['DESCRIPTION']),
+      color: hexColor(colorHex),
+      tile: tile,
+      sortOrder: sortOrder,
+      courseCount: ((g['courseCount'] ?? g['COURSE_COUNT']) is num)
+          ? (g['courseCount'] ?? g['COURSE_COUNT'] as num).toInt()
+          : 0,
+      moduleCount: ((g['moduleCount'] ?? g['MODULE_COUNT']) is num)
+          ? (g['moduleCount'] ?? g['MODULE_COUNT'] as num).toInt()
+          : 0,
+      progressPct: ((g['progressPct'] ?? g['PROGRESS_PCT']) is num)
+          ? (g['progressPct'] ?? g['PROGRESS_PCT'] as num).toInt()
+          : 0,
+      status: fmt.s(g['status'] ?? g['STATUS']),
+      coursesOwed: ((g['coursesOwed'] ?? g['courses_owed']) is num)
+          ? ((g['coursesOwed'] ?? g['courses_owed']) as num).toInt()
+          : 0,
+    );
+  }
+
+  /// A real data problem, not a track: courses whose GROUP_ID doesn't match
+  /// any live group. Visibly flagged (amber, distinct label).
+  static const ungrouped = LearningGroup(
+    id: '_ungrouped',
+    label: 'Ungrouped: needs a GROUP_ID',
+    description: '',
+    color: C.amber,
+    tile: 'wide',
+    sortOrder: 999,
+    courseCount: 0,
+    moduleCount: 0,
+    progressPct: 0,
+    status: '',
+  );
+
+  final String id;
+  final String label;
+  final String description;
+  final Color color;
+  final String tile;
+  final int sortOrder;
+  final int courseCount;
+  final int moduleCount;
+  final int progressPct;
+  final String status;
+
+  /// BI26100538: courses the census says this track still owes, when spark reports it.
+  final int coursesOwed;
+
+  bool get isWide => tile == 'wide';
+}
+
+/// BI26100538: "Library updated 3 h ago", from the time the vault last synced to the VM. Amber once it
+/// is more than 24 hours old. Nothing is shown when spark does not report a time.
+class LibraryFreshness extends StatelessWidget {
+  const LibraryFreshness({super.key, required this.syncedAt, this.now});
+  final dynamic syncedAt;
+  final DateTime? now;
+
+  /// The age after which the line turns amber.
+  static const stale = Duration(hours: 24);
+
+  @override
+  Widget build(BuildContext context) {
+    final at = fmt.parseDate(syncedAt);
+    if (at == null) return const SizedBox.shrink();
+    final age = (now ?? DateTime.now()).difference(at);
+    final isStale = age > stale;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Center(
+        child: Text(
+          'Library updated ${fmt.ago(syncedAt)}',
+          key: const Key('library-freshness'),
+          style: T.tiny.copyWith(color: isStale ? C.amber : C.text3),
+        ),
+      ),
+    );
+  }
+}
+
+/// Offline coverage only -- courseCount/moduleCount/doneCount now come
+/// straight from the API's own group aggregate (LearningGroup), never
+/// recomputed here, so the two can't drift out of sync with each other.
+class _TrackStats {
+  _TrackStats(List<Map<String, dynamic>> courses, [ModuleLibrary? lib]) {
+    for (final c in courses) {
+      final lessons = fmt.lm(c['lessons']);
+      final courseId = fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID']);
+      for (final l in lessons) {
+        final file = fmt.s(l['file']);
+        if (file.isEmpty) continue;
+        totalModules++;
+        if (lib != null) {
+          final st = lib.status(courseId, file);
+          if (st.downloaded) offlineModules++;
+          if (st.state == ModuleState.stale) staleModules++;
+        }
+      }
+    }
+  }
+
+  int totalModules = 0;
+  int offlineModules = 0;
+  int staleModules = 0;
+}
+
+/// Track landing card - emoji-free, colour-coded track cards (BI26092611).
+/// A square card takes one cell at about 1:1; a wide card spans both columns
+/// at about 2:1. Left/top edge in track color, 6-8% tint background, and
+/// progress bar in track color with track in C.border.
+class TrackCard extends StatelessWidget {
+  const TrackCard({
+    super.key,
+    required this.group,
+    required this.courses,
+    this.wide,
+  });
+
+  final LearningGroup group;
+  final List<Map<String, dynamic>> courses;
+
+  /// BI26101803: the grid decides the shape (wide or square) by position; null falls back to the track's own tile.
+  final bool? wide;
+  bool get _wide => wide ?? group.isWide;
+
+  @override
+  Widget build(BuildContext context) {
+    ModuleLibrary? lib;
+    try {
+      lib = AppScope.of(context).modules;
+    } catch (_) {}
+    final stats = _TrackStats(courses, lib);
+    final pct = group.progressPct / 100;
+    // BI26112304: counted from the track's own course list when it is here; the server's total otherwise.
+    final archivedCount = courses.where(isArchivedCourse).length;
+    final activeCount = courses.isEmpty ? group.courseCount : courses.length - archivedCount;
+    final allOffline = stats.totalModules > 0 &&
+        stats.offlineModules == stats.totalModules &&
+        stats.staleModules == 0;
+
+    final bgTint = Color.alphaBlend(group.color.withValues(alpha: 0.07), C.panel);
+
+    return Panel(
+      color: bgTint,
+      borderColor: C.border,
+      padding: EdgeInsets.zero,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TrackDetailScreen(
+            track: group.label,
+            courses: courses,
+            trackColor: group.color,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(Sz.pad),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        stripEmoji(group.label),
+                        style: T.title.copyWith(color: C.text),
+                        maxLines: _wide ? 1 : 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, size: 18, color: C.text3),
+                  ],
+                ),
+                if (group.description.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    stripEmoji(group.description),
+                    style: T.small.copyWith(color: C.text3),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: 9),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: pct,
+                    minHeight: 4,
+                    backgroundColor: C.border,
+                    valueColor: AlwaysStoppedAnimation(group.color),
+                  ),
+                ),
+                const SizedBox(height: 9),
+                // BI26100538: a track with no courses is still shown, with an honest empty state.
+                if (courses.isEmpty && group.courseCount == 0) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'No courses live yet',
+                    key: const Key('track-empty'),
+                    style: T.small.copyWith(color: C.text2, fontWeight: FontWeight.w600),
+                  ),
+                  if (group.coursesOwed > 0) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '${group.coursesOwed} ${group.coursesOwed == 1 ? 'course' : 'courses'} on the way',
+                      key: const Key('track-owed'),
+                      style: T.tiny.copyWith(color: C.text3),
+                    ),
+                  ],
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          style: T.small.copyWith(color: C.text),
+                          children: [
+                            // BI26112304: active courses are the main number; archived ones follow, quieter, in grey.
+                            TextSpan(
+                              text: '$activeCount ${activeCount == 1 ? 'course' : 'courses'}',
+                              style: T.small.copyWith(color: C.text, fontWeight: FontWeight.w700),
+                            ),
+                            if (archivedCount > 0)
+                              TextSpan(
+                                text: ' · $archivedCount archived',
+                                style: T.small.copyWith(color: C.text3),
+                              ),
+                            TextSpan(text: ' · ${group.moduleCount} modules · '),
+                            TextSpan(
+                              text: '${group.progressPct}%',
+                              style: T.small.copyWith(
+                                color: legibleTrackColor(group.color, bgTint),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(
+                      stats.staleModules > 0
+                          ? Icons.sync_problem_rounded
+                          : (allOffline
+                              ? Icons.offline_pin_rounded
+                              : Icons.cloud_download_rounded),
+                      size: 12,
+                      color: stats.staleModules > 0
+                          ? C.amber
+                          : (allOffline ? group.color : C.text3),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        stats.staleModules > 0
+                            ? '${stats.offlineModules}/${stats.totalModules} on device · ${stats.staleModules} updated'
+                            : allOffline
+                                ? 'All on this device'
+                                : '${stats.offlineModules}/${stats.totalModules} on this device',
+                        style: T.tiny.copyWith(
+                          color: stats.staleModules > 0 ? C.amber : C.text3,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Formats date as "12 Sep" (or keeps existing formatted string).
+String _formatDateDayMonth(dynamic v) {
+  final dt = fmt.parseDate(v);
+  if (dt == null) return fmt.s(v);
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+  return '${dt.day} ${months[dt.month - 1]}';
+}
+
+/// BI26100538: a books course is the first course of its track: its archetype is `books`, or its id
+/// ends in `-books`.
+bool isBooksCourse(Map<String, dynamic> c) {
+  final id = fmt.s(c['ID']).isEmpty ? fmt.s(c['id']) : fmt.s(c['ID']);
+  return fmt.s(c['archetype'] ?? c['ARCHETYPE']).toLowerCase() == 'books' || id.toLowerCase().endsWith('-books');
+}
+
+bool isArchivedCourse(Map<String, dynamic> c) => fmt.s(c['STATUS'] ?? c['status']).toLowerCase() == 'archived';
+
+/// The course's place in its track: `coverage_order` when spark serves it, else `SEQ`.
+int _coverageOrder(Map<String, dynamic> c) {
+  final v = c['coverage_order'] ?? c['coverageOrder'] ?? c['COVERAGE_ORDER'];
+  return v != null ? fmt.i(v) : _courseOrder(c);
+}
+
+/// Track order: the books course first, then coverage order, then title. Spark owns the order; this is
+/// the same rule applied to what spark returned, so a response that lacks `coverage_order` still reads
+/// right.
+List<Map<String, dynamic>> orderedCourses(Iterable<Map<String, dynamic>> courses) {
+  final out = List<Map<String, dynamic>>.from(courses);
+  String title(Map<String, dynamic> c) => fmt.s(c['TITLE'] ?? c['title']).toLowerCase();
+  out.sort((a, b) {
+    final ba = isBooksCourse(a), bb = isBooksCourse(b);
+    if (ba != bb) return ba ? -1 : 1;
+    final byCoverage = _coverageOrder(a).compareTo(_coverageOrder(b));
+    if (byCoverage != 0) return byCoverage;
+    return title(a).compareTo(title(b));
+  });
+  return out;
+}
+
+int _courseOrder(Map<String, dynamic> c) {
+  if (c['position'] != null) return fmt.i(c['position']);
+  if (c['SEQ'] != null) return fmt.i(c['SEQ']);
+  if (c['seq'] != null) return fmt.i(c['seq']);
+  return 999999;
+}
+
+int _moduleOrder(Map<String, dynamic> l) {
+  if (l['position'] != null) return fmt.i(l['position']);
+  if (l['SEQ'] != null) return fmt.i(l['SEQ']);
+  if (l['seq'] != null) return fmt.i(l['seq']);
+  if (l['order'] != null) return fmt.i(l['order']);
+  return 999999;
+}
+
+/// Track detail: the course list for one track only, each course collapsed
+/// to a compact summary card. Tap a course to see its full module list.
+@visibleForTesting
+class TrackDetailScreen extends StatelessWidget {
+  const TrackDetailScreen({
+    super.key,
+    required this.track,
+    required this.courses,
+    this.trackColor,
+  });
+  final String track;
+  final List<Map<String, dynamic>> courses;
+  final Color? trackColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor = trackColor ?? C.green;
+    // BI26100538: live courses in track order (books first, then coverage order, then title); archived
+    // ones are kept, listed under a collapsed heading at the bottom, never removed.
+    final sortedCourses = orderedCourses(courses.where((c) => !isArchivedCourse(c)));
+    final archivedCourses = orderedCourses(courses.where(isArchivedCourse));
+
+    final firstIncompleteIndex = sortedCourses.indexWhere((c) {
+      final lessons = fmt.lm(c['lessons']);
+      final total = c['modulesTotal'] != null
+          ? fmt.i(c['modulesTotal'])
+          : lessons.length;
+      final done = c['modulesDone'] != null
+          ? fmt.i(c['modulesDone'])
+          : lessons
+              .where((l) => fmt.s(l['status']).toLowerCase() == 'done')
+              .length;
+      return total == 0 || done < total;
+    });
+
+    return Scaffold(
+      appBar: ShellAppBar(
+        title: track,
+        showBrand: true,
+        onMenu: () => openMenu(context),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(Sz.pad),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (AppScope.maybeOf(context) case final services?) OfflineBanner(services: services),
+            if (sortedCourses.isEmpty && archivedCourses.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 24),
+                child: EmptyState('No courses live yet', 'This track has no courses published so far.',
+                    icon: Icons.school_rounded),
+              ),
+            for (var i = 0; i < sortedCourses.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: CourseSummaryCard(
+                  course: sortedCourses[i],
+                  index: i,
+                  isFirstIncomplete: i == firstIncompleteIndex,
+                  trackColor: effectiveColor,
+                ),
+              ),
+            if (archivedCourses.isNotEmpty)
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  key: const Key('archived-section'),
+                  tilePadding: EdgeInsets.zero,
+                  title: Text('Archived (${archivedCourses.length})',
+                      style: T.small.copyWith(color: C.text3, fontWeight: FontWeight.w600)),
+                  children: [
+                    for (var i = 0; i < archivedCourses.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: CourseSummaryCard(
+                          course: archivedCourses[i],
+                          index: i,
+                          trackColor: effectiveColor,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact course card for the track-detail list: title, progress, module
+/// count. Full lesson list lives one tap deeper, in [_CourseDetailScreen].
+@visibleForTesting
+class CourseSummaryCard extends StatelessWidget {
+  const CourseSummaryCard({
+    super.key,
+    required this.course,
+    this.index = 0,
+    this.isFirstIncomplete = false,
+    this.trackColor = C.green,
+  });
+  final Map<String, dynamic> course;
+  final int index;
+  final bool isFirstIncomplete;
+  final Color trackColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final lessons = fmt.lm(course['lessons']);
+    final total = course['modulesTotal'] != null
+        ? fmt.i(course['modulesTotal'])
+        : lessons.length;
+    final done = course['modulesDone'] != null
+        ? fmt.i(course['modulesDone'])
+        : lessons
+            .where((l) => fmt.s(l['status']).toLowerCase() == 'done')
+            .length;
+    final pct = total == 0 ? 0.0 : (done / total).clamp(0.0, 1.0);
+
+    final tVal = fmt.s(course['TITLE']);
+    final rawTitle = tVal.isNotEmpty
+        ? tVal
+        : fmt.s(course['title'] ?? course['ID'] ?? course['id']);
+    final title = stripEmoji(rawTitle);
+
+    final subVal = fmt.s(course['SUBTITLE']);
+    final rawSubtitle = subVal.isNotEmpty ? subVal : fmt.s(course['subtitle']);
+    final subtitle = stripEmoji(rawSubtitle);
+
+    // Subtle number 01, 02 top-right with tabular figures
+    final pos = course['position'] ?? course['SEQ'] ?? course['seq'];
+    final numVal = pos != null ? fmt.i(pos) : index + 1;
+    final numStr = numVal.toString().padLeft(2, '0');
+
+    // Meta line: n/m modules · opened 3d ago, falling back to · updated 12 Sep when never opened
+    final lastOpened = fmt.s(course['lastOpenedAt'] ?? course['last_opened_at'] ?? course['lastOpened']);
+    final updatedAt = fmt.s(course['updatedAt'] ?? course['updated_at'] ?? course['UPDATED_AT']);
+
+    String metaLine = '$done/$total modules';
+    if (lastOpened.isNotEmpty) {
+      metaLine += ' · opened ${fmt.ago(lastOpened)}';
+    } else if (updatedAt.isNotEmpty) {
+      metaLine += ' · updated ${_formatDateDayMonth(updatedAt)}';
+    }
+
+    final anyInProgress = lessons.any((l) {
+      final st = fmt.s(l['status']).toLowerCase();
+      return st == 'learning' || st == 'opened';
+    });
+    final nothingStarted = done == 0 && lastOpened.isEmpty && !anyInProgress;
+    final chipLabel = nothingStarted ? 'Start here' : 'Continue';
+
+    return Panel(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CourseDetailScreen(
+            course: course,
+            title: title,
+            trackColor: trackColor,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // BI26100538: a bold title over a smaller, lighter subtitle that wraps to two lines.
+                    Text(title, key: const Key('course-title'), style: T.w600(T.title)),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(subtitle,
+                          key: const Key('course-subtitle'),
+                          maxLines: 2,
+                          overflow: TextOverflow.fade,
+                          style: T.small.copyWith(color: C.text3, fontSize: (T.small.fontSize ?? 13) - 1)),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                numStr,
+                style: T.small.copyWith(
+                  color: C.text3.withValues(alpha: 0.4),
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 4,
+              backgroundColor: C.border,
+              valueColor: AlwaysStoppedAnimation(trackColor),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(metaLine, style: T.small.copyWith(color: C.text3)),
+          if (isFirstIncomplete) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: trackColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: trackColor.withValues(alpha: 0.3)),
+              ),
+              child: Text(
+                chipLabel,
+                style: T.tiny.copyWith(
+                  color: trackColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Course detail: the existing [_CourseTile]'s full expanded content
+/// (module list, take-offline, per-lesson rows), reused as-is rather than
+/// rebuilt, pushed as its own screen instead of always-expanded inline.
+@visibleForTesting
+class CourseDetailScreen extends StatelessWidget {
+  const CourseDetailScreen({
+    super.key,
+    required this.course,
+    required this.title,
+    this.trackColor,
+  });
+  final Map<String, dynamic> course;
+  final String title;
+  final Color? trackColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final services = AppScope.maybeOf(context);
+    return Scaffold(
+      appBar: ShellAppBar(
+        title: title,
+        showBrand: true,
+        onMenu: () => openMenu(context),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(Sz.pad),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (services != null) OfflineBanner(services: services),
+            CourseTile(course: course, trackColor: trackColor),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+@visibleForTesting
+class CourseTile extends StatefulWidget {
+  const CourseTile({super.key, required this.course, this.trackColor});
+  final Map<String, dynamic> course;
+  final Color? trackColor;
+
+  @override
+  State<CourseTile> createState() => _CourseTileState();
+}
+
+class _CourseTileState extends State<CourseTile> {
+  bool _pulling = false;
+  int _pulled = 0;
+  int _total = 0;
+
+  String _phase = 'text';
+
+  Future<void> _takeOffline(String courseId, List<String> files) async {
+    AppServices? services;
+    try {
+      services = AppScope.of(context);
+    } catch (_) {}
+    if (services == null) return;
+    final svc = services;
+
+    // BI26100170: say how big it is before it starts. Mobile data is the reader's call.
+    final est = svc.modules.estimateDownload(courseId, files);
+    final total = est.text + est.audio;
+    if (total > 0) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Take this course offline?'),
+          content: Text(
+            'About ${prettyBytes(total)} (${prettyBytes(est.text)} of modules and images'
+            '${est.audio > 0 ? ', ${prettyBytes(est.audio)} of narration' : ''}). '
+            'Narration waits for Wi-Fi unless you allow mobile data in Settings.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+            FilledButton(key: const Key('offline-go'), onPressed: () => Navigator.pop(ctx, true), child: const Text('Download')),
+          ],
+        ),
+      );
+      if (go != true || !mounted) return;
+    }
+
+    setState(() { _pulling = true; _pulled = 0; _total = files.length; _phase = 'text'; });
+    final api = svc.api;
+    final run = CourseOffline(
+      modules: svc.modules,
+      baseUrl: () => api.baseUrl,
+      token: () => api.token,
+      audio: svc.narrator.downloads,
+      warmImage: (url) async {
+        try {
+          await DefaultCacheManager().downloadFile(url);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      },
+    );
+    final res = await run.run(courseId, files, onProgress: (phase, d, t) {
+      if (mounted) setState(() { _phase = phase; _pulled = d; _total = t; });
+    });
+    if (!mounted) return;
+    setState(() => _pulling = false);
+    toast(
+      context,
+      res.notes.isEmpty
+          ? '$courseId is on this device: ${res.modules} modules, ${res.images} images, ${res.audio} narrations'
+          : '${res.modules} modules, ${res.images} images, ${res.audio} narrations saved. ${res.notes.first}',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor = widget.trackColor ?? C.green;
+    ModuleLibrary? lib;
+    try {
+      lib = AppScope.of(context).modules;
+    } catch (_) {}
+
+    final rawLessons = fmt.lm(widget.course['lessons']);
+    final lessons = List<Map<String, dynamic>>.from(rawLessons);
+    lessons.sort((a, b) {
+      final posA = _moduleOrder(a);
+      final posB = _moduleOrder(b);
+      if (posA != posB) return posA.compareTo(posB);
+      return 0;
+    });
+
+    final courseId = fmt.s(widget.course['ID']).isEmpty
+        ? fmt.s(widget.course['id'])
+        : fmt.s(widget.course['ID']);
+    // BI26112303: a done module republished since it was read counts as unread again.
+    bool isDone(Map<String, dynamic> l) {
+      final st = fmt.s(l['status']).toLowerCase();
+      return st == 'done' && !(lib?.isUpdated(courseId, fmt.s(l['file']), st) ?? false);
+    }
+    final done = lessons.where(isDone).length;
+    final pct = lessons.isEmpty ? 0.0 : done / lessons.length;
+
+    final files = lessons.map((l) => fmt.s(l['file'])).where((f) => f.isNotEmpty).toList();
+    final offline = files
+        .where((f) => lib?.status(courseId, f).downloaded ?? false)
+        .length;
+    final stale = files
+        .where((f) => lib?.status(courseId, f).state == ModuleState.stale)
+        .length;
+    final allHere = files.isNotEmpty && offline == files.length && stale == 0;
+
+    final nextIndex = lessons.indexWhere((l) => !isDone(l));
+
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  fmt.s(widget.course['TITLE']).isEmpty
+                      ? courseId
+                      : fmt.s(widget.course['TITLE']),
+                  style: T.w600(T.body2),
+                ),
+              ),
+              Text('$done/${lessons.length}',
+                  style: T.mono.copyWith(color: effectiveColor)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 4,
+              backgroundColor: C.border,
+              valueColor: AlwaysStoppedAnimation(effectiveColor),
+            ),
+          ),
+          // BI26111600: the controls on one row, then the course's description under them.
+          CourseControls(courseId: courseId, course: widget.course),
+          if (fmt.s(widget.course['DESCRIPTION'] ?? widget.course['description'] ?? widget.course['SUBTITLE'] ?? widget.course['subtitle']).isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(fmt.s(widget.course['DESCRIPTION'] ?? widget.course['description'] ?? widget.course['SUBTITLE'] ?? widget.course['subtitle']), key: const Key('course-description'), style: T.small.copyWith(color: C.text2, height: 1.45)),
+          ],
+          if (files.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            Row(
+              children: [
+                Icon(
+                    allHere ? Icons.offline_pin_rounded : Icons.cloud_download_rounded,
+                    size: 12,
+                    color: allHere ? effectiveColor : (stale > 0 ? C.amber : C.text3)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _pulling
+                        ? 'Downloading ${_phase == 'images' ? 'images' : _phase == 'audio' ? 'narration' : 'modules'} $_pulled of $_total...'
+                        : stale > 0
+                            ? '$offline of ${files.length} on this device · $stale updated'
+                            : allHere
+                                ? 'All ${files.length} on this device'
+                                : '$offline of ${files.length} on this device',
+                    style: T.tiny.copyWith(
+                        color: stale > 0 ? C.amber : (allHere ? effectiveColor : C.text3)),
+                  ),
+                ),
+                if (!allHere && !_pulling)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(Sz.rSm),
+                    onTap: () => _takeOffline(courseId, files),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      child: Text(stale > 0 ? 'Update all' : 'Take offline',
+                          style: T.tiny.copyWith(
+                              color: C.green, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                if (_pulling) const MiniSpinner(),
+              ],
+            ),
+          ],
+          const SizedBox(height: 10),
+          for (var i = 0; i < lessons.length; i++)
+            LessonRow(
+              courseId: courseId,
+              lesson: lessons[i],
+              nextLesson: i + 1 < lessons.length ? lessons[i + 1] : null,
+              allLessons: lessons,
+              index: i,
+              isNext: i == nextIndex,
+              trackColor: effectiveColor,
+            ),
+          // BI26100110: retired and superseded modules, out of the reading list, restorable from here.
+          ModuleHistory(courseId: courseId, hidden: fmt.lm(widget.course['hiddenLessons'])),
+        ],
+      ),
+    );
+  }
+}
+
+/// BI26100137: the module number carries the status. Grey is new, the track colour is opened, amber is in
+/// progress, green is done. One mapping, so every list of modules agrees.
+Color moduleStatusColor(String status, Color trackColor) => switch (status.toLowerCase()) {
+      'updated' => C.blue,
+      'done' => C.green,
+      'learning' => C.amber,
+      'opened' => trackColor,
+      _ => C.text3,
+    };
+
+/// BI26100538: the chip colour for a status, legible on the dark surface: the track colour for Opened
+/// (lightened toward white when it is too dark to read), yellow for Learning, green for Done.
+Color statusChipColor(String status, Color trackColor) => switch (status.toLowerCase()) {
+      // BI26112303: republished since it was last opened. Its own colour, never grey: it reads as unread.
+      'updated' => C.blue,
+      'done' => C.green,
+      'learning' => C.amber,
+      'opened' => legibleTrackColor(trackColor, C.bg),
+      _ => C.text3,
+    };
+
+/// BI26111599: the module's status as one small icon beside its title: opened (an open eye, the track colour),
+/// learning (a half-read book, amber), done (a check, green). Nothing for a module not opened yet.
+Widget? _statusIcon(String status, Color trackColor) {
+  final s = status.toLowerCase();
+  final (icon, label) = switch (s) {
+    'updated' => (Icons.update_rounded, 'Updated'),
+    'done' => (Icons.check_circle_rounded, 'Done'),
+    'learning' => (Icons.auto_stories_rounded, 'Learning'),
+    'opened' => (Icons.visibility_rounded, 'Opened'),
+    _ => (null, ''),
+  };
+  if (icon == null) return null;
+  return Tooltip(
+    message: label,
+    child: Icon(icon, key: Key('module-status-$s'), size: 20, color: statusChipColor(s, trackColor), semanticLabel: label),
+  );
+}
+
+/// A small status chip for a module row: Opened, Learning or Done.
+@visibleForTesting
+class ModuleStatusChip extends StatelessWidget {
+  const ModuleStatusChip({super.key, required this.status, required this.trackColor});
+  final String status;
+  final Color trackColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = statusChipColor(status, trackColor);
+    final s = status.toLowerCase();
+    final label = switch (s) { 'updated' => 'Updated', 'done' => 'Done', 'learning' => 'Learning', _ => 'Opened' };
+    return Container(
+      key: const Key('status-chip'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c),
+      ),
+      child: Text(label, style: T.tiny.copyWith(color: c, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+String moduleStatusWords(String status) => switch (status.toLowerCase()) {
+      'updated' => 'updated since you read it',
+      'done' => 'done',
+      'learning' => 'in progress',
+      'opened' => 'opened',
+      _ => 'not opened',
+    };
+
+@visibleForTesting
+/// BI26101803: the line under a module's heading in the list. The module's own `subtitle`; until the content has one
+/// (CI26101803), the first sentence of its objective, cut to 80 characters.
+String moduleSubtitle(Map<String, dynamic> lesson) {
+  final own = stripEmoji(fmt.s(lesson['subtitle'] ?? lesson['SUBTITLE']));
+  if (own.isNotEmpty) return own;
+  final objective = stripEmoji(fmt.s(lesson['objective'] ?? lesson['OBJECTIVE'] ?? lesson['summary'] ?? lesson['SUMMARY']));
+  if (objective.isEmpty) return '';
+  final first = objective.split(RegExp(r'(?<=[.!?])\s+')).first.trim();
+  if (first.length <= 80) return first;
+  return '${first.substring(0, 79).trimRight()}…';
+}
+
+@visibleForTesting
+/// BI26102806: module meta line showing progress state, minutes, offline state,
+/// version & reviewed date, and subjects, from the manifest and /api/learning/index.
+String? moduleMetaLine({
+  required Map<String, dynamic> lesson,
+  Map<String, dynamic>? manifest,
+  ModuleStatus? moduleStatus,
+}) {
+  final parts = <String>[];
+
+  // 1. Progress state (not started, reading with percent, done)
+  final rawStatus = fmt.s(lesson['status'] ?? manifest?['status']).trim().toLowerCase();
+  final rawLastOpened = fmt.s(lesson['lastOpenedAt'] ?? lesson['last_opened_at'] ?? lesson['lastOpened'] ?? manifest?['lastOpenedAt'] ?? manifest?['lastOpened']).trim();
+  final effectiveStatus = rawStatus.isNotEmpty ? rawStatus : (rawLastOpened.isNotEmpty ? 'opened' : '');
+
+  if (effectiveStatus.isNotEmpty) {
+    if (effectiveStatus == 'done') {
+      parts.add('done');
+    } else if (effectiveStatus == 'learning' || effectiveStatus == 'opened' || effectiveStatus == 'in progress') {
+      final rawPct = lesson['progressPct'] ?? lesson['scroll_pct'] ?? lesson['fraction'] ?? lesson['percent'] ??
+                     manifest?['progressPct'] ?? manifest?['scroll_pct'] ?? manifest?['fraction'] ?? manifest?['percent'];
+      if (rawPct != null) {
+        final numVal = fmt.d(rawPct);
+        final pct = (numVal <= 1.0 && numVal > 0 && rawPct is double) ? (numVal * 100).round() : numVal.round();
+        if (pct > 0) {
+          parts.add('reading $pct%');
+        } else {
+          parts.add('reading');
+        }
+      } else {
+        parts.add('reading');
+      }
+    } else if (effectiveStatus == 'new' || effectiveStatus == 'not started') {
+      parts.add('not started');
+    }
+  }
+
+  // 2. Minutes (where missing or <= 0, show nothing - never '0 min')
+  final rawMinutes = lesson['minutes'] ?? lesson['MINUTES'] ?? manifest?['minutes'] ?? manifest?['MINUTES'];
+  if (rawMinutes != null) {
+    if (rawMinutes is num) {
+      final m = rawMinutes.toInt();
+      if (m > 0) parts.add('$m min');
+    } else {
+      final s = fmt.s(rawMinutes).trim();
+      if (s.isNotEmpty && s != '0' && s != '0 min') {
+        if (s.endsWith('min') || s.endsWith('mins')) {
+          parts.add(s);
+        } else {
+          final parsed = int.tryParse(s);
+          if (parsed != null && parsed > 0) {
+            parts.add('$parsed min');
+          } else if (parsed == null) {
+            parts.add(s);
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Offline state (on device, updated, not downloaded)
+  final rawOffline = fmt.s(lesson['offline'] ?? lesson['offlineState'] ?? manifest?['offline'] ?? manifest?['offlineState']).trim().toLowerCase();
+  if (rawOffline.isNotEmpty) {
+    if (rawOffline == 'on device' || rawOffline == 'current' || rawOffline == 'downloaded') {
+      parts.add('on device');
+    } else if (rawOffline == 'updated' || rawOffline == 'stale') {
+      parts.add('updated');
+    } else if (rawOffline == 'not downloaded' || rawOffline == 'absent') {
+      parts.add('not downloaded');
+    } else {
+      parts.add(rawOffline);
+    }
+  } else if (moduleStatus != null && (manifest != null && (manifest.containsKey('offline') || manifest.containsKey('offlineState') || manifest.containsKey('rev')))) {
+    switch (moduleStatus.state) {
+      case ModuleState.current:
+      case ModuleState.unversioned:
+        parts.add('on device');
+        break;
+      case ModuleState.stale:
+        parts.add('updated');
+        break;
+      case ModuleState.absent:
+        parts.add('not downloaded');
+        break;
+    }
+  }
+
+  // 4. Version and reviewed date
+  final rawVersion = (moduleListVersion(fmt.s(lesson['version'] ?? lesson['VERSION'] ?? manifest?['version'] ?? manifest?['VERSION']).trim(), fmt.s(lesson['file'])) ?? '').trim();
+  if (rawVersion.isNotEmpty) {
+    final vStr = rawVersion.toLowerCase().startsWith('v') ? rawVersion : 'v$rawVersion';
+    parts.add(vStr);
+  }
+
+  final rawReviewed = fmt.s(lesson['reviewedAt'] ?? lesson['reviewed_at'] ?? lesson['REVIEWED_AT'] ?? manifest?['reviewedAt'] ?? manifest?['reviewed_at'] ?? manifest?['REVIEWED_AT']).trim();
+  if (rawReviewed.isNotEmpty) {
+    final dStr = fmt.reviewedDate(rawReviewed);
+    final revStr = dStr.toLowerCase().startsWith('reviewed') ? dStr : 'reviewed $dStr';
+    parts.add(revStr);
+  }
+
+  // 5. Subjects (standard A14, SUBJECTS in learning/modules_meta.tsv)
+  final rawSubjects = lesson['subjects'] ?? lesson['SUBJECTS'] ?? manifest?['subjects'] ?? manifest?['SUBJECTS'];
+  if (rawSubjects != null) {
+    if (rawSubjects is List) {
+      final list = rawSubjects.map(fmt.s).where((s) => s.trim().isNotEmpty).toList();
+      if (list.isNotEmpty) parts.add(list.join(', '));
+    } else {
+      final s = fmt.s(rawSubjects).trim();
+      if (s.isNotEmpty) parts.add(s);
+    }
+  }
+
+  if (parts.isEmpty) return null;
+  return parts.join(' · ');
+}
+
+class LessonRow extends StatelessWidget {
+  const LessonRow({
+    super.key,
+    required this.courseId,
+    required this.lesson,
+    this.nextLesson,
+    this.allLessons = const [],
+    this.index = 0,
+    this.isNext = false,
+    this.trackColor = C.green,
+  });
+  final String courseId;
+  final Map<String, dynamic> lesson;
+  final Map<String, dynamic>? nextLesson;
+  final List<Map<String, dynamic>> allLessons;
+  final int index;
+  final bool isNext;
+  final Color trackColor;
+
+  @override
+  Widget build(BuildContext context) {
+    ModuleLibrary? lib;
+    try {
+      lib = AppScope.of(context).modules;
+    } catch (_) {}
+
+    final file = fmt.s(lesson['file']);
+    final rawStatus = fmt.s(lesson['status']).toLowerCase();
+    final lastOpened = fmt.s(lesson['lastOpenedAt'] ?? lesson['last_opened_at'] ?? lesson['lastOpened']);
+    final status = rawStatus.isNotEmpty
+        ? rawStatus
+        : (lastOpened.isNotEmpty ? 'opened' : 'new');
+    final st = lib?.status(courseId, file) ?? const ModuleStatus(ModuleState.absent);
+    // BI26112303: republished since it was last opened here, so it shows Updated and reads as unread.
+    final updated = lib?.isUpdated(courseId, file, status) ?? false;
+    final shown = updated ? 'updated' : status;
+
+    final tVal = fmt.s(lesson['TITLE']);
+    final rawTitle = tVal.isNotEmpty ? tVal : fmt.s(lesson['title'] ?? file);
+    final title = safeModuleTitle(stripEmoji(rawTitle), file);
+
+    final pos = lesson['position'] ?? lesson['SEQ'] ?? lesson['seq'] ?? lesson['order'];
+    final numVal = pos != null ? fmt.i(pos) : index + 1;
+    final numStr = numVal.toString().padLeft(2, '0');
+    final subtitle = moduleSubtitle(lesson);
+    final m = lib?.manifestEntry(courseId, file);
+    final meta = moduleMetaLine(
+      lesson: lesson,
+      manifest: m,
+      moduleStatus: st,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Sz.rSm),
+        // BI26100110: long-press opens the retire confirm sheet (it needs a module id, so a row without one ignores it).
+        onLongPress: fmt.s(lesson['moduleId']).isEmpty ? null : () => showModuleLifecycleSheet(context, op: 'retire', courseId: courseId, lesson: lesson),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LessonScreen(
+              course: courseId,
+              file: file,
+              title: title,
+              status: rawStatus.isEmpty ? status : rawStatus,
+              nextLesson: nextLesson,
+              allLessons: allLessons,
+              trackColor: trackColor,
+              reviewedAt: fmt.s(lesson['reviewedAt'] ??
+                  lesson['reviewed_at'] ??
+                  lesson['REVIEWED_AT']),
+              version: moduleListVersion(fmt.s(lesson['version'] ?? lesson['VERSION']), file) ?? '',
+              updated: updated,
+            ),
+          ),
+        ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: isNext ? trackColor.withValues(alpha: 0.08) : Colors.transparent,
+            borderRadius: BorderRadius.circular(Sz.rSm),
+            border: isNext
+                ? Border.all(color: trackColor.withValues(alpha: 0.25))
+                : null,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Semantics(
+                  label: 'Module $numStr, ${moduleStatusWords(shown)}',
+                  excludeSemantics: true,
+                  child: Text(
+                    numStr,
+                    key: const Key('module-number'),
+                    style: T.small.copyWith(
+                      color: moduleStatusColor(shown, trackColor),
+                      fontWeight: FontWeight.w800,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      key: const Key('module-title'),
+                      style: T.w600(T.body2).copyWith(
+                        color: shown == 'done' ? C.text3 : C.text,
+                      ),
+                    ),
+                    // BI26101803 (Sconl, 18 Oct, reversing 6 Oct): a subtitle under the heading, as tracks and courses have.
+                    if (subtitle.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          subtitle,
+                          key: const Key('module-subtitle'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: T.small.copyWith(color: C.text3),
+                        ),
+                      ),
+                    // BI26102806: module meta line
+                    if (meta != null && meta.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          meta,
+                          key: const Key('module-meta'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: T.small.copyWith(
+                            color: C.text3,
+                            fontSize: (T.small.fontSize ?? 13) - 1,
+                          ),
+                        ),
+                      ),
+                    // BI26100325: how far through an unfinished module.
+                    if (status != 'done' && status != 'new')
+                      ReadingBar(course: courseId, file: file, color: trackColor),
+                    // BI26100110: a lifecycle badge for anything but a live module (superseded, draft, missing).
+                    LifecycleBadges(lesson),
+                    // BI26101601: the optional standard tag (Settings > Study), for spotting a stale course.
+                    ListenableBuilder(
+                      listenable: CourseStandard.instance,
+                      builder: (context, _) => CourseStandard.instance.showOnList
+                          ? StandardTagLine(
+                              compact: true,
+                              version: moduleListVersion(fmt.s(lesson['version'] ?? lesson['VERSION']), file),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
+              ),
+              if (st.state == ModuleState.stale)
+                const Tooltip(
+                  message: 'Updated on the agent - opens the new version',
+                  child: Icon(Icons.sync_problem_rounded, size: 12, color: C.amber),
+                ),
+              // BI26100538: the status chip. Opened is the track colour, Learning is yellow, Done is green.
+              if (shown == 'opened' || shown == 'learning' || shown == 'done' || shown == 'updated')
+                Padding(
+                  padding: const EdgeInsets.only(left: 6, top: 1),
+                  child: ModuleStatusChip(status: shown, trackColor: trackColor),
+                ),
+              const SizedBox(width: 6),
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Icon(Icons.chevron_right_rounded, size: 15, color: C.text3),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// BI26100325: a thin progress bar under an unfinished module, from the saved
+/// reading position. Hidden until there is one, and when no database is in scope.
+@visibleForTesting
+class ReadingBar extends StatelessWidget {
+  const ReadingBar({super.key, required this.course, required this.file, required this.color});
+  final String course;
+  final String file;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    AppDb db;
+    try {
+      db = AppScope.of(context).db;
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
+    return FutureBuilder<double?>(
+      future: db.lessonResumeFractionLocal(course: course, file: file),
+      builder: (context, snap) {
+        final f = snap.data;
+        if (f == null || f < 0.02) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 6, right: 10),
+          child: ClipRRect(
+            key: const Key('reading-bar'),
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: f.clamp(0.0, 1.0),
+              minHeight: 3,
+              backgroundColor: C.surface,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class LessonScreen extends StatefulWidget {
+  const LessonScreen({
+    super.key,
+    required this.course,
+    required this.file,
+    required this.title,
+    required this.status,
+    this.nextLesson,
+    this.allLessons = const [],
+    this.trackColor = C.green,
+    this.reviewedAt,
+    this.version,
+    this.initialParagraph,
+    this.foundText,
+    this.initialAnchor = '',
+    this.updated = false,
+  });
+
+  /// BI26112303: the module was republished since it was last opened: it opens on what changed.
+  final bool updated;
+
+  /// BI26100537: open at this section anchor (`grasp-1`, `week-7-2`), from a `module:` deep link.
+  final String initialAnchor;
+
+  /// BI26100156: open at this paragraph (as the reader counts them), from a search result.
+  final int? initialParagraph;
+
+  /// The matched paragraph's text, shown briefly so the jump is visible.
+  final String? foundText;
+
+  final String course;
+  final String file;
+  final String title;
+  final String status;
+  final Map<String, dynamic>? nextLesson;
+  final List<Map<String, dynamic>> allLessons;
+  final Color trackColor;
+  final String? reviewedAt;
+  final String? version;
+
+  @override
+  State<LessonScreen> createState() => _LessonScreenState();
+}
+
+class _LessonScreenState extends State<LessonScreen> {
+  late String _status = widget.status;
+  String? _previousStatus;
+  bool _canUndo = false;
+  Timer? _undoTimer;
+  final _scroll = ScrollController();
+  Timer? _resumeDebounce;
+  bool _restoredResume = false;
+
+  /// BI26100325: block anchors for the module body, so "where I stopped" is a
+  /// block, not a pixel offset.
+  final _anchors = MarkdownAnchors();
+  bool _showScrollTop = false;
+
+  /// BI26100141: focus mode hides the bar and buttons while scrolling down.
+  bool _barVisible = true;
+
+  /// BI26100156: the matched text is shown for a few seconds after a search jump.
+  bool _showFound = false;
+  String? _currentContent;
+
+  Map<String, dynamic>? get _computedNextLesson {
+    if (widget.nextLesson != null) return widget.nextLesson;
+    if (widget.allLessons.isNotEmpty) {
+      final idx = widget.allLessons
+          .indexWhere((l) => fmt.s(l['file']) == widget.file);
+      if (idx >= 0 && idx + 1 < widget.allLessons.length) {
+        return widget.allLessons[idx + 1];
+      }
+    }
+    return null;
+  }
+
+  // BL26091028: mirrors _computedNextLesson for the Previous direction --
+  // mobile had no Previous nav at all before this (web has both).
+  Map<String, dynamic>? get _computedPrevLesson {
+    if (widget.allLessons.isNotEmpty) {
+      final idx = widget.allLessons
+          .indexWhere((l) => fmt.s(l['file']) == widget.file);
+      if (idx > 0) return widget.allLessons[idx - 1];
+    }
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // The cached body is served immediately - that is the whole point of
+    // keeping it. A refresh is issued ONLY when the agent's revision differs
+    // from the one on disk, so opening a module you already have costs nothing
+    // and works with no signal.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final lib = AppScope.of(context).modules;
+      // BI26100140: opening a prefetched module makes it the reader's own, so eviction never takes it.
+      unawaited(markPrefetchOpened(DbPrefetchStore(AppScope.of(context).db), widget.course, widget.file));
+      final st = lib.status(widget.course, widget.file);
+      if (st.state == ModuleState.stale) {
+        await lib.download(widget.course, widget.file);
+      }
+      if (!mounted) return;
+      final services = AppScope.of(context);
+      final localStatus = await services.db.lessonStatusLocal(
+        course: widget.course,
+        file: widget.file,
+      );
+      if (!mounted) return;
+      var eff = _status;
+      if (localStatus != null &&
+          AppDb.statusRank(localStatus) > AppDb.statusRank(eff)) {
+        eff = localStatus;
+        setState(() => _status = eff);
+      }
+      // BI26112303: opened at this revision, so it is no longer Updated.
+      unawaited(services.modules.markRead(widget.course, widget.file).catchError((_) {}));
+      // BI26092613: Opening the module sets Opened (only if it was new/unstarted).
+      if (eff.isEmpty || eff.toLowerCase() == 'new') {
+        setState(() => _status = 'opened');
+        services.db.saveLessonStatusLocal(
+          course: widget.course,
+          file: widget.file,
+          status: 'opened',
+        );
+        services.mutations.lessonProgress(widget.course, widget.file, 'opened');
+      }
+    });
+    _scroll.addListener(_onScroll);
+    ReaderPrefs.instance.addListener(_onPrefs);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ReaderPrefs.instance.ensureLoaded(AppScope.of(context).db);
+    });
+  }
+
+  void _onPrefs() {
+    if (!mounted) return;
+    setState(() {
+      if (!ReaderPrefs.instance.focus) _barVisible = true;
+    });
+  }
+
+  /// Scrolling down hides the bar and buttons; scrolling up, or the top of the page, brings them back.
+  void _updateBarVisibility() {
+    if (!_scroll.hasClients || !ReaderPrefs.instance.focus) return;
+    final dir = _scroll.position.userScrollDirection;
+    var visible = _barVisible;
+    if (_scroll.offset < 24 || dir == ScrollDirection.forward) {
+      visible = true;
+    } else if (dir == ScrollDirection.reverse) {
+      visible = false;
+    }
+    if (visible != _barVisible) setState(() => _barVisible = visible);
+  }
+
+  // BI26092613: local, always-on scroll-position tracking -- written
+  // to local db and queued in outbox in the same call, debounced to 2 s
+  // while scrolling and on leaving the screen, as a fraction 0 to 1.
+  void _onScroll() {
+    _updateBarVisibility();
+    if (!_scroll.hasClients || _scroll.position.maxScrollExtent <= 0) return;
+    // BI26092614: scroll-to-top appears only after scrolling past one screen height.
+    final show = _scroll.offset > MediaQuery.of(context).size.height;
+    if (show != _showScrollTop) {
+      setState(() => _showScrollTop = show);
+    }
+
+    final maxExtent = _scroll.position.maxScrollExtent;
+    final fraction = (maxExtent > 0 ? _scroll.position.pixels / maxExtent : 0.0)
+        .clamp(0.0, 1.0);
+
+    // BI26092613: Scrolling past 10% sets Learning (only if it was opened).
+    if (fraction > 0.10 && _status.toLowerCase() == 'opened') {
+      setState(() => _status = 'learning');
+      final services = AppScope.of(context);
+      services.db.saveLessonStatusLocal(
+        course: widget.course,
+        file: widget.file,
+        status: 'learning',
+      );
+      services.mutations.lessonProgress(widget.course, widget.file, 'learning');
+    }
+
+    // BI26092613: Saved locally, debounced to 2 s while scrolling.
+    _resumeDebounce?.cancel();
+    _resumeDebounce = Timer(const Duration(seconds: 2), () {
+      _saveResumeNow();
+    });
+  }
+
+  void _saveResumeNow() {
+    if (!mounted || !_scroll.hasClients || _scroll.position.maxScrollExtent <= 0) return;
+    final maxExtent = _scroll.position.maxScrollExtent;
+    final fraction = (maxExtent > 0 ? _scroll.position.pixels / maxExtent : 0.0)
+        .clamp(0.0, 1.0);
+    final pct = (fraction * 100).round().clamp(0, 100);
+    final services = AppScope.of(context);
+    // BI26100325: by block as well, so a font-size change lands on the same block.
+    ReadingAnchor? anchor;
+    if (_anchors.count > 0) {
+      final block = _anchors.topVisible(_scroll);
+      anchor = ReadingAnchor(
+        block: block,
+        movement: _anchors.movementOf(block),
+        blocksTotal: _anchors.count,
+        wordsLeft: _anchors.wordsFrom(block),
+        title: widget.title.isEmpty ? widget.file : widget.title,
+      );
+    }
+    services.db.saveLessonResumeLocal(
+      course: widget.course,
+      file: widget.file,
+      scrollPct: pct,
+      fraction: fraction,
+      anchor: anchor,
+    );
+    services.mutations.saveLessonResume(
+      course: widget.course,
+      lesson: widget.file,
+      scrollPct: pct,
+      fraction: fraction,
+      block: anchor?.block,
+      movement: anchor?.movement,
+    );
+  }
+
+  /// BI26092614: calculates the index of the topmost visible block/paragraph.
+  int _computeTopmostBlockIndex() {
+    if (_currentContent == null || _currentContent!.isEmpty || !_scroll.hasClients) {
+      return 0;
+    }
+    final maxExtent = _scroll.position.maxScrollExtent;
+    if (maxExtent <= 0) return 0;
+    final paragraphs = _currentContent!
+        .split(RegExp(r'\n\s*\n'))
+        .where((p) => p.trim().isNotEmpty)
+        .toList();
+    if (paragraphs.isEmpty) return 0;
+    final progress = (_scroll.offset / maxExtent).clamp(0.0, 1.0);
+    return (progress * paragraphs.length).floor().clamp(0, paragraphs.length - 1);
+  }
+
+  bool _changesShown = false;
+
+  /// BI26112303: an Updated module opens on its newest change notes, once, after the body has drawn.
+  void _maybeShowChanges(String content) {
+    if (!widget.updated || _changesShown || content.isEmpty) return;
+    final notes = changeNotesOf(content);
+    if (notes.isEmpty) return;
+    _changesShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showModuleChangesSheet(context, notes);
+    });
+  }
+
+  /// BI26112301: opens the floating note card on the topmost visible paragraph (was a bottom sheet, BI26092614).
+  void _openNotesSheet(BuildContext context) {
+    final anchor = _computeTopmostBlockIndex();
+    final paragraphs = (_currentContent ?? '').split(RegExp(r'\n\s*\n')).where((p) => p.trim().isNotEmpty).toList();
+    showNoteCard(
+      context,
+      course: widget.course,
+      file: widget.file,
+      title: widget.title,
+      anchor: anchor,
+      quote: anchor < paragraphs.length ? quoteOf(paragraphs[anchor]) : '',
+    );
+  }
+
+  /// Jumps to the locally-saved scroll position once the content has laid
+  /// out (needs maxScrollExtent to be known -- a post-frame callback after
+  /// SnapshotView's builder has actually rendered the reading surface, not
+  /// before). Called from the content builder below since that's the first
+  /// point layout is guaranteed to exist; `_restoredResume` guards against
+  /// re-jumping on every rebuild.
+  void _maybeRestoreResume() {
+    if (_restoredResume) return;
+    _restoredResume = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !_scroll.hasClients) return;
+      // BI26100537: a deep link to a section wins over everything else.
+      if (widget.initialAnchor.isNotEmpty && _anchors.revealAnchor(widget.initialAnchor)) return;
+      final jump = widget.initialParagraph;
+      if (jump != null) {
+        // A search result wins over the saved reading position.
+        final total = _currentContent == null
+            ? 0
+            : _currentContent!.split(RegExp(r'\n\s*\n')).where((p) => p.trim().isNotEmpty).length;
+        if (total > 0) {
+          final target = _scroll.position.maxScrollExtent * (jump / total);
+          _scroll.jumpTo(target.clamp(0, _scroll.position.maxScrollExtent));
+          setState(() => _showFound = true);
+          Future.delayed(const Duration(seconds: 4), () {
+            if (mounted) setState(() => _showFound = false);
+          });
+        }
+        return;
+      }
+      final db = AppScope.of(context).db;
+      // BI26100325: the saved block wins; if it no longer exists, the start of
+      // its movement; only then the old scroll fraction.
+      final anchor = await db.lessonAnchorLocal(course: widget.course, file: widget.file);
+      if (!mounted || !_scroll.hasClients) return;
+      if (anchor != null && _anchors.count > 0) {
+        var i = anchor.block;
+        if (i < 0 || i >= _anchors.count) {
+          i = _anchors.firstBlockOf(anchor.movement) ?? -1;
+        }
+        if (i >= 0) {
+          if (i > 0 && _anchors.reveal(i)) return;
+          if (i == 0) return;
+        }
+      }
+      final frac = await db.lessonResumeFractionLocal(
+            course: widget.course,
+            file: widget.file,
+          );
+      if (frac == null || !mounted || !_scroll.hasClients) return;
+      final target = _scroll.position.maxScrollExtent * frac;
+      if (target > 0) _scroll.jumpTo(target.clamp(0, _scroll.position.maxScrollExtent));
+    });
+  }
+
+  /// Replace this screen with another module of the same course.
+  void _openLesson(Map<String, dynamic> lesson) => Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LessonScreen(
+            course: widget.course,
+            file: fmt.s(lesson['file']),
+            title: fmt.s(lesson['title']),
+            status: fmt.s(lesson['status']),
+            allLessons: widget.allLessons,
+            trackColor: widget.trackColor,
+          ),
+        ),
+      );
+
+  /// BI26100537: a `module:<course>/<NN>#anchor` link. Same module: scroll to the section. Another
+  /// module of this course: open exactly that module at that section, never the course index.
+  /// BI26102805: a module in another course opens too (from the library's manifest), and a module the app cannot
+  /// find says so plainly instead of doing nothing.
+  void _openModuleLink(ModuleLink link) {
+    bool matches(Map<String, dynamic> l) => link.matchesFile(fmt.s(l['file']));
+    final sameCourse = link.course == widget.course;
+
+    if (sameCourse && matches({'file': widget.file})) {
+      if (link.anchor.isNotEmpty) _anchors.revealAnchor(link.anchor);
+      return;
+    }
+    final lessons = sameCourse ? widget.allLessons : AppScope.maybeOf(context)?.modules.lessonsOf(link.course) ?? const [];
+    final target = lessons.where(matches).toList();
+    if (target.isEmpty) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+          content: Text(lessons.isEmpty
+              ? 'That module is not on this phone yet. Connect to the server once to load the ${link.course} course.'
+              : 'Module ${link.index} of ${link.course} is not in the library yet.')));
+      return;
+    }
+    final route = MaterialPageRoute<void>(
+      builder: (_) => LessonScreen(
+        course: link.course,
+        file: fmt.s(target.first['file']),
+        title: fmt.s(target.first['title']),
+        status: fmt.s(target.first['status']),
+        allLessons: lessons,
+        trackColor: widget.trackColor,
+        initialAnchor: link.anchor,
+      ),
+    );
+    // The same course replaces this lesson (one back press to the course); another course stacks on top.
+    if (sameCourse) {
+      Navigator.pushReplacement(context, route);
+    } else {
+      Navigator.push(context, route);
+    }
+  }
+
+  /// BI26101214: the tutor for this module. Turn on Ask in the app bar and every paragraph
+  /// offers it; a long-press works too. The answer shows under the paragraph asked about.
+  TutorController? _tutorC;
+
+  TutorController get _tutor => _tutorC ??= TutorController(
+        api: HubStudyExtrasApi(AppScope.of(context).api),
+        course: widget.course,
+        file: widget.file,
+      );
+
+  ParagraphHook _paragraphHook() => ParagraphHook(
+        onLongPress: (i, t) => askTutorAbout(context, _tutor, i, t),
+        footer: (i, t) => TutorFooter(controller: _tutor, paragraph: i, text: t),
+      );
+
+  @override
+  void dispose() {
+    _tutorC?.dispose();
+    _resumeDebounce?.cancel();
+    _undoTimer?.cancel();
+    _saveResumeNow();
+    _scroll.removeListener(_onScroll);
+    ReaderPrefs.instance.removeListener(_onPrefs);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Widget _buildDoneButton(AppServices services) {
+    if (_canUndo) {
+      return OutlinedButton.icon(
+        icon: const Icon(Icons.undo_rounded, size: 16),
+        label: const Text('Done · undo'),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: widget.trackColor),
+          foregroundColor: widget.trackColor,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+        onPressed: () {
+          _undoTimer?.cancel();
+          final revertTo = _previousStatus ?? 'learning';
+          setState(() {
+            _canUndo = false;
+            _status = revertTo;
+          });
+          services.db.saveLessonStatusLocal(
+            course: widget.course,
+            file: widget.file,
+            status: revertTo,
+            force: true,
+          );
+          services.mutations.lessonProgress(
+            widget.course,
+            widget.file,
+            revertTo,
+            force: true,
+          );
+          SpacedReview.instance.withdraw(widget.course, widget.file, db: services.db);
+        },
+      );
+    }
+
+    if (_status.toLowerCase() == 'done') {
+      return OutlinedButton.icon(
+        icon: const Icon(Icons.check_circle_rounded, size: 16, color: C.green),
+        label: const Text('Completed'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: C.text3,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+        onPressed: null,
+      );
+    }
+
+    // BI26100537 (standard 4.0.0, §3.11): Mark as done is the app's success green, a theme token,
+    // whatever the track colour is.
+    final isDarkTrack = C.green.computeLuminance() < 0.5;
+    return FilledButton(
+      key: const Key('mark-as-done'),
+      style: FilledButton.styleFrom(
+        backgroundColor: C.green,
+        foregroundColor: isDarkTrack ? Colors.white : Colors.black,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+      ),
+      onPressed: () {
+        _previousStatus = _status;
+        setState(() {
+          _status = 'done';
+          _canUndo = true;
+        });
+        _undoTimer?.cancel();
+        _undoTimer = Timer(const Duration(seconds: 5), () {
+          if (mounted) setState(() => _canUndo = false);
+        });
+
+        services.db.saveLessonStatusLocal(
+          course: widget.course,
+          file: widget.file,
+          status: 'done',
+        );
+        services.mutations.lessonProgress(
+          widget.course,
+          widget.file,
+          'done',
+        );
+        // BI26100145: a finished module enters the 1, 7 and 30 day review schedule.
+        SpacedReview.instance.enrol(
+            course: widget.course,
+            file: widget.file,
+            title: widget.title.isEmpty ? widget.file : widget.title,
+            now: DateTime.now(),
+            db: services.db);
+      },
+      child: const Text('Mark as done'),
+    );
+  }
+
+  Widget _lessonOfflineNote() => Padding(
+        padding: const EdgeInsets.only(top: 26),
+        child: Text(
+          'Lesson content loads when online, then stays cached '
+          'on this device for reading offline.',
+          style: T.body2.copyWith(color: C.text3, height: 1.6),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final services = AppScope.of(context);
+    final snap = services.store.detail(
+      'lesson',
+      '${widget.course}/${widget.file}',
+      '/api/learning/lesson?course=${Uri.encodeComponent(widget.course)}&file=${Uri.encodeComponent(widget.file)}',
+    );
+    final heading = widget.title.isEmpty ? widget.file : widget.title;
+    final prefs = ReaderPrefs.instance;
+    final mq = MediaQuery.of(context);
+    final textScale = prefs.effectiveScale(mq.textScaler.scale(1.0));
+    final barShown = !prefs.focus || _barVisible;
+    // With focus mode on, the body runs behind the bar so hiding it never shifts the text.
+    final topPad = prefs.focus ? mq.padding.top + kToolbarHeight : 0.0;
+
+    return Scaffold(
+      extendBodyBehindAppBar: prefs.focus,
+      // BI26100405: scroll-to-top is the one primary FAB; notes is a secondary above it.
+      floatingActionButton: IgnorePointer(
+        ignoring: !barShown,
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 180),
+          offset: Offset(0, barShown ? 0 : 2),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            opacity: barShown ? 1 : 0,
+            // One primary, bottom-right: scroll to top (it appears once you have scrolled a screen).
+            // Notes is secondary: small and grey, above it. Same pattern as the holdings view.
+            child: ListenableBuilder(
+              listenable: _tutor,
+              builder: (context, _) => FabStack(
+              primary: _showScrollTop
+                  ? FabAction(
+                      heroTag: 'fab_lesson_scroll_top',
+                      tooltip: 'Scroll to top',
+                      icon: Icons.keyboard_arrow_up_rounded,
+                      onPressed: () {
+                        if (_scroll.hasClients) {
+                          _scroll.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.easeOutCubic,
+                          );
+                        }
+                      },
+                    )
+                  : null,
+              // BI26101804: Ask the tutor sits directly above notes (secondaries draw top to bottom), and shows a
+              // selected state while ask mode is on.
+              secondary: [
+                FabAction(
+                  heroTag: 'fab_lesson_tutor',
+                  tooltip: 'Ask the tutor',
+                  icon: Icons.school_outlined,
+                  selected: _tutor.mode,
+                  onPressed: () => _tutor.toggleMode(),
+                ),
+                FabAction(
+                  heroTag: 'fab_lesson_notes',
+                  tooltip: 'Notes',
+                  icon: Icons.edit_note_rounded,
+                  onPressed: () => _openNotesSheet(context),
+                ),
+              ],
+            ),
+            ),
+          ),
+        ),
+      ),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: AnimatedSlide(
+          duration: const Duration(milliseconds: 180),
+          offset: Offset(0, barShown ? 0 : -1.2),
+          child: ShellAppBar(
+            title: heading,
+            showBrand: false,
+            // BI26111891 (Sconl, 18 Nov 2026): the module's status icon (opened, learning, done) takes the place of the
+            // white offline pin. Its menu keeps what the old button did: whether the module is saved here, and Export.
+            actions: [
+              ModuleStatusAction(
+                  status: _status,
+                  trackColor: widget.trackColor,
+                  savedOffline: snap.value != null,
+                  onExport: () => exportModulePdf(context, widget.course, widget.file)),
+            ],
+          ),
+        ),
+      ),
+      body: MediaQuery(
+        data: mq.copyWith(textScaler: TextScaler.linear(textScale)),
+        child: Stack(children: [
+      Column(
+        children: [
+          ReadingProgress(controller: _scroll),
+          Expanded(
+            child: SnapshotView(
+              snapshot: snap,
+              controller: _scroll,
+              // The reading surface owns its own margins, so the scroll view
+              // contributes nothing horizontally. Bottom room is for the
+              // thumb, not for a nav bar - this screen is pushed, not tabbed.
+              padding: EdgeInsets.fromLTRB(0, topPad, 0, 56),
+              builder: (context, data) {
+                final lessonMap = fmt.m(data);
+                final content = fmt.s(lessonMap['content']);
+                final updatedAt = fmt.s(lessonMap['updatedAt']);
+                final reviewedAt = fmt.s(lessonMap['reviewedAt'] ??
+                    lessonMap['reviewed_at'] ??
+                    lessonMap['REVIEWED_AT'] ??
+                    widget.reviewedAt);
+                final version = fmt.s(lessonMap['version'] ??
+                    lessonMap['VERSION'] ??
+                    widget.version);
+                final docId = fmt.s(lessonMap['docId'] ?? lessonMap['doc_id']);
+                final docVersion = fmt.s(lessonMap['docVersion'] ?? lessonMap['doc_version']);
+                _currentContent = content;
+                _maybeRestoreResume();
+                _maybeShowChanges(content);
+                final archetype = moduleArchetype(content, fmt.s(lessonMap['archetype']));
+                final hasListen = content.isNotEmpty || (docId.isNotEmpty && docVersion.isNotEmpty);
+                return ReadingSurface(
+                  children: [
+                    ReadingHeader(
+                      title: heading,
+                      kicker: widget.course,
+                      meta: content.isEmpty
+                          ? null
+                          : readingMeta(
+                              content,
+                              updatedAt: updatedAt.isEmpty ? null : updatedAt,
+                              reviewedAt:
+                                  reviewedAt.isEmpty ? null : reviewedAt,
+                              version: version.isEmpty ? null : version,
+                              archetype: archetype,
+                            ),
+                      // BI26111891 (Sconl, 18 Nov 2026): the status icon moved to the app bar; the Listen row below
+                      // carries the divider.
+                      showDivider: !hasListen,
+                    ),
+                    if (content.isNotEmpty)
+                      ListenStrip(
+                          child: ListenBar(
+                              course: widget.course,
+                              file: widget.file,
+                              markdown: content,
+                              padding: EdgeInsets.zero)),
+                    // BI26101394: a document-served module with no markdown still gets a Listen bar.
+                    if (content.isEmpty && docId.isNotEmpty && docVersion.isNotEmpty)
+                      ListenStrip(
+                          child: CdmListenBar(
+                              docId: docId, version: docVersion, course: widget.course, file: widget.file, padding: EdgeInsets.zero)),
+                    if (docId.isNotEmpty && docVersion.isNotEmpty)
+                      // BI26092620: a module served as a deck document is drawn natively
+                      // from the version-keyed cache; the markdown reader is its fallback.
+                      CdmLessonBody(
+                        docId: docId,
+                        version: docVersion,
+                        courseId: widget.course,
+                        fallback: content.isEmpty
+                            ? _lessonOfflineNote()
+                            : ReadingBody(content,
+                                paragraphHook: _paragraphHook(),
+                                anchors: _anchors,
+                                onModuleLink: _openModuleLink,
+                                courseId: widget.course,
+                                baseUrl: services.api.baseUrl,
+                                token: services.api.token),
+                      )
+                    else if (content.isEmpty)
+                      _lessonOfflineNote()
+                    else
+                      ReadingBody(content,
+                          paragraphHook: _paragraphHook(),
+                          anchors: _anchors,
+                          onModuleLink: _openModuleLink,
+                          courseId: widget.course,
+                          baseUrl: services.api.baseUrl,
+                          token: services.api.token),
+                    // BI26101207: a Trajectory module's forecast block, read from the served payload.
+                    if (Trajectory.tryParse(lessonMap['trajectory'], sconlOnly: lessonMap['sconlOnly'] ?? lessonMap['sconl_only']) case final traj?)
+                      TrajectorySection(course: widget.course, file: widget.file, trajectory: traj),
+                    _LessonNotes(course: widget.course, file: widget.file, title: widget.title),
+                    // BI26092613: "Mark as done" button at the end of the module,
+                    // full width, in the track colour. Shows "Done · undo" for 5 seconds.
+                    Padding(
+                      padding: const EdgeInsets.only(top: 24, bottom: 8),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: _buildDoneButton(services),
+                      ),
+                    ),
+                    // BI26100537 (standard 4.0.0, section 3.11): Previous Module and Next Module side by
+                    // side, equal width, fixed labels. At either end the button is disabled, not removed.
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 20),
+                      child: Row(
+                        key: const Key('module-nav'),
+                        children: [
+                          Expanded(
+                            child: _LessonNavButton(
+                              key: const Key('previous-module'),
+                              icon: Icons.chevron_left_rounded,
+                              iconTrailing: false,
+                              label: 'Previous Module',
+                              onTap: _computedPrevLesson == null
+                                  ? null
+                                  : () => _openLesson(_computedPrevLesson!),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _LessonNavButton(
+                              key: const Key('next-module'),
+                              icon: Icons.chevron_right_rounded,
+                              iconTrailing: true,
+                              label: 'Next Module',
+                              onTap: _computedNextLesson == null
+                                  ? null
+                                  : () => _openLesson(_computedNextLesson!),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // BI26101601: the quiet "standard 4.5" line at the foot of every module.
+                    StandardTagLine(version: frontmatterVersion(content) ?? (version.isEmpty ? null : version)),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+          if (_showFound && widget.foundText != null)
+            Positioned(
+              top: topPad,
+              left: 12,
+              right: 12,
+              child: Material(
+                key: const Key('found-banner'),
+                color: C.greenBg,
+                borderRadius: BorderRadius.circular(Sz.rMd),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Text(widget.foundText!, maxLines: 3, overflow: TextOverflow.ellipsis, style: T.small.copyWith(color: C.text)),
+                ),
+              ),
+            ),
+          if (!barShown)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: mq.padding.top + 28,
+              child: GestureDetector(
+                key: const Key('reader-top-edge'),
+                behavior: HitTestBehavior.translucent,
+                onTap: () => setState(() => _barVisible = true),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Margin notes on a lesson.
+///
+/// Two other readers besides him: the tutor loads them as context, and the
+/// agent reads them when revising the course - a note saying "this section is
+/// now wrong" is the cheapest possible course-update instruction. Which is why
+/// this is worth having on the phone, where most of the reading happens.
+/// Export this module as a PDF and hand it to the phone.
+///
+/// The agent builds the PDF - one renderer, one set of callout colours, one
+/// document whether it was asked for from the console or from here. This end
+/// only has to move the bytes to disk and let Android open them, which is what
+/// makes "export from the mobile app" a small feature rather than a second
+/// implementation of the whole document.
+Future<void> exportModulePdf(BuildContext context, String course, String file) async {
+  final services = AppScope.of(context);
+  toast(context, 'Exporting the module as a PDF');
+  try {
+    final res = await services.api.getBytes(
+        '/api/learning/export?course=${Uri.encodeComponent(course)}'
+        '&lesson=${Uri.encodeComponent(file)}');
+    final name = res.filename.isEmpty ? '$course-${file.replaceAll(RegExp(r'\.md$'), '')}.pdf' : res.filename;
+    final opened = await export_impl.saveAndOpenExport(name, res.bytes);
+    if (!context.mounted) return;
+    toast(
+        context,
+        opened
+            ? '${(res.bytes.length / 1024).round()} KB - opening'
+            : kIsWeb
+                ? 'PDF export is not available in the web console yet'
+                : 'Saved, but nothing on this phone opens a PDF',
+        error: !opened);
+  } catch (e) {
+    if (!context.mounted) return;
+    toast(context, 'Export failed: $e', error: true);
+  }
+}
+
+/// BI26111891 (Sconl, 18 Nov 2026): the module's status icon in the app bar, where the white offline pin was. Opened
+/// is an open eye in the track colour, learning a half-read book in amber, done a check in green; a module not opened
+/// yet shows a quiet outline. Its menu says the status, whether the module is saved on this device, and exports it.
+class ModuleStatusAction extends StatelessWidget {
+  const ModuleStatusAction({super.key, required this.status, required this.trackColor, required this.savedOffline, required this.onExport});
+  final String status;
+  final Color trackColor;
+  final bool savedOffline;
+  final VoidCallback onExport;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = status.toLowerCase();
+    final label = switch (s) { 'done' => 'Done', 'learning' => 'Learning', 'opened' => 'Opened', _ => 'Not opened yet' };
+    final icon = _statusIcon(s, trackColor) ??
+        Icon(Icons.radio_button_unchecked_rounded, key: const Key('module-status-new'), size: 20, color: C.text3, semanticLabel: label);
+    return PopupMenuButton<String>(
+      key: const Key('module-status-action'),
+      tooltip: 'Status: $label',
+      icon: icon,
+      onSelected: (v) { if (v == 'export') onExport(); },
+      itemBuilder: (_) => [
+        PopupMenuItem<String>(enabled: false, child: Text(label, style: T.small.copyWith(color: C.text2, fontWeight: FontWeight.w600))),
+        PopupMenuItem<String>(
+          enabled: false,
+          child: Row(children: [
+            Icon(savedOffline ? Icons.offline_pin_rounded : Icons.cloud_outlined, size: 16, color: C.text3),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(savedOffline ? 'Saved on this device' : 'Not saved on this device yet',
+                  key: Key(savedOffline ? 'module-saved-here' : 'module-not-saved'), overflow: TextOverflow.ellipsis),
+            ),
+          ]),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem<String>(
+          value: 'export',
+          key: Key('module-export-pdf'),
+          child: Row(children: [Icon(Icons.picture_as_pdf_outlined, size: 18), SizedBox(width: 8), Text('Export as PDF')]),
+        ),
+      ],
+    );
+  }
+}
+
+/// BI26111891 (Sconl, 18 Nov 2026): Listen, speed and text size with even room above and below, and a line under them,
+/// so the row neither floats loose under the header nor presses into the first heading.
+class ListenStrip extends StatelessWidget {
+  const ListenStrip({super.key, required this.child});
+  final Widget child;
+  static const gap = 14.0;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        key: const Key('listen-strip'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: gap),
+          child,
+          const SizedBox(height: gap),
+          const Divider(height: 1),
+          const SizedBox(height: gap - 6),
+        ],
+      );
+}
+
+/// BI26111891: the module's archetype for its header line, from its own frontmatter, else what the server sent.
+String? moduleArchetype(String content, [String fallback = '']) {
+  final fm = RegExp(r'^(?:\s*<!--[\s\S]*?-->)*\s*---[ \t]*\r?\n([\s\S]*?)\r?\n---').firstMatch(content);
+  final m = fm == null ? null : RegExp(r'^archetype:\s*"?([A-Za-z-]+)"?\s*$', multiLine: true).firstMatch(fm.group(1)!);
+  final v = (m?.group(1) ?? fallback).trim();
+  return v.isEmpty ? null : v;
+}
+
+/// BL26091006/BL26091028: shared Next/Previous nav button -- an outlined
+/// pill with the 3-word-lead-in label and a chevron on whichever side
+/// matches the direction (leading for Previous, trailing for Next).
+class _LessonNavButton extends StatelessWidget {
+  const _LessonNavButton({
+    super.key,
+    required this.icon,
+    required this.iconTrailing,
+    required this.label,
+    required this.onTap,
+  });
+  final IconData icon;
+  final bool iconTrailing;
+  final String label;
+
+  /// Null disables the button (the first or last module of a course) without changing its label.
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconWidget = Icon(icon, size: 18, color: C.green);
+    // Flexible, so two equal-width buttons survive a large text size without overflowing.
+    final labelWidget = Flexible(
+      child: Text(label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: T.small.copyWith(color: C.green, fontWeight: FontWeight.w600)),
+    );
+    return OutlinedButton(
+      style: OutlinedButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Sz.rSm)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        side: const BorderSide(color: C.greenDim),
+      ),
+      onPressed: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: iconTrailing
+            ? [labelWidget, const SizedBox(width: 4), iconWidget]
+            : [iconWidget, const SizedBox(width: 4), labelWidget],
+      ),
+    );
+  }
+}
+
+typedef _LessonNotes = LessonNotes;

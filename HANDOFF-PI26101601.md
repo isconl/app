@@ -1,0 +1,4 @@
+# HANDOFF PI26101601 (app half, branch row/PI26101601)
+Hub half done and on branch row/PI26101601 in hub (0.5.126, 4f9f431+): POST /api/rank/feedback, GET /api/rank/adjustments, POST /api/rank/adjustments/<id>/undo.
+App done on this branch: lib/services/rank_feedback.dart, lib/ui/widgets/rank_drag.dart (handle, sheet, drop), TasksView + BlockCard reorderable with a hold-to-drag handle, lib/ui/views/learned_ranking.dart + Settings entry, Mutations.rankFeedback (outbox). test/rank_drag_test.dart 11 pass; related suites pass.
+NEXT: land hub on its dev (fetch, rebase, push), then app: fetch, rebase, node tool/bump_version.js dev, ONE push to dev when no Build app run is active, close on green run + apk release. Hub must also be promoted for live use. Note: Tasks ids come from /api/state (scope tasks); slate answers 404 "no such row" if an id is not a slate row, shown in the snackbar.

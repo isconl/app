@@ -1,0 +1,510 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
+import 'package:flutter/services.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:sqflite/sqflite.dart' show databaseFactory;
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
+
+import 'app_nav.dart';
+import 'console/audio_backends.dart' show ensureBackgroundAudio;
+import 'console/console_services.dart';
+import 'app_scope.dart';
+import 'data/db.dart' show AppDb;
+import 'services/alerts.dart';
+import 'services/branding.dart';
+import 'services/clock.dart';
+import 'services/close_feed.dart';
+import 'services/day_close_planner.dart';
+import 'services/platform.dart';
+import 'services/prefetch.dart';
+import 'services/notes_sync_worker.dart';
+import 'services/prefetch_worker.dart';
+import 'services/home_widget.dart';
+import 'services/share_intake.dart';
+import 'services/widget_sync.dart';
+import 'ui/widgets/share_sheet.dart';
+import 'theme.dart';
+import 'ui/widgets/brand.dart' as brand;
+import 'ui/widgets/brand.dart' show BrandMotion;
+import 'ui/adaptive_shell.dart';
+import 'ui/app_route.dart';
+import 'ui/shell.dart' show openNavRoute;
+import 'ui/login.dart';
+import 'ui/views/day_close.dart';
+import 'readiness/readiness_host.dart';
+import 'ui/widgets/journal_access.dart';
+import 'ui/widgets/common.dart';
+import 'ui/widgets/space_header.dart' show SpaceNavMode;
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // sqflite has no native web implementation; ffi-web backs the same Database
+  // API with an IndexedDB-stored sqlite3 (wasm), so AppDb needs no rewrite -
+  // see data/db.dart's kIsWeb branch for the other half of this.
+  if (kIsWeb) {
+    databaseFactory = databaseFactoryFfiWeb;
+    // BI26101513: real paths (/inbox, /study/<course>/<module>) instead of #/view.
+    usePathUrlStrategy();
+  }
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    systemNavigationBarColor: C.panel,
+    systemNavigationBarIconBrightness: Brightness.light,
+  ));
+  PlatformBridge.instance.init();
+  // BI26111899 (Sconl, 18 Nov 2026: "such an error is to absolutely never happen again"): everything before the first
+  // frame is guarded. If start-up throws or takes longer than 40 seconds, the app shows what went wrong and offers to
+  // reset its stored data, instead of a blank screen with no way out. Before this, a bad state on the phone left the
+  // app blank until it was uninstalled.
+  try {
+    final services = await _start().timeout(const Duration(seconds: 40));
+    runApp(IsconlApp(services: services));
+  } catch (e) {
+    runApp(StartFailedApp(error: e));
+  }
+}
+
+Future<AppServices> _start() async {
+  // BI26100323: notification and lock-screen controls for the Console player. Never allowed to stop the app starting.
+  try {
+    await ensureBackgroundAudio().timeout(const Duration(seconds: 8));
+  } catch (_) {}
+  final services = await AppServices.boot();
+  try {
+    await BrandingService.instance.load().timeout(const Duration(seconds: 5));
+  } catch (_) {}
+  // BI26102802: spaces open in the rail unless Settings says tabs.
+  await SpaceNavMode.load(services.db);
+  return services;
+}
+
+/// BI26111899: drawn when start-up fails, so the phone never sits on a blank screen. It says what happened, can try
+/// again, and can delete the app's local database (offline copies and caches; the sign-in is kept, and everything comes
+/// back from the server on the next start).
+class StartFailedApp extends StatefulWidget {
+  const StartFailedApp({super.key, required this.error});
+  final Object error;
+
+  @override
+  State<StartFailedApp> createState() => _StartFailedAppState();
+}
+
+class _StartFailedAppState extends State<StartFailedApp> {
+  bool _busy = false;
+  String? _note;
+
+  Future<void> _retry() async {
+    setState(() => _busy = true);
+    try {
+      final services = await _start().timeout(const Duration(seconds: 40));
+      runApp(IsconlApp(services: services));
+    } catch (e) {
+      if (mounted) setState(() { _busy = false; _note = 'Still could not start: $e'; });
+    }
+  }
+
+  Future<void> _reset() async {
+    setState(() => _busy = true);
+    try {
+      await AppDb.deleteLocal();
+      await _retry();
+    } catch (e) {
+      if (mounted) setState(() { _busy = false; _note = 'Could not reset: $e'; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final msg = widget.error.toString();
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme(),
+      home: Scaffold(
+        key: const Key('start-failed'),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text('iSconl could not start', style: T.headline),
+              const SizedBox(height: 12),
+              Text('Something stored on this phone stopped the app from opening. Try again, or reset the app\'s stored data: '
+                  'your sign-in stays, and lessons and other data come back from the server.',
+                  style: T.body2.copyWith(color: C.text2, height: 1.5)),
+              const SizedBox(height: 12),
+              SelectableText(msg.length > 400 ? '${msg.substring(0, 400)}...' : msg, style: T.monoSmall.copyWith(color: C.text3)),
+              if (_note != null) ...[const SizedBox(height: 12), Text(_note!, style: T.small.copyWith(color: C.amber))],
+              const SizedBox(height: 24),
+              Row(children: [
+                FilledButton(key: const Key('start-retry'), onPressed: _busy ? null : _retry, child: const Text('Try again')),
+                const SizedBox(width: 12),
+                OutlinedButton(key: const Key('start-reset'), onPressed: _busy ? null : _reset, child: const Text('Reset stored data')),
+              ]),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class IsconlApp extends StatefulWidget {
+  const IsconlApp({super.key, required this.services, bool? useRouter}) : _useRouter = useRouter;
+  final AppServices services;
+
+  /// BI26101513: on web a Router carries the address (paths, browser back and forward); on a phone the app keeps its
+  /// single Navigator. Tests pass it explicitly.
+  final bool? _useRouter;
+
+  @override
+  State<IsconlApp> createState() => _IsconlAppState();
+}
+
+class _IsconlAppState extends State<IsconlApp> {
+  late final bool _router = widget._useRouter ?? kIsWeb;
+  late final AppRouterDelegate _delegate = AppRouterDelegate(home: const RootGate());
+
+  @override
+  void initState() {
+    super.initState();
+    AppRouteState.instance.active = _router;
+  }
+
+  @override
+  void dispose() {
+    _delegate.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppScope(
+      services: widget.services,
+      child: _router
+          ? MaterialApp.router(
+              title: 'iSconl',
+              debugShowCheckedModeBanner: false,
+              theme: buildTheme(),
+              routerDelegate: _delegate,
+              routeInformationParser: const AppRouteParser(),
+            )
+          : MaterialApp(
+              title: 'iSconl',
+              navigatorKey: rootNavigatorKey,
+              debugShowCheckedModeBanner: false,
+              theme: buildTheme(),
+              home: const RootGate(),
+            ),
+    );
+  }
+}
+
+/// Decides what the user sees: biometric lock -> login -> shell.
+class RootGate extends StatefulWidget {
+  const RootGate({super.key});
+
+  @override
+  State<RootGate> createState() => _RootGateState();
+}
+
+class _RootGateState extends State<RootGate> with WidgetsBindingObserver {
+  bool _unlocked = false;
+  bool _authInFlight = false;
+  ShareItem? _pendingShare;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    AlertService.instance.init().then((_) {
+      if (mounted) replanDayClose(AppScope.of(context));
+    });
+    // BI26101529: tapping a slate-close notification opens the Slate tab.
+    AlertService.instance.onSlateRow = (_) {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) openNavRoute(ctx, 'slate');
+    };
+    // BI26100140: set the background prefetch schedule from the saved toggle, then one pass now.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final s = AppScope.of(context);
+      final settings = await DbPrefetchStore(s.db).settings();
+      await syncPrefetchSchedule(settings);
+      // BI26112302: notes and queued writes sync in the background whenever there is a network.
+      await syncNotesSchedule();
+      unawaited(prefetchNow(s));
+    });
+    AlertService.instance.onDayClose = () => rootNavigatorKey.currentState
+        ?.push(MaterialPageRoute<void>(builder: (_) => const DayCloseScreen()));
+    AlertService.instance.onTrip = (id) => rootNavigatorKey.currentState?.push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(appBar: AppBar(title: const Text('Readiness')), body: ReadinessHost(tripId: id))));
+    AlertService.instance.onGrant = (id) {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null) showGrantRequest(ctx, id);
+    };
+    PlatformBridge.instance.onSharedText = _captureShare;
+    PlatformBridge.instance.onSharedFiles = _captureFiles;
+    PlatformBridge.instance.getSharedText().then((text) {
+      if (text != null && text.trim().isNotEmpty) _captureShare(text);
+    });
+    PlatformBridge.instance.getSharedFiles().then((files) {
+      if (files.isNotEmpty) _captureFiles(files);
+    });
+    PlatformBridge.instance.onWidgetAction = _widgetAction;
+    HomeWidgetBridge.instance.pendingAction().then((a) {
+      if (a != null) _widgetAction(a);
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// BI26101529: the live close poll runs while the app is in front; the 15-minute background task covers the rest.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // BI26101528: taps queued by the tile and widget while the app was away are taken over each time it is in front.
+    if (state == AppLifecycleState.resumed) _runClockPass();
+    // BI26111402: notes go out when the app comes back and as it is put away.
+    if (state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.paused) {
+      final notes = _clockServices?.lessonNotes;
+      if (notes != null) unawaited(notes.pushAll());
+    }
+    final feed = activeCloseFeed;
+    if (feed == null) return;
+    if (state == AppLifecycleState.resumed) {
+      if (feed.prefs.enabled) feed.start();
+    } else if (state == AppLifecycleState.paused) {
+      feed.stop();
+    }
+  }
+
+  ClockService? _clock;
+
+  /// BI26101528: hand over the tile's and widget's queued taps, deliver, announce refusals, publish the head.
+  void _runClockPass() {
+    final s = _clockServices;
+    if (s == null || kIsWeb) return;
+    _clock ??= ClockService(
+      db: s.db,
+      api: () => s.api,
+      outbox: s.outbox,
+      notifyRefusal: AlertService.instance.showClockRefused,
+    );
+    unawaited(_clock!.pass(locked: s.session.biometricLock));
+  }
+
+  AppServices? _clockServices;
+
+  void _startClock(AppServices services) {
+    if (_clockServices != null) return;
+    _clockServices = services;
+    _runClockPass();
+  }
+
+  void _startCloseFeed(AppServices services) {
+    if (activeCloseFeed != null || kIsWeb) return;
+    final feed = CloseFeed(api: () => services.api, db: services.db, notify: AlertService.instance.showSlateCloses);
+    activeCloseFeed = feed;
+    feed.load().then((_) {
+      syncCloseFeedSchedule(feed.prefs.enabled);
+      if (feed.prefs.enabled) feed.start();
+    });
+  }
+
+  String? _pendingWidgetAction;
+  bool _widgetSyncStarted = false;
+
+  /// BI26100138: the home-screen widget or an icon shortcut asked for something. "today" needs nothing more than the
+  /// app being open; "voice" points at the recorder on the Console ring, since the app has no separate voice-to-inbox path.
+  void _widgetAction(String action) {
+    if (!mounted) return;
+    if (!AppScope.of(context).session.authenticated) {
+      _pendingWidgetAction = action;
+      return;
+    }
+    if (action == 'today') return;
+    // BI26100323: the recording notification's Stop button.
+    if (action == 'stop-recording') {
+      ConsoleServices.of(AppScope.of(context)).recorder.stop();
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      if (action == 'capture') {
+        showQuickCapture(ctx);
+      } else if (action == 'voice') {
+        ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(const SnackBar(content: Text('Hold record on the console ring to dictate a note.')));
+      }
+    });
+  }
+
+  void _startWidgetSync(AppServices services) {
+    if (_widgetSyncStarted || kIsWeb) return;
+    _widgetSyncStarted = true;
+    final sync = WidgetSync(services);
+    activeWidgetSync = sync;
+    sync.start();
+    final a = _pendingWidgetAction;
+    _pendingWidgetAction = null;
+    if (a != null) _widgetAction(a);
+  }
+
+  void _captureShare(String text) => _offerShare(ShareItem.text(text));
+
+  void _captureFiles(List<SharedFile> files) => _offerShare(ShareItem.files(files));
+
+  /// BI26100159: what was shared in opens the share sheet. Held until sign-in when signed out; nothing is saved until
+  /// the reader taps Save.
+  void _offerShare(ShareItem item) {
+    if (!mounted) return;
+    if (!AppScope.of(context).session.authenticated) {
+      _pendingShare = item;
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) showShareSheet(ctx, item);
+    });
+  }
+
+  Future<void> _tryUnlock() async {
+    if (_authInFlight) return;
+    _authInFlight = true;
+    try {
+      final auth = LocalAuthentication();
+      final can =
+          await auth.canCheckBiometrics || await auth.isDeviceSupported();
+      if (!can) {
+        setState(() => _unlocked = true);
+        return;
+      }
+      final ok = await auth.authenticate(
+        localizedReason: 'Unlock iSconl',
+        options: const AuthenticationOptions(stickyAuth: true),
+      );
+      if (ok && mounted) setState(() => _unlocked = true);
+    } catch (_) {
+      // Sensor unavailable: fail open on the user's own device rather than
+      // locking him out of his own brain. The vault token stays encrypted.
+      if (mounted) setState(() => _unlocked = true);
+    } finally {
+      _authInFlight = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final services = AppScope.of(context);
+    return ListenableBuilder(
+      listenable: services.session,
+      builder: (context, _) {
+        final session = services.session;
+        if (!session.ready) {
+          return const Scaffold(body: Center(child: MiniSpinner(size: 22)));
+        }
+        if (!session.authenticated) {
+          _unlocked = false;
+          return LoginScreen(onAuthenticated: () {
+            final share = _pendingShare;
+            _pendingShare = null;
+            if (share != null) _offerShare(share);
+          });
+        }
+        // biometricLock never becomes true on web (session.dart's
+        // _armBiometricsIfUnchosen guards on kIsWeb) but the check is
+        // repeated here so this gate doesn't depend on that invariant holding.
+        if (session.biometricLock && !_unlocked && !kIsWeb) {
+          return _LockScreen(onUnlock: _tryUnlock);
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _startWidgetSync(services);
+          _startCloseFeed(services);
+          _startClock(services);
+        });
+        return const AdaptiveShell();
+      },
+    );
+  }
+}
+
+class _LockScreen extends StatefulWidget {
+  const _LockScreen({required this.onUnlock});
+  final Future<void> Function() onUnlock;
+
+  @override
+  State<_LockScreen> createState() => _LockScreenState();
+}
+
+class _LockScreenState extends State<_LockScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => widget.onUnlock());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Orbiting, because this screen is an active wait rather than an
+            // idle one - the agent is there, the door is not open yet.
+            const BrandMark(size: 44, motion: BrandMotion.working),
+            const SizedBox(height: 18),
+            Text('Welcome back', style: T.title),
+            const SizedBox(height: 6),
+            // Not "Locked / Biometric unlock required". This is the everyday
+            // door now, not an error state - the copy should read like being
+            // let in, because that is what is happening. The session is still
+            // signed in behind this screen; the fingerprint is the only step.
+            Text('Unlock with your fingerprint', style: T.small),
+            const SizedBox(height: 22),
+            OutlinedButton.icon(
+              onPressed: widget.onUnlock,
+              icon: const Icon(Icons.fingerprint_rounded, size: 18),
+              label: const Text('Unlock'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The brand mark, wrapped so a custom logo can override it.
+///
+/// The mark itself lives in ui/widgets/brand.dart - exact geometry, two
+/// colours, and its own motion states. This wrapper exists only because
+/// Settings lets ARCHITECT drop in his own image at runtime, and that image wins.
+class BrandMark extends StatelessWidget {
+  const BrandMark({super.key, this.size = 26, this.motion = BrandMotion.rest});
+  final double size;
+  final BrandMotion motion;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: BrandingService.instance,
+      builder: (context, _) {
+        final bytes = BrandingService.instance.logoBytes;
+        if (bytes != null) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(size * 0.25),
+            child: Image.memory(bytes,
+                width: size, height: size, fit: BoxFit.cover),
+          );
+        }
+        return brand.BrandMark(size: size, motion: motion);
+      },
+    );
+  }
+}

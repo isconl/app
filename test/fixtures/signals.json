@@ -1,0 +1,43 @@
+{
+  "generatedAt": "2026-09-27T10:00:00Z",
+  "profile": "isconl.signals@0",
+  "slots": [],
+  "strip": [
+    {
+      "key": "scope:task:T12",
+      "space": "command",
+      "engine": "scope",
+      "label": "Rent due",
+      "detail": "Rent due by midnight tonight",
+      "tone": "urgent",
+      "route": "finance",
+      "score": 0.95
+    },
+    {
+      "key": "pulse:event:E34",
+      "space": "flow",
+      "engine": "pulse",
+      "label": "Standup 10:30",
+      "detail": "Daily engineering standup in 15m",
+      "tone": "soon",
+      "route": "calendar",
+      "score": 0.85
+    },
+    {
+      "key": "social:chat:C56",
+      "space": "circle",
+      "engine": "social",
+      "label": "Joel waiting",
+      "detail": "Joel sent a message 26h ago",
+      "tone": "waiting",
+      "route": "circle",
+      "score": 0.75
+    }
+  ],
+  "cut": {
+    "now": [],
+    "digest": [],
+    "hold": []
+  },
+  "explain": {}
+}

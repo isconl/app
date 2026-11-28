@@ -1,0 +1,56 @@
+{
+ "name": "02_coverage_override",
+ "inputs": {
+  "now": "2026-10-19T14:20:00",
+  "minutesUntilNextBlock": 30,
+  "nextBlockLabel": "15:00",
+  "cards": [
+   {
+    "id": "fits-well",
+    "track": "tech",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 28,
+    "difficulty": 2,
+    "archived": false
+   },
+   {
+    "id": "behind-track",
+    "track": "corporate-mandate",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 50,
+    "difficulty": 3,
+    "archived": false
+   }
+  ],
+  "tracks": {
+   "tech": {
+    "unreadMinutes": 600,
+    "targetDate": "2027-04-19T00:00:00",
+    "minutesReadThisCycle": 120,
+    "cyclesBehind": 0,
+    "pickedThisCycle": true
+   },
+   "corporate-mandate": {
+    "unreadMinutes": 1500,
+    "targetDate": "2027-04-19T00:00:00",
+    "minutesReadThisCycle": 0,
+    "cyclesBehind": 2,
+    "pickedThisCycle": true
+   }
+  }
+ },
+ "expect": {
+  "top": {
+   "id": "behind-track",
+   "reason": "corporate-mandate is 2 cycles behind"
+  },
+  "lighter": {
+   "id": "fits-well",
+   "reason": "fits the 30 minutes before your 15:00 block"
+  },
+  "deeper": null,
+  "candidates": 2
+ }
+}

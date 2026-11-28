@@ -1,0 +1,50 @@
+{
+ "name": "08_resume_momentum",
+ "inputs": {
+  "now": "2026-10-19T14:20:00",
+  "minutesUntilNextBlock": 40,
+  "cards": [
+   {
+    "id": "half",
+    "track": "t",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 35,
+    "difficulty": 2,
+    "archived": false
+   },
+   {
+    "id": "new",
+    "track": "t",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 35,
+    "difficulty": 2,
+    "archived": false
+   }
+  ],
+  "progress": {
+   "half": {
+    "fraction": 0.5
+   }
+  },
+  "tracks": {
+   "t": {
+    "unreadMinutes": 300,
+    "targetDate": "2027-04-19T00:00:00",
+    "minutesReadThisCycle": 0,
+    "cyclesBehind": 0,
+    "pickedThisCycle": true
+   }
+  }
+ },
+ "expect": {
+  "top": {
+   "id": "half",
+   "reason": "fits the 40 minutes you have; t is behind this cycle's pace"
+  },
+  "lighter": null,
+  "deeper": null,
+  "candidates": 2
+ }
+}

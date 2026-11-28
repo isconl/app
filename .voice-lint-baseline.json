@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "findings": {
+    "lib/ui/views/ops.dart|EM_DASH|are untouched -- the next start/deploy recreates it. Type the": 1,
+    "lib/ui/widgets/reader.dart|EM_DASH|$prefix: $lead — $rest": 1
+  }
+}

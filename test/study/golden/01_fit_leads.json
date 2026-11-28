@@ -1,0 +1,61 @@
+{
+ "name": "01_fit_leads",
+ "inputs": {
+  "now": "2026-10-19T14:20:00",
+  "minutesUntilNextBlock": 25,
+  "nextBlockLabel": "15:00",
+  "cards": [
+   {
+    "id": "a-short",
+    "track": "corp",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 10,
+    "difficulty": 1,
+    "archived": false
+   },
+   {
+    "id": "b-long",
+    "track": "corp",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 60,
+    "difficulty": 3,
+    "archived": false
+   },
+   {
+    "id": "c-mid",
+    "track": "corp",
+    "subjects": [],
+    "prerequisites": [],
+    "minutes": 24,
+    "difficulty": 2,
+    "archived": false
+   }
+  ],
+  "tracks": {
+   "corp": {
+    "unreadMinutes": 900,
+    "targetDate": "2027-04-19T00:00:00",
+    "minutesReadThisCycle": 0,
+    "cyclesBehind": 0.5,
+    "pickedThisCycle": true
+   }
+  }
+ },
+ "expect": {
+  "top": {
+   "id": "c-mid",
+   "reason": "fits the 25 minutes before your 15:00 block; corp is behind this cycle's pace"
+  },
+  "lighter": {
+   "id": "a-short",
+   "reason": "fits the 25 minutes before your 15:00 block; corp is behind this cycle's pace"
+  },
+  "deeper": {
+   "id": "b-long",
+   "reason": "corp is behind this cycle's pace"
+  },
+  "candidates": 3
+ }
+}

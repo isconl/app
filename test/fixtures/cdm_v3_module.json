@@ -1,0 +1,296 @@
+{
+ "ddm": "1",
+ "headline": "Reading a cash-flow table",
+ "subtitle": "Money in, money out",
+ "meta": {
+  "course": "finance-basics",
+  "module": "03"
+ },
+ "sections": [
+  {
+   "type": "heading",
+   "level": 1,
+   "text": "Reading a cash-flow table"
+  },
+  {
+   "type": "paragraph",
+   "text": "A cash-flow table shows **money in** and *money out* by month. See [the guide](https://example.com/guide) and the term [[cash flow]]."
+  },
+  {
+   "type": "callout",
+   "kind": "prior",
+   "text": "You already know that a budget is a plan for money."
+  },
+  {
+   "type": "callout",
+   "kind": "outcome",
+   "text": "By the end you can read a cash-flow table and name the weakest month."
+  },
+  {
+   "type": "callout",
+   "kind": "place",
+   "text": "This sits after budgeting and before forecasting."
+  },
+  {
+   "type": "callout",
+   "kind": "story",
+   "text": "A baker in Kisumu noticed flour costs rose every March."
+  },
+  {
+   "type": "callout",
+   "kind": "jargon",
+   "text": "Cash flow means money moving in and out, not profit."
+  },
+  {
+   "type": "callout",
+   "kind": "book",
+   "text": "Small changes compound over years.",
+   "citation": "Housel, The Psychology of Money, ch. 4"
+  },
+  {
+   "type": "callout",
+   "kind": "research",
+   "text": "Households that track spending save more on average.",
+   "citation": "Smith et al., 2019, J. Fin. Behav."
+  },
+  {
+   "type": "callout",
+   "kind": "fact",
+   "text": "Mobile money moved over a trillion shillings last year."
+  },
+  {
+   "type": "callout",
+   "kind": "probe",
+   "text": "What would you cut first if income fell by a fifth?"
+  },
+  {
+   "type": "callout",
+   "kind": "failure",
+   "text": "Counting a loan as income hides the real gap."
+  },
+  {
+   "type": "callout",
+   "kind": "essentials",
+   "text": "Track it, label it, review it weekly."
+  },
+  {
+   "type": "callout",
+   "kind": "check",
+   "text": "Can you say where the last 500 shillings went?"
+  },
+  {
+   "type": "heading",
+   "level": 2,
+   "text": "The table"
+  },
+  {
+   "type": "table",
+   "header": [
+    "Month",
+    "In",
+    "Out"
+   ],
+   "rows": [
+    [
+     "Jan",
+     "1200",
+     "900"
+    ],
+    [
+     "Feb",
+     "1100",
+     "1250"
+    ]
+   ]
+  },
+  {
+   "type": "bullets",
+   "items": [
+    "Income comes first",
+    "Fixed costs second"
+   ],
+   "details": [
+    "Salary, sales, gifts",
+    null
+   ]
+  },
+  {
+   "type": "ordered",
+   "start": 3,
+   "items": [
+    "Total the inflows",
+    "Total the outflows"
+   ]
+  },
+  {
+   "type": "checked_bullets",
+   "items": [
+    {
+     "text": "Rent is listed",
+     "reason": "It is the largest fixed cost"
+    }
+   ]
+  },
+  {
+   "type": "kv_list",
+   "items": [
+    {
+     "label": "Currency",
+     "value": "KES"
+    },
+    {
+     "label": "Period",
+     "value": "Monthly"
+    }
+   ]
+  },
+  {
+   "type": "quote",
+   "text": "Do not save what is left after spending.",
+   "attribution": "Warren Buffett"
+  },
+  {
+   "type": "code",
+   "language": "sql",
+   "text": "SELECT month, SUM(amount) FROM flows GROUP BY month;"
+  },
+  {
+   "type": "equation",
+   "tex": "\\text{net} = \\text{in} - \\text{out}",
+   "display": true
+  },
+  {
+   "type": "equation",
+   "tex": "\\frac{a}{",
+   "display": false
+  },
+  {
+   "type": "chart",
+   "kind": "bar",
+   "title": "Out by month",
+   "data": [
+    {
+     "label": "Jan",
+     "value": 900
+    },
+    {
+     "label": "Feb",
+     "value": 1250
+    }
+   ]
+  },
+  {
+   "type": "chart",
+   "kind": "line",
+   "title": "Net",
+   "data": [
+    {
+     "label": "Jan",
+     "value": 300
+    },
+    {
+     "label": "Feb",
+     "value": -150
+    },
+    {
+     "label": "Mar",
+     "value": 80
+    }
+   ]
+  },
+  {
+   "type": "chart",
+   "kind": "pie",
+   "title": "Share",
+   "data": [
+    {
+     "label": "Rent",
+     "value": 50
+    },
+    {
+     "label": "Food",
+     "value": 30
+    },
+    {
+     "label": "Other",
+     "value": 20
+    }
+   ]
+  },
+  {
+   "type": "image",
+   "src": "https://example.com/figure.png",
+   "alt": "A cash-flow diagram",
+   "caption": "Figure 1. Inflows and outflows"
+  },
+  {
+   "type": "embed",
+   "url": "https://example.com/video",
+   "caption": "A short walk-through"
+  },
+  {
+   "type": "map",
+   "spec": "lat: -0.0917\nlon: 34.7680\nzoom: 12\nlabel: Kisumu market"
+  },
+  {
+   "type": "audience",
+   "aud": [
+    "author"
+   ],
+   "nodes": [
+    {
+     "type": "paragraph",
+     "text": "AUTHOR ONLY NOTE"
+    }
+   ]
+  },
+  {
+   "type": "audience",
+   "aud": [
+    "learner"
+   ],
+   "nodes": [
+    {
+     "type": "paragraph",
+     "text": "Learner-facing aside"
+    }
+   ]
+  },
+  {
+   "type": "truth_check",
+   "sections_used": [
+    "a"
+   ],
+   "must_not_say": [
+    {
+     "claim": "HIDDEN CLAIM",
+     "reason": "x"
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "title": "Check yourself",
+   "nodes": [
+    {
+     "type": "ordered",
+     "items": [
+      "Which month had a deficit?",
+      "What would fix it?"
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "ANSWER: February; cut Out by 150."
+    }
+   ]
+  },
+  {
+   "type": "page_break"
+  },
+  {
+   "type": "slide_break"
+  }
+ ],
+ "footer_note": "Standard v3.1"
+}
