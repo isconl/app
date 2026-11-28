@@ -1,3 +1,4 @@
+import 'learning_progress.dart' show withLessonStatuses;
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb, visibleForTesting;
@@ -820,37 +821,8 @@ Future<dynamic> overlayLessonProgressLocal(
         }
       }
 
-      final updatedCourses = <Map<String, dynamic>>[];
-      for (final courseItem in courses) {
-        if (courseItem is! Map) {
-          updatedCourses.add(courseItem as Map<String, dynamic>);
-          continue;
-        }
-        final cMap = Map<String, dynamic>.from(courseItem);
-        final courseId = (cMap['ID'] ?? cMap['id'] ?? '').toString();
-        final lessons = cMap['lessons'];
-        if (lessons is List) {
-          final updatedLessons = <Map<String, dynamic>>[];
-          for (final lessonItem in lessons) {
-            if (lessonItem is! Map) {
-              updatedLessons.add(lessonItem as Map<String, dynamic>);
-              continue;
-            }
-            final lMap = Map<String, dynamic>.from(lessonItem);
-            final file = (lMap['file'] ?? '').toString();
-            final localStatus = localMap['$courseId/$file'];
-            if (localStatus != null) {
-              final serverStatus = lMap['status']?.toString() ?? 'new';
-              lMap['status'] = AppDb.mergeStatus(localStatus, serverStatus);
-            }
-            updatedLessons.add(lMap);
-          }
-          cMap['lessons'] = updatedLessons;
-        }
-        updatedCourses.add(cMap);
-      }
-      merged['courses'] = updatedCourses;
-      return merged;
+      // 28 Nov 2026: the same step moves the course and track totals, so the bars agree with the statuses.
+      return withLessonStatuses(merged, localMap);
     } else if (snapshotKey.startsWith('lesson:')) {
       if (base is! Map) return base;
       final parts = snapshotKey.substring('lesson:'.length).split('/');

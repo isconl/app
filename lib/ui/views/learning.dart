@@ -13,6 +13,7 @@ import '../../data/db.dart';
 import '../../util/markdown.dart' show MarkdownAnchors, ModuleLink, ParagraphHook, changeNotesOf;
 import '../widgets/recall_card.dart';
 import '../../data/modules.dart';
+import '../../data/learning_progress.dart' show liveCourse;
 import '../../data/note_entries.dart' show quoteOf;
 import '../../study/cdm/cdm_lesson_body.dart';
 import '../../study/trajectory/trajectory_model.dart';
@@ -762,6 +763,18 @@ class TrackDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 28 Nov 2026: follow the live library, so a module finished in the reader moves this screen's bars on return.
+    final learning = AppScope.maybeOf(context)?.store.learning;
+    if (learning == null) return _build(context, courses);
+    return ListenableBuilder(
+      listenable: learning,
+      builder: (context, _) => _build(context, [
+        for (final c in courses) liveCourse(learning.value, fmt.s(c['ID']).isNotEmpty ? fmt.s(c['ID']) : fmt.s(c['id'])) ?? c,
+      ]),
+    );
+  }
+
+  Widget _build(BuildContext context, List<Map<String, dynamic>> courses) {
     final effectiveColor = trackColor ?? C.green;
     // BI26100538: live courses in track order (books first, then coverage order, then title); archived
     // ones are kept, listed under a collapsed heading at the bottom, never removed.
@@ -1009,7 +1022,19 @@ class CourseDetailScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (services != null) OfflineBanner(services: services),
-            CourseTile(course: course, trackColor: trackColor),
+            // 28 Nov 2026: the live copy of this course, so its bar moves the moment a module's status does.
+            if (services != null)
+              ListenableBuilder(
+                listenable: services.store.learning,
+                builder: (context, _) => CourseTile(
+                  course: liveCourse(services.store.learning.value,
+                          fmt.s(course['ID']).isNotEmpty ? fmt.s(course['ID']) : fmt.s(course['id'])) ??
+                      course,
+                  trackColor: trackColor,
+                ),
+              )
+            else
+              CourseTile(course: course, trackColor: trackColor),
           ],
         ),
       ),
