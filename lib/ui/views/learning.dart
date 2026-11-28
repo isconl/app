@@ -22,6 +22,7 @@ import '../../util/fmt.dart' as fmt;
 import '../../util/reader_prefs.dart';
 import '../../util/spaced_review.dart';
 import 'study_search_view.dart';
+import 'course_standards_view.dart' show openCourseStandards;
 import '../shell.dart' show ShellAppBar, openMenu;
 export '../widgets/reader_comfort.dart' show showReaderComfortSheet;
 import '../widgets/common.dart';
@@ -283,6 +284,15 @@ class _LearningViewState extends State<LearningView> {
                     key: const Key('manage-tracks'),
                     onPressed: () => showTrackAdmin(context, fmt.lm(fmt.m(data)['groups'])),
                     child: Text('Manage tracks', style: T.tiny.copyWith(color: C.text3)),
+                  ),
+                ),
+              // BI26112307: every archetype of the course standard, explained, each with a live example.
+              if (tab == 2)
+                Center(
+                  child: TextButton(
+                    key: const Key('open-course-standards'),
+                    onPressed: () => openCourseStandards(context),
+                    child: Text('Course standards', style: T.tiny.copyWith(color: C.text3)),
                   ),
                 ),
               // ── low-emphasis library-wide action, moved off the top ──────
